@@ -160,6 +160,16 @@ python tools/game-exp/install_harnesses.py --harness cursor --json
 
 Use `--harness all` only when the user explicitly requests all three.
 
+Use `--check` for a read-only comparison before upgrading:
+
+```powershell
+python tools/game-exp/install_harnesses.py --harness codex --check --json
+```
+
+The check never writes files. A source version older than the selected installed
+runtime is blocked by default; `--allow-downgrade` is reserved for an explicit
+rollback.
+
 For each Harness the installer:
 
 - stages and validates an independent runtime under
