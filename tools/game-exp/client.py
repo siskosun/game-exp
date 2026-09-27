@@ -2986,7 +2986,7 @@ class GameExpClient:
                         "build_id",
                     ]
                 },
-                "note_zh": "Godot Prototype Studio 负责实现、运行验证与所需试玩发布；返回证据必须绑定源码、构建身份和可访问产物，game-exp 再继续 Candidate/Review 生命周期。",
+                "note_zh": "Godot Prototype Studio 负责实现、运行验证与所需试玩发布；返回证据必须绑定源码、构建身份和可访问产物，game-exp 再继续候选版本与人工评审流程。",
             },
         }
 
