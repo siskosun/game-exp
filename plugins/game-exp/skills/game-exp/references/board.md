@@ -12,26 +12,32 @@ Show five logical views:
 - `分支图`
 - `归档`
 
-Use one pinned protected Ledger snapshot for every view in the same response.
+Use one pinned protected experiment-record snapshot for every view in the same response.
 
 ## Shared header
 
-Prefer the structured fields already returned by `game_exp_board`. They are the cross-Harness display contract and should be rendered before a host invents its own summary.
+Prefer the ready-to-render `display` block returned by `game_exp_board`. It is the cross-Harness Chinese presentation contract and must be rendered before a host invents its own summary.
 
-Show:
+For the normal Chinese Board:
 
-- `仓库`: `repository.full_name`.
-- `可见性`: `repository.visibility_zh` and `repository.default_branch` when available.
-- `项目状态`: `project.readiness_zh` and `project.doctor_status_zh`.
-- `我的权限`: `project.access_zh`; use `project.can_create_experiment` for the create-action affordance.
-- `Ledger 快照`: pinned `snapshot_head`.
-- `实验统计`: `statistics.total / active / abandoned / archived / attention / abnormal_health`.
-- `下一步`: `project.next_action_zh`.
-- `仓库信任检查`: render `project.trust_checks` compactly or behind an expandable detail area.
+- render `display.title_zh` as the title;
+- render `display.rows_zh` in order as the summary rows;
+- render `display.trust_title_zh` + `display.trust_summary_zh` for repository trust;
+- use `display.snapshot_note_zh` only as secondary help text;
+- use `project`, `repository`, `statistics`, and raw enums for logic, not as primary UI copy.
 
-Use `display.title_zh`, `display.project_status_zh`, `display.statistics_zh`, `display.next_action_zh`, and `display.snapshot_note_zh` when the host needs ready-to-render Chinese copy.
+The standard rows are:
 
-The experiment views are pinned to `snapshot_head`. Repository visibility, access and trust checks are current repository state at call time; do not present them as Ledger history.
+- `仓库`
+- `项目状态`
+- `我的权限`
+- `实验记录快照`
+- `实验统计`
+- `下一步`
+
+Do not append machine codes to these values. In particular, normal rendering must not produce forms such as `readiness=PROJECT_READY`, `管理员 (ADMIN)`, `5/5 PASS`, or literal translations such as `医生检查`. The engineering field/tool name `doctor` is presented as `仓库检查`, never `医生检查`.
+
+The experiment views are pinned to `snapshot_head`. Repository visibility, access and trust checks are current repository state at call time; do not present them as historical experiment-record state.
 
 If `project.readiness=PROJECT_READY`, the repository bootstrap is complete. Never infer an older private-repository Ruleset blocker from chat history, cached preflight output, or a previous Board. Never recommend `project-init` in that state.
 
@@ -147,9 +153,21 @@ Do not fabricate timestamps for timeline events. Events without an authoritative
 
 ## 中文展示约束
 
-All system-generated panel entries must use Chinese as the primary text: view names, section names, lifecycle labels, health labels, next actions, relationship labels, and activity labels.
+All system-generated panel entries must use natural Chinese as the primary text: view names, section names, lifecycle labels, health labels, next actions, relationship labels, activity labels, repository trust checks, and permission/status summaries.
 
-Raw machine enums may appear only in debugging context or parentheses when they materially help diagnosis. User-authored or authoritative stored titles are not silently translated or rewritten.
+For ordinary Board rendering, do not expose or parenthesize raw machine enums. `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, `WARN`, and similar codes are machine-facing values and may be shown only when the user explicitly asks for diagnostics.
+
+Do not mechanically translate internal English identifiers. Required presentation mappings include:
+
+- `doctor` / Doctor -> `仓库检查` (never `医生检查`)
+- Ledger -> `实验记录`
+- Deploy Key -> `部署密钥`
+- Secret -> `私钥` or the more specific Chinese label already emitted by `display`
+- PASS / FAIL Review -> `通过 / 未通过人工评审`
+
+Literal identifiers that are part of the repository itself, such as `owner/repo`, branch names such as `main`, commit hashes, experiment ids, and product names such as `game-exp` / GitHub, may remain unchanged.
+
+User-authored or authoritative stored titles are not silently translated or rewritten.
 
 ## 归档
 
