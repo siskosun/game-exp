@@ -49,10 +49,10 @@ When the user asks to open the game-exp panel, Board, dashboard, experiment list
 3. Render Chinese by default.
 4. Default to `总览`; support `待处理` / `原型` / `分支图` / `归档` as named views.
 5. Follow `references/board.md` for information hierarchy, ordering, labels, focus filters, and empty-state behavior.
-6. Render the Board's structured `repository`, `project`, `statistics`, `onboarding`, and `display` blocks before inventing host-specific summaries. These fields exist so different Harnesses show the same project readiness, visibility, access, trust checks, counts, and next action.
+6. For the normal Chinese Board, render `display.title_zh`, then `display.rows_zh` in order, then `display.trust_title_zh` + `display.trust_summary_zh`. Use raw `repository`, `project`, and `statistics` fields for logic rather than rebuilding visible copy. This prevents different Harnesses from inventing inconsistent translations.
 7. When `project.readiness=PROJECT_READY`, never suggest `project-init`, Ruleset setup, changing repository visibility, or other repository bootstrap work. On an empty ready repository, the primary action is `CREATE_FIRST_EXPERIMENT`.
 8. When the user asks to narrow the Board, pass read-only focus filters to `game_exp_board`: `query`, `subject_id`, `lifecycle`, and/or `attention_only`. Treat `focus.experiment_ids` as a presentation subset only; the full pinned snapshot remains authoritative.
-9. Keep all system-generated panel entries in Chinese. Preserve raw machine enums only for diagnostics; never make English enum names the primary UI text.
+9. Keep all system-generated panel entries in natural Chinese. Do not append raw codes such as `PROJECT_READY`, `ADMIN`, or `PASS` in parentheses during ordinary rendering. Show machine enums only when the user explicitly asks for diagnostics. The internal `doctor` concept is presented as `仓库检查`, never `医生检查`; user-facing Ledger / Deploy Key / Secret labels use the Chinese copy already emitted in `display`.
 10. Treat `health=FAIL` as blocked and never recommend normal lifecycle work for it.
 11. Do not derive authority from Issue labels, branch names, workflow UI, focus results, old chat context, cached preflight results, or the rendered Board.
 
@@ -60,9 +60,9 @@ Treat the Board as a structured read-only projection. The host may render it as 
 
 If the host supports a self-contained inline interactive app surface, prefer the Chat inline UI contract in `references/chat-ui.md`. Keep all interactions read-only and local to presentation; lifecycle mutations still go through trusted game-exp tools and human gates. If inline UI is unavailable, fall back to the text Board contract.
 
-When the user opens one experiment from the Board, prefer `game_exp_experiment_panel` over stitching together `game_exp_board` and `game_exp_experiment_get` in separate reads. The panel is a Chinese-ready read-only projection from one pinned Ledger snapshot and includes overview, hypothesis/criteria, activity, relationships, and current evidence ids.
+When the user opens one experiment from the Board, prefer `game_exp_experiment_panel` over stitching together `game_exp_board` and `game_exp_experiment_get` in separate reads. The panel is a Chinese-ready read-only projection from one pinned experiment-record snapshot and includes overview, hypothesis/criteria, activity, relationships, and current evidence ids.
 
-When the user opens one prototype/subject group, prefer `game_exp_subject_panel`. It returns the stable subject identity, focused lifecycle/health/attention summary, recent activity, child experiment summaries, and relationship edges from the same pinned Ledger snapshot.
+When the user opens one prototype/subject group, prefer `game_exp_subject_panel`. It returns the stable subject identity, focused lifecycle/health/attention summary, recent activity, child experiment summaries, and relationship edges from the same pinned experiment-record snapshot.
 
 For multi-user work, keep `发起人` and `代码贡献者` distinct. The initiator comes from the Trusted Writer-verified binding actor. Contributors come from GitHub commit attribution and are display-only collaboration metadata; never use contributor status as authority.
 
