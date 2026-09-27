@@ -723,6 +723,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["project"]["doctor_status"], "PASS")
         self.assertEqual(result["project"]["repository_check_status"], "PASS")
         self.assertEqual(result["project"]["repository_check_status_zh"], "正常")
+        self.assertEqual(
+            result["project"]["repository_check"]["label_zh"],
+            "仓库检查",
+        )
+        self.assertEqual(
+            result["project"]["repository_check"]["status_zh"],
+            "正常",
+        )
         self.assertEqual(result["project"]["access"], "WRITE")
         self.assertTrue(result["project"]["can_create_experiment"])
         self.assertEqual(result["project"]["next_action"], "OPEN_ATTENTION")
@@ -1014,6 +1022,15 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(transport).board()
         display = result["display"]
 
+        self.assertEqual(
+            result["presentation"],
+            {
+                "primary": "display",
+                "locale": "zh-CN",
+                "copy_is_ready_to_render": True,
+                "raw_fields_are_diagnostics": True,
+            },
+        )
         self.assertEqual(display["locale"], "zh-CN")
         self.assertEqual(display["presentation_version"], 3)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
