@@ -36,6 +36,16 @@ The cleanup flag is intentionally invalid for a single-Harness install.
 
 Each Harness now gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
+## Verify the distribution
+
+Before installing, releasing, or handing this repository to another Harness:
+
+```powershell
+python tools/game-exp/distribution_check.py --json
+```
+
+The check fails if version markers drift, the canonical GitHub source changes, the install contract stops being Harness-isolated, managed source files are missing, or a repository-bound Codex config leaks back into the standalone distribution.
+
 ## Source layout
 
 - `tools/game-exp/`: runtime, CLI, MCP server, domain core, tests.
