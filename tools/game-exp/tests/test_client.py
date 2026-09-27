@@ -721,6 +721,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["repository"]["default_branch"], "main")
         self.assertEqual(result["project"]["readiness"], "PROJECT_READY")
         self.assertEqual(result["project"]["doctor_status"], "PASS")
+        self.assertEqual(result["project"]["repository_check_status"], "PASS")
+        self.assertEqual(result["project"]["repository_check_status_zh"], "正常")
         self.assertEqual(result["project"]["access"], "WRITE")
         self.assertTrue(result["project"]["can_create_experiment"])
         self.assertEqual(result["project"]["next_action"], "OPEN_ATTENTION")
@@ -1013,7 +1015,7 @@ class ClientTests(unittest.TestCase):
         display = result["display"]
 
         self.assertEqual(display["locale"], "zh-CN")
-        self.assertEqual(display["presentation_version"], 2)
+        self.assertEqual(display["presentation_version"], 3)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
         self.assertEqual(
             [row["label"] for row in display["rows_zh"]],
@@ -1028,15 +1030,34 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(
             display["rows_zh"][1]["value"],
-            "项目已就绪 · 仓库检查正常",
+            "项目已就绪 · 仓库检查：正常",
         )
         self.assertEqual(
             display["rows_zh"][2]["value"],
             "可读写 · 可创建实验",
         )
-        self.assertIn("实验记录 正常", display["trust_summary_zh"])
-        self.assertIn("可信写入部署密钥 正常", display["trust_summary_zh"])
-        self.assertIn("可信写入私钥 正常", display["trust_summary_zh"])
+        self.assertEqual(display["trust_title_zh"], "仓库检查")
+        self.assertIn("实验记录：正常", display["trust_summary_zh"])
+        self.assertIn("分支与引用保护：正常", display["trust_summary_zh"])
+        self.assertIn("可信写入部署密钥：正常", display["trust_summary_zh"])
+        self.assertIn("可信写入私钥：正常", display["trust_summary_zh"])
+        self.assertIn("发布保护：正常", display["trust_summary_zh"])
+        self.assertEqual(
+            display["render_contract"],
+            {
+                "primary_copy": "display",
+                "summary_rows": "display.rows_zh",
+                "trust_summary": "display.trust_summary_zh",
+                "raw_fields": "logic_only",
+                "machine_codes": "diagnostics_only",
+                "translate_machine_keys": False,
+            },
+        )
+        self.assertEqual(
+            display["trust_checks_zh"][0],
+            {"label": "实验记录", "value": "正常"},
+        )
+        self.assertIn("项目状态：项目已就绪 · 仓库检查：正常", display["summary_text_zh"])
 
         visible = "\n".join(
             [
@@ -1045,6 +1066,7 @@ class ClientTests(unittest.TestCase):
                 display["trust_title_zh"],
                 display["trust_summary_zh"],
                 display["snapshot_note_zh"],
+                display["summary_text_zh"],
             ]
         )
         for forbidden in (
