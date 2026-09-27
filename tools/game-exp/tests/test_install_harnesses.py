@@ -137,6 +137,55 @@ class HarnessInstallerTests(unittest.TestCase):
                 result = rollback.install()
             self.assertEqual(result["version"], "0.18.0")
 
+    def test_single_harness_detects_but_preserves_legacy_shared_install(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            legacy_runtime = home / ".agents" / "tools" / "game-exp"
+            legacy_skill = home / ".agents" / "skills" / "game-exp"
+            legacy_runtime.mkdir(parents=True)
+            legacy_skill.mkdir(parents=True)
+            (legacy_runtime / "VERSION.txt").write_text("0.17.0\n", encoding="utf-8")
+            (legacy_skill / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            plan = installer.plan()
+            self.assertTrue(plan["legacy_shared"]["detected"])
+            self.assertEqual(plan["legacy_shared"]["runtime_version"], "0.17.0")
+
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                result = installer.install()
+
+            self.assertEqual(result["updated_harnesses"], ["codex"])
+            self.assertTrue(legacy_runtime.exists())
+            self.assertTrue(legacy_skill.exists())
+
+    def test_explicit_all_can_cleanup_legacy_shared_install(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            legacy_runtime = home / ".agents" / "tools" / "game-exp"
+            legacy_skill = home / ".agents" / "skills" / "game-exp"
+            legacy_runtime.mkdir(parents=True)
+            legacy_skill.mkdir(parents=True)
+            (legacy_runtime / "VERSION.txt").write_text("0.17.0\n", encoding="utf-8")
+            (legacy_skill / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                result = install_many(
+                    ROOT,
+                    home,
+                    SUPPORTED_HARNESSES,
+                    cleanup_legacy_shared=True,
+                )
+
+            self.assertTrue(result["legacy_cleanup"]["performed"])
+            self.assertEqual(len(result["legacy_cleanup"]["removed"]), 2)
+            self.assertFalse(legacy_runtime.exists())
+            self.assertFalse(legacy_skill.exists())
+            for harness in SUPPORTED_HARNESSES:
+                self.assertTrue(
+                    pathlib.Path(result["results"][harness]["runtime_dir"]).exists()
+                )
+
     def test_explicit_all_uses_separate_runtimes(self):
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td)
