@@ -1,0 +1,136 @@
+name: game-exp trusted writer
+run-name: game-exp:request:${{ inputs.request_id }}:${{ inputs.payload_digest }}:${{ inputs.expected_head }}
+
+concurrency:
+  group: game-exp-request-${{ inputs.request_id }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Stable request id
+        required: true
+        type: string
+      expected_head:
+        description: Expected game-exp/ledger HEAD
+        required: true
+        type: string
+      payload_b64:
+        description: Base64-encoded UTF-8 JSON payload
+        required: true
+        type: string
+      payload_digest:
+        description: Canonical sha256 digest of the decoded request payload
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  request-identity:
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout request identity guard
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control-guard
+          sparse-checkout: |
+            tools/game-exp/request_guard.py
+            tools/game-exp/protocol_core.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Freeze request id to the first payload digest
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python control-guard/tools/game-exp/request_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "game-exp-trusted-writer.yml" \
+            --request-id "${{ inputs.request_id }}" \
+            --payload-b64 "${{ inputs.payload_b64 }}" \
+            --payload-digest "${{ inputs.payload_digest }}" \
+            --expected-head "${{ inputs.expected_head }}" \
+            --run-id "${{ github.run_id }}"
+
+  mutate-ledger:
+    needs: request-identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted control source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control
+          sparse-checkout: |
+            tools/game-exp/trusted_writer.py
+            tools/game-exp/protocol_core.py
+            tools/game-exp/domain_core.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Require trusted writer secret
+        shell: bash
+        env:
+          WRITER_KEY: ${{ secrets.GAME_EXP_WRITER_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$WRITER_KEY"
+          key="$RUNNER_TEMP/game-exp-writer"
+          printf '%s\n' "$WRITER_KEY" > "$key"
+          chmod 600 "$key"
+          echo "GAME_EXP_WRITER_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Validate request and commit with CAS
+        id: commit
+        shell: bash
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          EXPECTED_HEAD: ${{ inputs.expected_head }}
+          PAYLOAD_B64: ${{ inputs.payload_b64 }}
+          PAYLOAD_DIGEST: ${{ inputs.payload_digest }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_SOURCE_SHA: ${{ github.workflow_sha }}
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+          GAME_EXP_ACTOR_LOGIN: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          set +e
+          python control/tools/game-exp/trusted_writer.py             --repo "$GITHUB_REPOSITORY"             --request-id "$REQUEST_ID"             --expected-head "$EXPECTED_HEAD"             --payload-b64 "$PAYLOAD_B64"             --ssh-key "$GAME_EXP_WRITER_KEY_PATH"             --run-id "$RUN_ID"             --run-attempt "$RUN_ATTEMPT"             --workflow-source-sha "$WORKFLOW_SOURCE_SHA"             | tee "$RUNNER_TEMP/game-exp-result.json"
+          code=${PIPESTATUS[0]}
+          set -e
+
+          python - "$RUNNER_TEMP/game-exp-result.json" "$GITHUB_OUTPUT" <<'PY'
+          import json, pathlib, sys
+          result=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()[-1])
+          with open(sys.argv[2],"a",encoding="utf-8") as out:
+              out.write(f"result={result.get('status','UNKNOWN')}\n")
+              out.write(f"ledger_head={result.get('ledger_head','')}\n")
+              out.write(f"payload_digest={result.get('payload_digest','')}\n")
+              out.write(f"replayed={str(result.get('replayed',False)).lower()}\n")
+          PY
+          exit "$code"
+
+      - name: Report result
+        if: always()
+        shell: bash
+        run: |
+          echo "result=${{ steps.commit.outputs.result }}"
+          echo "ledger_head=${{ steps.commit.outputs.ledger_head }}"
+          echo "payload_digest=${{ steps.commit.outputs.payload_digest }}"
+          echo "replayed=${{ steps.commit.outputs.replayed }}"

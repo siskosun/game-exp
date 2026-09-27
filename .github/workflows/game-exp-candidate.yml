@@ -1,0 +1,437 @@
+name: game-exp trusted candidate
+run-name: game-exp:candidate_build:${{ inputs.request_id }}
+
+concurrency:
+  group: game-exp-candidate_build-${{ inputs.request_id }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: Canonical experiment id, e.g. EXP-21
+        required: true
+        type: string
+      request_id:
+        description: Stable cross-interface operation id
+        required: true
+        type: string
+
+jobs:
+  dedupe:
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      primary: ${{ steps.guard.outputs.primary }}
+      primary_run_id: ${{ steps.guard.outputs.primary_run_id }}
+      actor_login: ${{ steps.guard.outputs.actor_login }}
+    steps:
+      - name: Checkout request-id guard
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control-guard
+          sparse-checkout: |
+            tools/game-exp/workflow_guard.py
+            tools/game-exp/protocol_core.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Select the first run for this request id
+        id: guard
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python control-guard/tools/game-exp/workflow_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "game-exp-candidate.yml" \
+            --action "candidate_build" \
+            --request-id "${{ inputs.request_id }}" \
+            --run-id "${{ github.run_id }}" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --github-output "$GITHUB_OUTPUT"
+
+  resolve:
+    needs: dedupe
+    if: needs.dedupe.outputs.primary == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      experiment_id: ${{ steps.resolve.outputs.experiment_id }}
+      issue_number: ${{ steps.resolve.outputs.issue_number }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      manifest_digest: ${{ steps.resolve.outputs.manifest_digest }}
+      policy_digest: ${{ steps.resolve.outputs.policy_digest }}
+      adapter: ${{ steps.resolve.outputs.adapter }}
+      policy_schema: ${{ steps.resolve.outputs.policy_schema }}
+      node_version: ${{ steps.resolve.outputs.node_version }}
+    steps:
+      - name: Checkout trusted protocol core
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control
+          sparse-checkout: |
+            tools/game-exp/protocol_core.py
+            tools/game-exp/project_policy.py
+            .game-exp/project-policy.json
+          sparse-checkout-cone-mode: false
+      - name: Resolve authoritative experiment facts
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPERIMENT_ID: ${{ inputs.experiment_id }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPERIMENT_ID" =~ ^EXP-([1-9][0-9]*)$ ]]
+          issue_number="${BASH_REMATCH[1]}"
+          source_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/exp/$issue_number" --jq '.object.sha')"
+          test -n "$source_sha"
+
+          mkdir -p "$RUNNER_TEMP/game-exp"
+          gh api -H 'Accept: application/vnd.github.raw+json'             "repos/$GITHUB_REPOSITORY/contents/experiments/$EXPERIMENT_ID/manifest.json?ref=game-exp%2Fledger"             > "$RUNNER_TEMP/game-exp/manifest.json"
+          gh api -H 'Accept: application/vnd.github.raw+json'             "repos/$GITHUB_REPOSITORY/contents/experiments/$EXPERIMENT_ID/binding.json?ref=game-exp%2Fledger"             > "$RUNNER_TEMP/game-exp/binding.json"
+          gh api -H 'Accept: application/vnd.github.raw+json'             "repos/$GITHUB_REPOSITORY/contents/experiments/$EXPERIMENT_ID/state.json?ref=game-exp%2Fledger"             > "$RUNNER_TEMP/game-exp/state.json"
+
+          PYTHONPATH=control/tools/game-exp python -             "$RUNNER_TEMP/game-exp/manifest.json"             "$RUNNER_TEMP/game-exp/binding.json"             "$RUNNER_TEMP/game-exp/state.json"             "$GITHUB_OUTPUT"             "$EXPERIMENT_ID" "$issue_number" "$source_sha" <<'PY'
+          import json, pathlib, sys
+          from project_policy import load_policy, policy_digest
+          from protocol_core import digest_object
+
+          manifest=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          binding=json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+          state=json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))
+          out=sys.argv[4]
+          experiment_id, issue_number, source_sha=sys.argv[5:8]
+
+          manifest_digest=digest_object(manifest)
+          if binding.get("experiment_id") != experiment_id:
+              raise SystemExit("binding experiment mismatch")
+          if binding.get("canonical",{}).get("issue_number") != issue_number:
+              raise SystemExit("binding issue mismatch")
+          if binding.get("initialization",{}).get("manifest_digest") != manifest_digest:
+              raise SystemExit("binding manifest digest mismatch")
+          if state.get("lifecycle") not in {"ACTIVE","REVIEW"}:
+              raise SystemExit(f"candidate build not allowed in lifecycle {state.get('lifecycle')!r}")
+
+          policy=load_policy("control/.game-exp/project-policy.json")
+          with open(out,"a",encoding="utf-8") as fh:
+              fh.write(f"experiment_id={experiment_id}\n")
+              fh.write(f"issue_number={issue_number}\n")
+              fh.write(f"source_sha={source_sha}\n")
+              fh.write(f"manifest_digest={manifest_digest}\n")
+              fh.write(f"policy_digest={policy_digest(policy)}\n")
+              fh.write(f"adapter={policy['adapter']}\n")
+              fh.write(f"policy_schema={policy['schema_version']}\n")
+              node_version=(policy.get("toolchain") or {}).get("node_version","")
+              fh.write(f"node_version={node_version}\n")
+          PY
+
+  build:
+    needs: resolve
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout trusted project policy
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control
+          sparse-checkout: |
+            tools/game-exp/project_policy.py
+            tools/game-exp/protocol_core.py
+            .game-exp/project-policy.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v6
+        if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '1'
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-node@v6
+        if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '2'
+        with:
+          node-version: ${{ needs.resolve.outputs.node_version }}
+          cache: npm
+      - name: Install dependencies
+        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run install --cwd .
+      - name: Project tests
+        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run test --cwd .
+      - name: Build candidate
+        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run build --cwd .
+      - name: Package candidate bytes
+        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate.tgz
+          retention-days: 7
+          if-no-files-found: error
+
+  observe:
+    needs: [resolve, build]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted project policy
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control
+          sparse-checkout: |
+            tools/game-exp/project_policy.py
+            tools/game-exp/protocol_core.py
+            .game-exp/project-policy.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Observe artifact without source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json verify --archive candidate.tgz > artifact-files.txt
+          printf '{"observer":"trusted-clean-job","source_checkout":false,"artifact":"candidate.tgz"}\n' > observer.json
+          sha256sum candidate.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-exp-candidate-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifact-files.txt
+            observer.json
+          retention-days: 30
+
+  attest-retain-register:
+    needs: [resolve, build, observe]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted Candidate control source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: control
+          sparse-checkout: |
+            tools/game-exp/trusted_writer.py
+            tools/game-exp/protocol_core.py
+            tools/game-exp/domain_core.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v5
+        with:
+          name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Require trusted writer secret
+        shell: bash
+        env:
+          WRITER_KEY: ${{ secrets.GAME_EXP_WRITER_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$WRITER_KEY"
+          key="$RUNNER_TEMP/game-exp-writer"
+          printf '%s\n' "$WRITER_KEY" > "$key"
+          chmod 600 "$key"
+          echo "GAME_EXP_WRITER_KEY_PATH=$key" >> "$GITHUB_ENV"
+      - name: Compute trusted artifact digest
+        id: digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(sha256sum candidate.tgz | cut -d' ' -f1)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Attest candidate provenance
+        id: attest
+        uses: actions/attest@v4
+        with:
+          subject-path: candidate.tgz
+      - name: Verify attestation in clean trusted job
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh attestation verify candidate.tgz --repo "$GITHUB_REPOSITORY"
+      - name: Reject stale build if experiment branch moved
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue_number }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/exp/$ISSUE_NUMBER" --jq '.object.sha')"
+          test "$current" = "$SOURCE_SHA"
+      - name: Publish immutable Level-3 release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue_number }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          ARTIFACT_SHA: ${{ steps.digest.outputs.sha }}
+        run: |
+          set -euo pipefail
+          candidate_id="C-$ISSUE_NUMBER-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          tag="game-exp-candidate-$ISSUE_NUMBER-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf '%s  candidate.tgz\n' "$ARTIFACT_SHA" > candidate.sha256
+          gh release create "$tag" candidate.tgz candidate.sha256             --repo "$GITHUB_REPOSITORY"             --target "$SOURCE_SHA"             --title "game-exp $candidate_id"             --notes "candidate_id=$candidate_id
+          source_sha=$SOURCE_SHA
+          run_id=$GITHUB_RUN_ID
+          run_attempt=$GITHUB_RUN_ATTEMPT
+          artifact_digest=sha256:$ARTIFACT_SHA"
+          url="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets             --jq '.assets[].name' | grep -qx candidate.tgz
+          echo "candidate_id=$candidate_id" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Prove Level-3 release asset is immutable
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          set +e
+          out="$(gh release delete-asset "$RELEASE_TAG" candidate.tgz \
+            --repo "$GITHUB_REPOSITORY" -y 2>&1)"
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          test "$code" -ne 0
+          printf '%s\n' "$out" | grep -F 'Cannot delete asset from an immutable release'
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | grep -qx candidate.tgz
+      - name: Build trusted Candidate context and operation
+        id: context
+        shell: bash
+        env:
+          EXPERIMENT_ID: ${{ needs.resolve.outputs.experiment_id }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          MANIFEST_DIGEST: ${{ needs.resolve.outputs.manifest_digest }}
+          POLICY_DIGEST: ${{ needs.resolve.outputs.policy_digest }}
+          ARTIFACT_SHA: ${{ steps.digest.outputs.sha }}
+          CANDIDATE_ID: ${{ steps.release.outputs.candidate_id }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          WORKFLOW_SOURCE_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=control/tools/game-exp python - <<'PY'
+          import base64, json, os, pathlib
+          from protocol_core import build_operation_payload, canonical_json_bytes
+
+          artifact_digest="sha256:"+os.environ["ARTIFACT_SHA"]
+          context={
+              "experiment_id":os.environ["EXPERIMENT_ID"],
+              "candidate_id":os.environ["CANDIDATE_ID"],
+              "source_sha":os.environ["SOURCE_SHA"],
+              "manifest_digest":os.environ["MANIFEST_DIGEST"],
+              "artifact_digest":artifact_digest,
+              "policy_digest":os.environ["POLICY_DIGEST"],
+              "workflow_source_sha":os.environ["WORKFLOW_SOURCE_SHA"],
+              "run_id":os.environ["GITHUB_RUN_ID"],
+              "run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],
+              "checks":[
+                  {"name":"project_tests","status":"PASS","source":"TRUSTED_OBSERVED"},
+                  {"name":"build","status":"PASS","source":"TRUSTED_OBSERVED"},
+                  {"name":"artifact_structure","status":"PASS","source":"TRUSTED_OBSERVED"},
+                  {"name":"attestation_verify","status":"PASS","source":"TRUSTED_OBSERVED"},
+                  {"name":"retention_publish","status":"PASS","source":"TRUSTED_OBSERVED"},
+              ],
+              "retention":{
+                  "provider":"github-immutable-release",
+                  "release_tag":os.environ["RELEASE_TAG"],
+                  "release_url":os.environ["RELEASE_URL"],
+                  "immutable":True,
+                  "artifact_digest":artifact_digest,
+              },
+              "attestation":{
+                  "provider":"github-artifact-attestations",
+                  "verified":True,
+                  "subject_digest":artifact_digest,
+                  "source_sha":os.environ["SOURCE_SHA"],
+              },
+          }
+          pathlib.Path(os.environ["RUNNER_TEMP"],"candidate-context.json").write_bytes(
+              canonical_json_bytes(context)+b"\n"
+          )
+          payload=build_operation_payload(
+              "candidate.register",
+              {"experiment_id":os.environ["EXPERIMENT_ID"]},
+              preconditions={"source_sha":os.environ["SOURCE_SHA"]},
+          )
+          raw=canonical_json_bytes(payload)
+          pathlib.Path(os.environ["RUNNER_TEMP"],"candidate-payload.json").write_bytes(raw+b"\n")
+          pathlib.Path(os.environ["RUNNER_TEMP"],"candidate-payload.b64").write_text(
+              base64.b64encode(raw).decode("ascii"),
+              encoding="ascii",
+          )
+          PY
+          echo "request_id=req-candidate-${CANDIDATE_ID}" >> "$GITHUB_OUTPUT"
+      - name: Register Candidate in protected Ledger
+        id: register
+        shell: bash
+        env:
+          REQUEST_ID: ${{ steps.context.outputs.request_id }}
+          WORKFLOW_SOURCE_SHA: ${{ github.workflow_sha }}
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          payload_b64="$(cat "$RUNNER_TEMP/candidate-payload.b64")"
+          expected_head="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/game-exp/ledger | cut -f1)"
+          test -n "$expected_head"
+
+          run_writer() {
+            python control/tools/game-exp/trusted_writer.py               --repo "$GITHUB_REPOSITORY"               --request-id "$REQUEST_ID"               --expected-head "$1"               --payload-b64 "$payload_b64"               --ssh-key "$GAME_EXP_WRITER_KEY_PATH"               --run-id "$GITHUB_RUN_ID"               --run-attempt "$GITHUB_RUN_ATTEMPT"               --workflow-source-sha "$WORKFLOW_SOURCE_SHA"               --authority candidate               --trusted-context-json "$RUNNER_TEMP/candidate-context.json"
+          }
+
+          set +e
+          run_writer "$expected_head" | tee "$RUNNER_TEMP/candidate-register.json"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -eq 42 ]; then
+            expected_head="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/game-exp/ledger | cut -f1)"
+            run_writer "$expected_head" | tee "$RUNNER_TEMP/candidate-register.json"
+          elif [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
+
+          python - "$RUNNER_TEMP/candidate-register.json" <<'PY'
+          import json, pathlib, sys
+          value=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()[-1])
+          assert value["status"]=="COMMITTED", value
+          assert value["domain_status"]=="APPLIED", value
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-exp-candidate-trusted-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate.sha256
+            ${{ runner.temp }}/candidate-context.json
+            ${{ runner.temp }}/candidate-payload.json
+            ${{ runner.temp }}/candidate-register.json
+          retention-days: 30
+          if-no-files-found: warn

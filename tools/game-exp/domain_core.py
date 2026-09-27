@@ -1,0 +1,2365 @@
+from __future__ import annotations
+
+import json
+import re
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from protocol_core import ASYNC_EXECUTION_ACTIONS, ProtocolError, digest_object
+
+SHA_RE = re.compile(r"^[0-9a-f]{40,64}$")
+EXP_RE = re.compile(r"^EXP-[1-9][0-9]*$")
+CANDIDATE_RE = re.compile(r"^C-([1-9][0-9]*)-([0-9]+)-([1-9][0-9]*)$")
+REHEARSAL_RE = re.compile(r"^R-([1-9][0-9]*)-([0-9]+)-([1-9][0-9]*)$")
+INTEGRATION_RE = re.compile(r"^I-([1-9][0-9]*)-PR-([1-9][0-9]*)$")
+ARCHIVE_RE = re.compile(r"^A-([1-9][0-9]*)-([1-9][0-9]*)$")
+SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+CURRENT_MANIFEST_SCHEMA_VERSION = 2
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {1, 2}
+REHEARSAL_REQUIRED_CHECKS = (
+    "scope",
+    "merge",
+    "project_tests",
+    "build",
+    "trusted_tree_recompute",
+    "main_freshness",
+)
+
+
+class DomainError(ProtocolError):
+    def __init__(self, message: str, *, code: str = "DOMAIN_INVALID"):
+        super().__init__(message)
+        self.code = code
+
+
+def rehearsal_policy_digest() -> str:
+    return digest_object(
+        {
+            "schema_version": 1,
+            "merge_mode": "scope-filtered-two-parent",
+            "base": "current-main-at-prepare",
+            "candidate": "current-candidate-source",
+            "scope": "manifest-allowed-strict-except-canonical-manifest",
+            "required_checks": list(REHEARSAL_REQUIRED_CHECKS),
+        }
+    )
+
+
+def _scope_glob_regex(pattern: str) -> re.Pattern[str]:
+    if not isinstance(pattern, str) or not pattern:
+        raise DomainError("scope pattern must be a non-empty string")
+    if "\\" in pattern or pattern.startswith("/") or "//" in pattern:
+        raise DomainError("scope pattern must use normalized relative '/' paths")
+    if unicodedata.normalize("NFC", pattern) != pattern:
+        raise DomainError("scope pattern must be NFC")
+    out: list[str] = ["^"]
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+            continue
+        if pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+            continue
+        ch = pattern[i]
+        if ch == "*":
+            out.append("[^/]*")
+        elif ch == "?":
+            out.append("[^/]")
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    out.append("$")
+    return re.compile("".join(out))
+
+
+def validate_rehearsal_scope_paths(
+    paths: list[str],
+    *,
+    allowed: list[str],
+    avoid: list[str],
+    manifest_path: str,
+) -> list[str]:
+    if not isinstance(paths, list):
+        raise DomainError("Rehearsal scope paths must be a list")
+    allowed_re = [_scope_glob_regex(pattern) for pattern in allowed]
+    avoid_re = [_scope_glob_regex(pattern) for pattern in avoid]
+    checked: list[str] = []
+    for path in paths:
+        if not isinstance(path, str) or not path:
+            raise DomainError("Rehearsal changed path must be a non-empty string")
+        if (
+            "\\" in path
+            or path.startswith("/")
+            or path.endswith("/")
+            or "//" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or unicodedata.normalize("NFC", path) != path
+        ):
+            raise DomainError(
+                f"Rehearsal changed path is not portable: {path!r}",
+                code="DOMAIN_SCOPE_VIOLATION",
+            )
+        if any(regex.fullmatch(path) for regex in avoid_re):
+            raise DomainError(
+                f"Rehearsal changed path matches avoid scope: {path}",
+                code="DOMAIN_SCOPE_VIOLATION",
+            )
+        if path != manifest_path and not any(
+            regex.fullmatch(path) for regex in allowed_re
+        ):
+            raise DomainError(
+                f"Rehearsal changed path is outside allowed scope: {path}",
+                code="DOMAIN_SCOPE_VIOLATION",
+            )
+        checked.append(path)
+    return sorted(set(checked))
+
+
+@dataclass(frozen=True)
+class TrustedBindingContext:
+    host: str
+    repository_id: str
+    issue_id: str
+    issue_number: str
+    parent_sha: str
+
+
+@dataclass(frozen=True)
+class TrustedActorContext:
+    login: str
+    user_id: str
+    permission: str
+
+
+@dataclass(frozen=True)
+class TrustedCandidateContext:
+    experiment_id: str
+    candidate_id: str
+    source_sha: str
+    manifest_digest: str
+    artifact_digest: str
+    policy_digest: str
+    workflow_source_sha: str
+    run_id: str
+    run_attempt: str
+    checks: tuple[dict[str, Any], ...]
+    retention: dict[str, Any]
+    attestation: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TrustedRetentionContext:
+    experiment_id: str
+    candidate_id: str
+    release_id: str
+    release_tag: str
+    release_url: str
+    immutable: bool
+    target_commitish: str
+    artifact_name: str
+    artifact_digest: str
+    asset_id: str
+
+
+@dataclass(frozen=True)
+class TrustedRehearsalContext:
+    experiment_id: str
+    candidate_id: str
+    rehearsal_id: str
+    main_sha: str
+    source_sha: str
+    integration_sha: str
+    integration_tree_sha: str
+    rehearsal_ref: str
+    workflow_source_sha: str
+    run_id: str
+    run_attempt: str
+    policy_digest: str
+    scope_digest: str
+    checks: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class TrustedIntegrationContext:
+    experiment_id: str
+    candidate_id: str
+    rehearsal_id: str
+    integration_id: str
+    pr_number: str
+    pr_id: str
+    pr_url: str
+    head_ref: str
+    head_sha: str
+    head_tree_sha: str
+    merge_sha: str
+    merge_tree_sha: str
+    merged_at: str
+    merged_by_login: str
+    merged_by_user_id: str
+    workflow_source_sha: str
+    run_id: str
+    run_attempt: str
+
+
+@dataclass(frozen=True)
+class TrustedArchiveContext:
+    action: str
+    experiment_id: str
+    archive_id: str | None
+    mode: str
+    branch_ref: str
+    final_tag_ref: str
+    expected_branch_sha: str
+    ref_status: str | None = None
+    observed_branch_sha: str | None = None
+    observed_final_tag_target: str | None = None
+
+
+@dataclass(frozen=True)
+class DomainPlan:
+    status: str
+    experiment_id: str | None
+    writes: dict[str, dict[str, Any]]
+
+    @property
+    def paths(self) -> list[str]:
+        return sorted(self.writes)
+
+
+def _expect_keys(
+    obj: dict[str, Any],
+    required: set[str],
+    *,
+    where: str,
+    optional: set[str] | None = None,
+) -> None:
+    optional = optional or set()
+    missing = required - obj.keys()
+    extra = obj.keys() - required - optional
+    if missing:
+        raise DomainError(f"{where}: missing keys {sorted(missing)}")
+    if extra:
+        raise DomainError(f"{where}: unknown keys {sorted(extra)}")
+
+
+def _mapping(value: Any, where: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise DomainError(f"{where}: expected object")
+    return value
+
+
+def _string(value: Any, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise DomainError(f"{where}: expected non-empty string")
+    return value
+
+
+def _canonical_decimal(value: Any, where: str) -> str:
+    value = _string(value, where)
+    if not value.isdigit() or (value.startswith("0") and value != "0"):
+        raise DomainError(f"{where}: expected canonical decimal string")
+    return value
+
+
+def _string_list(value: Any, where: str, *, min_items: int = 0) -> list[str]:
+    if not isinstance(value, list):
+        raise DomainError(f"{where}: expected list")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise DomainError(f"{where}: expected non-empty strings")
+    if len(value) < min_items:
+        raise DomainError(f"{where}: requires at least {min_items} item(s)")
+    return list(value)
+
+
+def _require_nfc(value: str, where: str) -> None:
+    if unicodedata.normalize("NFC", value) != value:
+        raise DomainError(f"{where}: expected NFC")
+
+
+def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    _expect_keys(
+        manifest,
+        {
+            "schema_version",
+            "experiment",
+            "title",
+            "operation_id",
+            "parent",
+            "hypothesis",
+            "success_criteria",
+            "kill_criteria",
+            "scope",
+            "runtime",
+            "review",
+            "created_at",
+        },
+        where="manifest",
+        optional={"subject", "relationships"},
+    )
+    schema_version = manifest["schema_version"]
+    if schema_version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
+        raise DomainError(
+            "manifest.schema_version must be one of "
+            + ", ".join(str(v) for v in sorted(SUPPORTED_MANIFEST_SCHEMA_VERSIONS))
+        )
+
+    exp = _mapping(manifest["experiment"], "manifest.experiment")
+    _expect_keys(
+        exp,
+        {"host", "repository_id", "issue_id", "issue_number"},
+        where="manifest.experiment",
+    )
+    _string(exp["host"], "manifest.experiment.host")
+    for name in ("repository_id", "issue_id", "issue_number"):
+        _canonical_decimal(exp[name], f"manifest.experiment.{name}")
+
+    _string(manifest["title"], "manifest.title")
+    _string(manifest["operation_id"], "manifest.operation_id")
+
+    if "subject" in manifest:
+        subject = _mapping(manifest["subject"], "manifest.subject")
+        _expect_keys(
+            subject,
+            {"type", "id", "name", "root_path"},
+            where="manifest.subject",
+        )
+        subject_type = _string(subject["type"], "manifest.subject.type")
+        if subject_type not in {"game-prototype", "repository"}:
+            raise DomainError(
+                "manifest.subject.type must be game-prototype or repository"
+            )
+        subject_id = _string(subject["id"], "manifest.subject.id")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", subject_id):
+            raise DomainError(
+                "manifest.subject.id must be a stable lowercase slug"
+            )
+        subject_name = _string(subject["name"], "manifest.subject.name")
+        root_path = _string(subject["root_path"], "manifest.subject.root_path")
+        _require_nfc(subject_name, "manifest.subject.name")
+        _require_nfc(root_path, "manifest.subject.root_path")
+        if "\\" in root_path or root_path.startswith("/") or "//" in root_path:
+            raise DomainError(
+                "manifest.subject.root_path must be a normalized relative path"
+            )
+        if any(part in {"", ".."} for part in root_path.split("/")):
+            raise DomainError(
+                "manifest.subject.root_path must not contain empty or parent segments"
+            )
+        if any(ch in root_path for ch in "*?[]{}"):
+            raise DomainError(
+                "manifest.subject.root_path must be a concrete path, not a glob"
+            )
+        if subject_type == "repository":
+            if subject_id != "repository" or root_path != ".":
+                raise DomainError(
+                    "repository subject must use id=repository and root_path=."
+                )
+        elif root_path == ".":
+            raise DomainError(
+                "game-prototype subject must use a concrete prototype root_path"
+            )
+
+    if "relationships" in manifest:
+        relationships = manifest["relationships"]
+        if not isinstance(relationships, list):
+            raise DomainError("manifest.relationships must be an array")
+        seen_targets: set[str] = set()
+        for index, raw_relation in enumerate(relationships):
+            relation = _mapping(
+                raw_relation,
+                f"manifest.relationships[{index}]",
+            )
+            _expect_keys(
+                relation,
+                {"type", "experiment_id"},
+                where=f"manifest.relationships[{index}]",
+            )
+            relation_type = _string(
+                relation["type"],
+                f"manifest.relationships[{index}].type",
+            )
+            if relation_type not in {"depends_on", "blocks", "supersedes"}:
+                raise DomainError(
+                    "manifest relationship type must be depends_on, blocks, or supersedes"
+                )
+            target = _string(
+                relation["experiment_id"],
+                f"manifest.relationships[{index}].experiment_id",
+            )
+            if not EXP_RE.fullmatch(target):
+                raise DomainError(
+                    "manifest relationship experiment_id must be EXP-<number>"
+                )
+            if target in seen_targets:
+                raise DomainError(
+                    "manifest relationships must not contain multiple relationships to the same experiment"
+                )
+            seen_targets.add(target)
+
+    parent = _mapping(manifest["parent"], "manifest.parent")
+    _expect_keys(parent, {"experiment", "commit"}, where="manifest.parent")
+    if parent["experiment"] is not None:
+        parent_exp = _string(parent["experiment"], "manifest.parent.experiment")
+        if not EXP_RE.fullmatch(parent_exp):
+            raise DomainError("manifest.parent.experiment must be EXP-<number> or null")
+    parent_sha = _string(parent["commit"], "manifest.parent.commit")
+    if not SHA_RE.fullmatch(parent_sha):
+        raise DomainError("manifest.parent.commit must be lowercase hex SHA")
+
+    _string(manifest["hypothesis"], "manifest.hypothesis")
+    _string_list(manifest["success_criteria"], "manifest.success_criteria", min_items=1)
+    _string_list(manifest["kill_criteria"], "manifest.kill_criteria", min_items=1)
+
+    scope = _mapping(manifest["scope"], "manifest.scope")
+    _expect_keys(scope, {"allowed", "avoid"}, where="manifest.scope")
+    patterns = _string_list(scope["allowed"], "manifest.scope.allowed")
+    patterns += _string_list(scope["avoid"], "manifest.scope.avoid")
+    for pattern in patterns:
+        _require_nfc(pattern, "manifest scope pattern")
+
+    runtime = _mapping(manifest["runtime"], "manifest.runtime")
+    if schema_version == 1:
+        _expect_keys(
+            runtime,
+            {"godot", "export_templates", "addons_lock"},
+            where="manifest.runtime",
+        )
+        for name in ("godot", "export_templates", "addons_lock"):
+            _string(runtime[name], f"manifest.runtime.{name}")
+    else:
+        _expect_keys(
+            runtime,
+            {"adapter", "policy_path"},
+            where="manifest.runtime",
+        )
+        _string(runtime["adapter"], "manifest.runtime.adapter")
+        policy_path = _string(runtime["policy_path"], "manifest.runtime.policy_path")
+        if policy_path != ".game-exp/project-policy.json":
+            raise DomainError(
+                "manifest.runtime.policy_path must equal .game-exp/project-policy.json"
+            )
+
+    review = _mapping(manifest["review"], "manifest.review")
+    _expect_keys(review, {"protocol"}, where="manifest.review")
+    _string(review["protocol"], "manifest.review.protocol")
+    _string(manifest["created_at"], "manifest.created_at")
+    return manifest
+
+
+def _binding_record(
+    *,
+    request_id: str,
+    payload_digest: str,
+    manifest: dict[str, Any],
+    initiator: TrustedActorContext | None,
+) -> dict[str, Any]:
+    exp = manifest["experiment"]
+    issue_number = exp["issue_number"]
+    experiment_id = f"EXP-{issue_number}"
+    manifest_digest = digest_object(manifest)
+    initialization = {
+        "branch_ref": f"refs/heads/exp/{issue_number}",
+        "base_tag_ref": f"refs/tags/exp-base/{issue_number}",
+        "final_tag_ref": f"refs/tags/exp-final/{issue_number}",
+        "manifest_path": f"experiments/{experiment_id}/manifest.yaml",
+        "manifest_snapshot_path": f"experiments/{experiment_id}/manifest.json",
+        "manifest_digest": manifest_digest,
+        "manifest_schema_version": manifest["schema_version"],
+    }
+    initialization["initialization_plan_digest"] = digest_object(initialization)
+    return {
+        "kind": "experiment_identity",
+        "experiment_id": experiment_id,
+        "request_id": request_id,
+        "inputs_digest": payload_digest,
+        "parent_sha": manifest["parent"]["commit"],
+        **(
+            {
+                "initiator": {
+                    "login": initiator.login,
+                    "user_id": initiator.user_id,
+                    "permission_at_bind": initiator.permission,
+                }
+            }
+            if initiator is not None
+            else {}
+        ),
+        "canonical": {
+            "host": exp["host"],
+            "repository_id": exp["repository_id"],
+            "issue_id": exp["issue_id"],
+            "issue_number": issue_number,
+        },
+        "initialization": initialization,
+    }
+
+
+def _state_record(experiment_id: str, request_id: str) -> dict[str, Any]:
+    return {
+        "kind": "experiment_state",
+        "experiment_id": experiment_id,
+        "lifecycle": "ACTIVE",
+        "sequence": 0,
+        "last_decision_id": None,
+        "archive_lock": None,
+        "created_by_request_id": request_id,
+    }
+
+
+DECISION_TRANSITIONS = {
+    "ACTIVE": {"REVIEW", "ABANDONED"},
+    "REVIEW": {"ACTIVE", "PROMISING", "REJECTED", "ABANDONED"},
+    "PROMISING": {"ACTIVE", "SELECTED", "REJECTED", "ABANDONED"},
+    "SELECTED": {"ABANDONED"},
+    "REJECTED": set(),
+    "ABANDONED": set(),
+    "INTEGRATED": set(),
+    "ARCHIVED": set(),
+}
+
+
+def _read_json_file(repo_dir: Path, path: str, *, where: str) -> dict[str, Any]:
+    target = repo_dir / path
+    if not target.exists():
+        raise DomainError(f"{where}: missing authoritative file {path}", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    try:
+        value = json.loads(target.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise DomainError(
+            f"{where}: invalid JSON in {path}: {exc}",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        ) from exc
+    if not isinstance(value, dict):
+        raise DomainError(f"{where}: {path} must be an object", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    return value
+
+
+def _expected_domain_paths(experiment_id: str) -> list[str]:
+    root = f"experiments/{experiment_id}"
+    return sorted([f"{root}/binding.json", f"{root}/manifest.json", f"{root}/state.json"])
+
+
+def _load_bound_experiment(repo_dir: Path, experiment_id: str):
+    if not EXP_RE.fullmatch(experiment_id):
+        raise DomainError("experiment_id must be EXP-<number>")
+    issue_number = experiment_id.removeprefix("EXP-")
+    root = f"experiments/{experiment_id}"
+    binding = _read_json_file(repo_dir, f"{root}/binding.json", where=experiment_id)
+    manifest = _read_json_file(repo_dir, f"{root}/manifest.json", where=experiment_id)
+    state = _read_json_file(repo_dir, f"{root}/state.json", where=experiment_id)
+
+    if binding.get("kind") != "experiment_identity" or binding.get("experiment_id") != experiment_id:
+        raise DomainError("binding identity mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if state.get("kind") != "experiment_state" or state.get("experiment_id") != experiment_id:
+        raise DomainError("state identity mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+
+    request_id = binding.get("request_id")
+    if not isinstance(request_id, str) or not request_id:
+        raise DomainError("binding request_id missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    operation = _read_json_file(
+        repo_dir,
+        f"operations/{request_id}.json",
+        where=experiment_id,
+    )
+    payload = operation.get("payload")
+    stored_digest = operation.get("payload_digest")
+    if not isinstance(payload, dict) or not isinstance(stored_digest, str):
+        raise DomainError("binding operation record incomplete", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    actual_digest = digest_object(payload)
+    if actual_digest != stored_digest:
+        raise DomainError(
+            f"binding operation payload digest mismatch: stored={stored_digest} actual={actual_digest}",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    if binding.get("inputs_digest") != stored_digest:
+        raise DomainError("binding inputs_digest mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if operation.get("domain_status") != "APPLIED" or operation.get("domain_experiment_id") != experiment_id:
+        raise DomainError("binding operation was not applied", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if sorted(operation.get("domain_paths") or []) != _expected_domain_paths(experiment_id):
+        raise DomainError("binding operation domain_paths mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if payload.get("kind") != "operation_request" or payload.get("operation") != "experiment.bind":
+        raise DomainError("binding operation payload type mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    input_value = payload.get("input")
+    if not isinstance(input_value, dict) or input_value.get("manifest") != manifest:
+        raise DomainError("manifest snapshot differs from binding request", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+
+    init = binding.get("initialization")
+    if not isinstance(init, dict) or init.get("manifest_digest") != digest_object(manifest):
+        raise DomainError("binding manifest digest mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    canonical = binding.get("canonical")
+    if not isinstance(canonical, dict) or canonical.get("issue_number") != issue_number:
+        raise DomainError("binding canonical issue mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if manifest.get("experiment", {}).get("issue_number") != issue_number:
+        raise DomainError("manifest issue mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if manifest.get("parent", {}).get("commit") != binding.get("parent_sha"):
+        raise DomainError("binding parent mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if state.get("created_by_request_id") != request_id:
+        raise DomainError("state binding origin mismatch", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+
+    lifecycle = state.get("lifecycle")
+    if lifecycle not in DECISION_TRANSITIONS:
+        raise DomainError("unknown lifecycle state", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    sequence = state.get("sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+        raise DomainError("invalid state sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    last_decision_id = state.get("last_decision_id")
+    if last_decision_id is not None and (not isinstance(last_decision_id, str) or not last_decision_id):
+        raise DomainError("invalid last_decision_id", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    return binding, manifest, state, operation
+
+
+def _plan_decision(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+    trusted_retention: TrustedRetentionContext | None,
+    trusted_rehearsal: TrustedRehearsalContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "to_state", "previous_decision_id", "reason"},
+        where="operation.input",
+    )
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    to_state = _string(input_value["to_state"], "operation.input.to_state")
+    reason = _string(input_value["reason"], "operation.input.reason")
+    previous_decision_id = input_value["previous_decision_id"]
+    if previous_decision_id is not None:
+        previous_decision_id = _string(
+            previous_decision_id,
+            "operation.input.previous_decision_id",
+        )
+
+    if trusted_actor is None:
+        raise DomainError(
+            "trusted actor context is required for lifecycle decisions",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            f"actor {trusted_actor.login!r} lacks write permission",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    if state.get("archive_lock") is not None:
+        raise DomainError(
+            "decision rejected while archive mutation lock is active",
+            code="DOMAIN_DECISION_CONFLICT",
+        )
+    current = state["lifecycle"]
+    current_last = state.get("last_decision_id")
+    if previous_decision_id != current_last:
+        raise DomainError(
+            f"previous_decision_id mismatch: expected {current_last!r}, got {previous_decision_id!r}",
+            code="DOMAIN_DECISION_CONFLICT",
+        )
+    if to_state in {"ARCHIVED", "INTEGRATED"}:
+        raise DomainError(
+            f"{to_state} is reserved for its dedicated trusted operation",
+            code="DOMAIN_INVALID_TRANSITION",
+        )
+    if to_state not in DECISION_TRANSITIONS[current]:
+        raise DomainError(
+            f"invalid lifecycle transition {current} -> {to_state}",
+            code="DOMAIN_INVALID_TRANSITION",
+        )
+    promotion_evidence = None
+    selection_evidence = None
+    if to_state == "PROMISING":
+        candidate_id = state.get("current_candidate_id")
+        review_id = state.get("current_review_id")
+        review_candidate_id = state.get("current_review_candidate_id")
+        if not isinstance(candidate_id, str) or not candidate_id:
+            raise DomainError(
+                "PROMISING requires a current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if (
+            not isinstance(review_id, str)
+            or not review_id
+            or review_candidate_id != candidate_id
+        ):
+            raise DomainError(
+                "PROMISING requires a current Review bound to the current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        candidate = _load_candidate(repo_dir, experiment_id, candidate_id)
+        review = _read_json_file(
+            repo_dir,
+            f"experiments/{experiment_id}/reviews/{review_id}.json",
+            where=experiment_id,
+        )
+        if (
+            review.get("kind") != "review"
+            or review.get("review_id") != review_id
+            or review.get("experiment_id") != experiment_id
+            or review.get("candidate_id") != candidate_id
+            or review.get("artifact_digest") != candidate.get("artifact_digest")
+            or review.get("outcome") != "PASS"
+        ):
+            raise DomainError(
+                "PROMISING requires a current PASS Review for the current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        retention = candidate.get("retention")
+        if not isinstance(retention, dict):
+            raise DomainError(
+                "PROMISING requires Candidate retention",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if trusted_retention is None:
+            raise DomainError(
+                "PROMISING requires current trusted Level-3 retention verification",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        expected_retention = {
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "release_tag": retention.get("release_tag"),
+            "artifact_digest": candidate.get("artifact_digest"),
+            "target_commitish": candidate.get("source_sha"),
+        }
+        actual_retention = {
+            "experiment_id": trusted_retention.experiment_id,
+            "candidate_id": trusted_retention.candidate_id,
+            "release_tag": trusted_retention.release_tag,
+            "artifact_digest": trusted_retention.artifact_digest,
+            "target_commitish": trusted_retention.target_commitish,
+        }
+        if actual_retention != expected_retention:
+            raise DomainError(
+                "current trusted retention evidence does not match Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if (
+            trusted_retention.immutable is not True
+            or trusted_retention.artifact_name != "candidate.tgz"
+            or not trusted_retention.release_id
+            or not trusted_retention.asset_id
+        ):
+            raise DomainError(
+                "current trusted retention evidence is incomplete or mutable",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        promotion_evidence = {
+            "candidate_id": candidate_id,
+            "review_id": review_id,
+            "artifact_digest": candidate["artifact_digest"],
+            "source_sha": candidate["source_sha"],
+            "retention": {
+                "provider": "github-immutable-release",
+                "release_id": trusted_retention.release_id,
+                "release_tag": trusted_retention.release_tag,
+                "release_url": trusted_retention.release_url,
+                "asset_id": trusted_retention.asset_id,
+                "asset_name": trusted_retention.artifact_name,
+                "artifact_digest": trusted_retention.artifact_digest,
+                "immutable": True,
+            },
+        }
+    elif to_state == "SELECTED":
+        candidate_id = state.get("current_candidate_id")
+        rehearsal_id = state.get("current_rehearsal_id")
+        rehearsal_candidate_id = state.get("current_rehearsal_candidate_id")
+        rehearsal_main_sha = state.get("current_rehearsal_main_sha")
+        if not isinstance(candidate_id, str) or not candidate_id:
+            raise DomainError(
+                "SELECTED requires a current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if (
+            not isinstance(rehearsal_id, str)
+            or not rehearsal_id
+            or rehearsal_candidate_id != candidate_id
+            or not isinstance(rehearsal_main_sha, str)
+        ):
+            raise DomainError(
+                "SELECTED requires a current Rehearsal bound to the current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        candidate = _load_candidate(repo_dir, experiment_id, candidate_id)
+        rehearsal = _read_json_file(
+            repo_dir,
+            f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+            where=experiment_id,
+        )
+        if (
+            rehearsal.get("kind") != "rehearsal"
+            or rehearsal.get("rehearsal_id") != rehearsal_id
+            or rehearsal.get("experiment_id") != experiment_id
+            or rehearsal.get("candidate_id") != candidate_id
+            or rehearsal.get("source_sha") != candidate.get("source_sha")
+            or rehearsal.get("main_sha") != rehearsal_main_sha
+        ):
+            raise DomainError(
+                "current Rehearsal record does not match current experiment state",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        if trusted_rehearsal is None:
+            raise DomainError(
+                "SELECTED requires live trusted Rehearsal verification",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        expected_rehearsal = {
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "rehearsal_id": rehearsal_id,
+            "main_sha": rehearsal.get("main_sha"),
+            "source_sha": rehearsal.get("source_sha"),
+            "integration_sha": rehearsal.get("integration_sha"),
+            "integration_tree_sha": rehearsal.get("integration_tree_sha"),
+            "rehearsal_ref": rehearsal.get("rehearsal_ref"),
+            "workflow_source_sha": rehearsal.get("workflow_source_sha"),
+            "run_id": rehearsal.get("github_run_id"),
+            "run_attempt": rehearsal.get("github_run_attempt"),
+            "policy_digest": rehearsal.get("policy_digest"),
+            "scope_digest": rehearsal.get("scope_digest"),
+        }
+        actual_rehearsal = {
+            "experiment_id": trusted_rehearsal.experiment_id,
+            "candidate_id": trusted_rehearsal.candidate_id,
+            "rehearsal_id": trusted_rehearsal.rehearsal_id,
+            "main_sha": trusted_rehearsal.main_sha,
+            "source_sha": trusted_rehearsal.source_sha,
+            "integration_sha": trusted_rehearsal.integration_sha,
+            "integration_tree_sha": trusted_rehearsal.integration_tree_sha,
+            "rehearsal_ref": trusted_rehearsal.rehearsal_ref,
+            "workflow_source_sha": trusted_rehearsal.workflow_source_sha,
+            "run_id": trusted_rehearsal.run_id,
+            "run_attempt": trusted_rehearsal.run_attempt,
+            "policy_digest": trusted_rehearsal.policy_digest,
+            "scope_digest": trusted_rehearsal.scope_digest,
+        }
+        if actual_rehearsal != expected_rehearsal:
+            raise DomainError(
+                "live trusted Rehearsal evidence does not match current Rehearsal",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if {row.get("name") for row in trusted_rehearsal.checks} != set(REHEARSAL_REQUIRED_CHECKS):
+            raise DomainError(
+                "SELECTED Rehearsal check set is incomplete",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        retention = candidate.get("retention")
+        if not isinstance(retention, dict) or trusted_retention is None:
+            raise DomainError(
+                "SELECTED requires live Level-3 Candidate retention verification",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        expected_retention = {
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "release_tag": retention.get("release_tag"),
+            "artifact_digest": candidate.get("artifact_digest"),
+            "target_commitish": candidate.get("source_sha"),
+        }
+        actual_retention = {
+            "experiment_id": trusted_retention.experiment_id,
+            "candidate_id": trusted_retention.candidate_id,
+            "release_tag": trusted_retention.release_tag,
+            "artifact_digest": trusted_retention.artifact_digest,
+            "target_commitish": trusted_retention.target_commitish,
+        }
+        if actual_retention != expected_retention or trusted_retention.immutable is not True:
+            raise DomainError(
+                "live Candidate retention evidence does not match current Candidate",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if trusted_retention.artifact_name != "candidate.tgz":
+            raise DomainError(
+                "SELECTED requires retained candidate.tgz",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+
+        selection_evidence = {
+            "candidate_id": candidate_id,
+            "artifact_digest": candidate["artifact_digest"],
+            "source_sha": candidate["source_sha"],
+            "rehearsal": {
+                "rehearsal_id": rehearsal_id,
+                "main_sha": trusted_rehearsal.main_sha,
+                "integration_sha": trusted_rehearsal.integration_sha,
+                "integration_tree_sha": trusted_rehearsal.integration_tree_sha,
+                "rehearsal_ref": trusted_rehearsal.rehearsal_ref,
+                "policy_digest": trusted_rehearsal.policy_digest,
+                "scope_digest": trusted_rehearsal.scope_digest,
+            },
+            "retention": {
+                "provider": "github-immutable-release",
+                "release_id": trusted_retention.release_id,
+                "release_tag": trusted_retention.release_tag,
+                "release_url": trusted_retention.release_url,
+                "asset_id": trusted_retention.asset_id,
+                "asset_name": trusted_retention.artifact_name,
+                "artifact_digest": trusted_retention.artifact_digest,
+                "immutable": True,
+            },
+        }
+
+    decision_path = f"experiments/{experiment_id}/decisions/{request_id}.json"
+    if (repo_dir / decision_path).exists():
+        raise DomainError("decision_id already exists", code="DOMAIN_DECISION_CONFLICT")
+
+    next_sequence = state["sequence"] + 1
+    decision = {
+        "kind": "decision_event",
+        "decision_id": request_id,
+        "experiment_id": experiment_id,
+        "sequence": next_sequence,
+        "previous_decision_id": previous_decision_id,
+        "from_state": current,
+        "to_state": to_state,
+        "reason": reason,
+        "actor": {
+            "login": trusted_actor.login,
+            "user_id": trusted_actor.user_id,
+            "permission": trusted_actor.permission,
+            "source": "github-collaborator-permission",
+        },
+    }
+    actor_claim = payload.get("actor_claim")
+    if actor_claim is not None:
+        decision["actor_claim"] = actor_claim
+    if promotion_evidence is not None:
+        decision["promotion_evidence"] = promotion_evidence
+    if selection_evidence is not None:
+        decision["selection_evidence"] = selection_evidence
+
+    next_state = dict(state)
+    next_state["lifecycle"] = to_state
+    next_state["sequence"] = next_sequence
+    next_state["last_decision_id"] = request_id
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            decision_path: decision,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _load_candidate(
+    repo_dir: Path,
+    experiment_id: str,
+    candidate_id: str,
+) -> dict[str, Any]:
+    match = CANDIDATE_RE.fullmatch(candidate_id)
+    if not match or match.group(1) != experiment_id.removeprefix("EXP-"):
+        raise DomainError("candidate_id does not match experiment", code="DOMAIN_REVIEW_CONFLICT")
+    candidate = _read_json_file(
+        repo_dir,
+        f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+        where=experiment_id,
+    )
+    if (
+        candidate.get("kind") != "candidate"
+        or candidate.get("candidate_id") != candidate_id
+        or candidate.get("experiment_id") != experiment_id
+    ):
+        raise DomainError("Candidate identity mismatch", code="DOMAIN_REVIEW_CONFLICT")
+
+    artifact_digest = candidate.get("artifact_digest")
+    manifest_digest = candidate.get("manifest_digest")
+    source_sha = candidate.get("source_sha")
+    if not isinstance(artifact_digest, str) or not SHA256_RE.fullmatch(artifact_digest):
+        raise DomainError("Candidate artifact digest invalid", code="DOMAIN_REVIEW_CONFLICT")
+    if not isinstance(manifest_digest, str) or not SHA256_RE.fullmatch(manifest_digest):
+        raise DomainError("Candidate manifest digest invalid", code="DOMAIN_REVIEW_CONFLICT")
+    if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+        raise DomainError("Candidate source SHA invalid", code="DOMAIN_REVIEW_CONFLICT")
+
+    checks = candidate.get("checks")
+    if not isinstance(checks, list) or not checks:
+        raise DomainError("Candidate trusted checks missing", code="DOMAIN_REVIEW_CONFLICT")
+    seen: set[str] = set()
+    for check in checks:
+        if not isinstance(check, dict):
+            raise DomainError("Candidate check invalid", code="DOMAIN_REVIEW_CONFLICT")
+        if set(check) != {"name", "status", "source"}:
+            raise DomainError("Candidate check keys invalid", code="DOMAIN_REVIEW_CONFLICT")
+        name = check.get("name")
+        if not isinstance(name, str) or not name or name in seen:
+            raise DomainError("Candidate check name invalid", code="DOMAIN_REVIEW_CONFLICT")
+        seen.add(name)
+        if check.get("status") != "PASS" or check.get("source") != "TRUSTED_OBSERVED":
+            raise DomainError("Candidate has non-trusted or failed check", code="DOMAIN_REVIEW_CONFLICT")
+
+    retention = candidate.get("retention")
+    if not isinstance(retention, dict):
+        raise DomainError("Candidate retention missing", code="DOMAIN_REVIEW_CONFLICT")
+    if (
+        retention.get("provider") != "github-immutable-release"
+        or retention.get("immutable") is not True
+        or retention.get("artifact_digest") != artifact_digest
+    ):
+        raise DomainError("Candidate retention invalid", code="DOMAIN_REVIEW_CONFLICT")
+
+    attestation = candidate.get("attestation")
+    if not isinstance(attestation, dict):
+        raise DomainError("Candidate attestation missing", code="DOMAIN_REVIEW_CONFLICT")
+    if (
+        attestation.get("provider") != "github-artifact-attestations"
+        or attestation.get("verified") is not True
+        or attestation.get("subject_digest") != artifact_digest
+        or attestation.get("source_sha") != source_sha
+    ):
+        raise DomainError("Candidate attestation invalid", code="DOMAIN_REVIEW_CONFLICT")
+    return candidate
+
+
+def _plan_review(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "candidate_id", "outcome", "notes"},
+        where="operation.input",
+    )
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    candidate_id = _string(input_value["candidate_id"], "operation.input.candidate_id")
+    outcome = _string(input_value["outcome"], "operation.input.outcome")
+    notes = _string(input_value["notes"], "operation.input.notes")
+    if outcome not in {"PASS", "FAIL"}:
+        raise DomainError("review outcome must be PASS or FAIL")
+
+    if trusted_actor is None:
+        raise DomainError(
+            "trusted actor context is required for Review",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            f"actor {trusted_actor.login!r} lacks write permission",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+
+    binding, manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    if state.get("lifecycle") != "REVIEW":
+        raise DomainError(
+            f"Review requires REVIEW lifecycle, got {state.get('lifecycle')!r}",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    if state.get("current_candidate_id") != candidate_id:
+        raise DomainError(
+            "Review must bind the current Candidate",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    candidate = _load_candidate(repo_dir, experiment_id, candidate_id)
+    binding_manifest_digest = binding.get("initialization", {}).get("manifest_digest")
+    if candidate.get("manifest_digest") != binding_manifest_digest:
+        raise DomainError(
+            "Candidate manifest digest differs from authoritative binding",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+
+    protocol = manifest.get("review", {}).get("protocol")
+    if not isinstance(protocol, str) or not protocol:
+        raise DomainError("manifest review protocol missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+
+    review_path = f"experiments/{experiment_id}/reviews/{request_id}.json"
+    if (repo_dir / review_path).exists():
+        raise DomainError("review_id already exists", code="DOMAIN_REVIEW_CONFLICT")
+
+    review = {
+        "kind": "review",
+        "review_id": request_id,
+        "experiment_id": experiment_id,
+        "candidate_id": candidate_id,
+        "artifact_digest": candidate["artifact_digest"],
+        "protocol": protocol,
+        "outcome": outcome,
+        "notes": notes,
+        "actor": {
+            "login": trusted_actor.login,
+            "user_id": trusted_actor.user_id,
+            "permission": trusted_actor.permission,
+            "source": "github-collaborator-permission",
+        },
+    }
+    actor_claim = payload.get("actor_claim")
+    if actor_claim is not None:
+        review["actor_claim"] = actor_claim
+
+    next_state = dict(state)
+    review_sequence = next_state.get("review_sequence", 0)
+    if not isinstance(review_sequence, int) or isinstance(review_sequence, bool) or review_sequence < 0:
+        raise DomainError("invalid review_sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    next_state["review_sequence"] = review_sequence + 1
+    next_state["current_review_id"] = request_id
+    next_state["current_review_candidate_id"] = candidate_id
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            review_path: review,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_candidate(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    trusted_candidate: TrustedCandidateContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    if trusted_candidate is None:
+        raise DomainError(
+            "trusted Candidate context is required",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_candidate.experiment_id != experiment_id:
+        raise DomainError(
+            "trusted Candidate experiment identity mismatch",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+
+    binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    if state["lifecycle"] not in {"ACTIVE", "REVIEW"}:
+        raise DomainError(
+            f"cannot register Candidate while lifecycle is {state['lifecycle']}",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+
+    candidate_match = CANDIDATE_RE.fullmatch(trusted_candidate.candidate_id)
+    if not candidate_match:
+        raise DomainError("invalid trusted candidate_id")
+    issue_number = experiment_id.removeprefix("EXP-")
+    if candidate_match.group(1) != issue_number:
+        raise DomainError(
+            "candidate_id does not match experiment issue number",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+    if candidate_match.group(2) != trusted_candidate.run_id:
+        raise DomainError("candidate_id run_id mismatch", code="DOMAIN_CANDIDATE_CONFLICT")
+    if candidate_match.group(3) != trusted_candidate.run_attempt:
+        raise DomainError(
+            "candidate_id run_attempt mismatch",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+
+    if not re.fullmatch(r"[0-9a-f]{40}", trusted_candidate.source_sha):
+        raise DomainError("Candidate source_sha must be a 40-character commit SHA")
+    init = binding.get("initialization")
+    if not isinstance(init, dict):
+        raise DomainError("binding initialization missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    if trusted_candidate.manifest_digest != init.get("manifest_digest"):
+        raise DomainError(
+            "Candidate manifest digest does not match authoritative binding",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+    for name, value in (
+        ("artifact_digest", trusted_candidate.artifact_digest),
+        ("policy_digest", trusted_candidate.policy_digest),
+    ):
+        if not SHA256_RE.fullmatch(value):
+            raise DomainError(f"Candidate {name} must be sha256:<64 lowercase hex>")
+    if not re.fullmatch(r"[0-9]+", trusted_candidate.run_id):
+        raise DomainError("Candidate run_id must be a decimal string")
+    if not re.fullmatch(r"[1-9][0-9]*", trusted_candidate.run_attempt):
+        raise DomainError("Candidate run_attempt must be a positive decimal string")
+    if not re.fullmatch(r"[0-9a-f]{40}", trusted_candidate.workflow_source_sha):
+        raise DomainError("Candidate workflow_source_sha must be a 40-character commit SHA")
+
+    checks = list(trusted_candidate.checks)
+    if not checks:
+        raise DomainError("Candidate requires trusted checks")
+    seen_checks: set[str] = set()
+    normalized_checks: list[dict[str, str]] = []
+    for index, check in enumerate(checks):
+        if not isinstance(check, dict):
+            raise DomainError(f"Candidate check {index} must be an object")
+        _expect_keys(check, {"name", "status", "source"}, where=f"Candidate check {index}")
+        name = _string(check["name"], f"Candidate check {index}.name")
+        if name in seen_checks:
+            raise DomainError("Candidate check names must be unique")
+        seen_checks.add(name)
+        if check["status"] != "PASS" or check["source"] != "TRUSTED_OBSERVED":
+            raise DomainError(
+                f"Candidate check {name!r} is not trusted PASS",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        normalized_checks.append(
+            {"name": name, "status": "PASS", "source": "TRUSTED_OBSERVED"}
+        )
+
+    retention = dict(trusted_candidate.retention)
+    _expect_keys(
+        retention,
+        {"provider", "release_tag", "release_url", "immutable", "artifact_digest"},
+        where="Candidate retention",
+    )
+    if retention["provider"] != "github-immutable-release" or retention["immutable"] is not True:
+        raise DomainError(
+            "Candidate retention is not immutable",
+            code="DOMAIN_PREREQUISITE_MISSING",
+        )
+    if retention["artifact_digest"] != trusted_candidate.artifact_digest:
+        raise DomainError("Candidate retention digest mismatch", code="DOMAIN_CANDIDATE_CONFLICT")
+    _string(retention["release_tag"], "Candidate retention.release_tag")
+    _string(retention["release_url"], "Candidate retention.release_url")
+
+    attestation = dict(trusted_candidate.attestation)
+    _expect_keys(
+        attestation,
+        {"provider", "verified", "subject_digest", "source_sha"},
+        where="Candidate attestation",
+    )
+    if attestation["provider"] != "github-artifact-attestations" or attestation["verified"] is not True:
+        raise DomainError(
+            "Candidate attestation is not verified",
+            code="DOMAIN_PREREQUISITE_MISSING",
+        )
+    if attestation["subject_digest"] != trusted_candidate.artifact_digest:
+        raise DomainError("Candidate attestation digest mismatch", code="DOMAIN_CANDIDATE_CONFLICT")
+    if attestation["source_sha"] != trusted_candidate.source_sha:
+        raise DomainError("Candidate attestation source mismatch", code="DOMAIN_CANDIDATE_CONFLICT")
+
+    candidate_path = (
+        f"experiments/{experiment_id}/candidates/{trusted_candidate.candidate_id}.json"
+    )
+    if (repo_dir / candidate_path).exists():
+        raise DomainError("candidate_id already exists", code="DOMAIN_CANDIDATE_CONFLICT")
+
+    candidate = {
+        "kind": "candidate",
+        "candidate_id": trusted_candidate.candidate_id,
+        "experiment_id": experiment_id,
+        "source_sha": trusted_candidate.source_sha,
+        "manifest_digest": trusted_candidate.manifest_digest,
+        "artifact_digest": trusted_candidate.artifact_digest,
+        "policy_digest": trusted_candidate.policy_digest,
+        "workflow_source_sha": trusted_candidate.workflow_source_sha,
+        "github_run_id": trusted_candidate.run_id,
+        "github_run_attempt": trusted_candidate.run_attempt,
+        "checks": normalized_checks,
+        "retention": retention,
+        "attestation": attestation,
+    }
+    next_state = dict(state)
+    current_seq = next_state.get("candidate_sequence", 0)
+    if not isinstance(current_seq, int) or isinstance(current_seq, bool) or current_seq < 0:
+        raise DomainError("invalid candidate_sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    next_state["candidate_sequence"] = current_seq + 1
+    next_state["current_candidate_id"] = trusted_candidate.candidate_id
+    next_state.pop("current_review_id", None)
+    next_state.pop("current_review_candidate_id", None)
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            candidate_path: candidate,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_rehearsal(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    trusted_rehearsal: TrustedRehearsalContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    if trusted_rehearsal is None:
+        raise DomainError(
+            "trusted Rehearsal context is required",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_rehearsal.experiment_id != experiment_id:
+        raise DomainError(
+            "trusted Rehearsal experiment identity mismatch",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    if state.get("lifecycle") not in {"PROMISING", "SELECTED"}:
+        raise DomainError(
+            f"Rehearsal requires PROMISING or SELECTED lifecycle, got {state.get('lifecycle')!r}",
+            code="DOMAIN_INVALID_TRANSITION",
+        )
+    candidate_id = state.get("current_candidate_id")
+    if not isinstance(candidate_id, str) or candidate_id != trusted_rehearsal.candidate_id:
+        raise DomainError(
+            "Rehearsal must bind the current Candidate",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+    candidate = _load_candidate(repo_dir, experiment_id, candidate_id)
+    if candidate.get("source_sha") != trusted_rehearsal.source_sha:
+        raise DomainError(
+            "Rehearsal source SHA differs from current Candidate",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+
+    match = REHEARSAL_RE.fullmatch(trusted_rehearsal.rehearsal_id)
+    issue_number = experiment_id.removeprefix("EXP-")
+    if (
+        not match
+        or match.group(1) != issue_number
+        or match.group(2) != trusted_rehearsal.run_id
+        or match.group(3) != trusted_rehearsal.run_attempt
+    ):
+        raise DomainError(
+            "Rehearsal id does not bind experiment/run identity",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+    expected_ref = (
+        f"refs/tags/exp-rehearsal/{issue_number}/{trusted_rehearsal.rehearsal_id}"
+    )
+    if trusted_rehearsal.rehearsal_ref != expected_ref:
+        raise DomainError(
+            "Rehearsal ref is not canonical",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+
+    for name, value in (
+        ("main_sha", trusted_rehearsal.main_sha),
+        ("source_sha", trusted_rehearsal.source_sha),
+        ("integration_sha", trusted_rehearsal.integration_sha),
+        ("integration_tree_sha", trusted_rehearsal.integration_tree_sha),
+        ("workflow_source_sha", trusted_rehearsal.workflow_source_sha),
+    ):
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise DomainError(f"Rehearsal {name} must be a 40-character SHA")
+    if trusted_rehearsal.policy_digest != rehearsal_policy_digest():
+        raise DomainError(
+            "Rehearsal policy_digest does not match the trusted policy",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+    if not SHA256_RE.fullmatch(trusted_rehearsal.scope_digest):
+        raise DomainError(
+            "Rehearsal scope_digest must be sha256:<64 lowercase hex>",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+    if not re.fullmatch(r"[0-9]+", trusted_rehearsal.run_id):
+        raise DomainError("Rehearsal run_id must be a decimal string")
+    if not re.fullmatch(r"[1-9][0-9]*", trusted_rehearsal.run_attempt):
+        raise DomainError("Rehearsal run_attempt must be a positive decimal string")
+    if trusted_rehearsal.integration_sha in {
+        trusted_rehearsal.main_sha,
+        trusted_rehearsal.source_sha,
+    }:
+        raise DomainError(
+            "Rehearsal integration commit must be a two-parent integration object",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+
+    checks = list(trusted_rehearsal.checks)
+    if not checks:
+        raise DomainError(
+            "Rehearsal requires trusted checks",
+            code="DOMAIN_PREREQUISITE_MISSING",
+        )
+    normalized_checks: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, check in enumerate(checks):
+        if not isinstance(check, dict):
+            raise DomainError(f"Rehearsal check {index} must be an object")
+        _expect_keys(check, {"name", "status", "source"}, where=f"Rehearsal check {index}")
+        name = _string(check["name"], f"Rehearsal check {index}.name")
+        if name in seen:
+            raise DomainError("Rehearsal check names must be unique")
+        seen.add(name)
+        if check["status"] != "PASS" or check["source"] != "TRUSTED_OBSERVED":
+            raise DomainError(
+                f"Rehearsal check {name!r} is not trusted PASS",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        normalized_checks.append(
+            {"name": name, "status": "PASS", "source": "TRUSTED_OBSERVED"}
+        )
+    if seen != set(REHEARSAL_REQUIRED_CHECKS):
+        raise DomainError(
+            "Rehearsal trusted checks do not match the required policy",
+            code="DOMAIN_PREREQUISITE_MISSING",
+        )
+
+    rehearsal_path = (
+        f"experiments/{experiment_id}/rehearsals/{trusted_rehearsal.rehearsal_id}.json"
+    )
+    if (repo_dir / rehearsal_path).exists():
+        raise DomainError(
+            "rehearsal_id already exists",
+            code="DOMAIN_REHEARSAL_CONFLICT",
+        )
+
+    rehearsal = {
+        "kind": "rehearsal",
+        "rehearsal_id": trusted_rehearsal.rehearsal_id,
+        "experiment_id": experiment_id,
+        "candidate_id": candidate_id,
+        "main_sha": trusted_rehearsal.main_sha,
+        "source_sha": trusted_rehearsal.source_sha,
+        "integration_sha": trusted_rehearsal.integration_sha,
+        "integration_tree_sha": trusted_rehearsal.integration_tree_sha,
+        "rehearsal_ref": trusted_rehearsal.rehearsal_ref,
+        "workflow_source_sha": trusted_rehearsal.workflow_source_sha,
+        "github_run_id": trusted_rehearsal.run_id,
+        "github_run_attempt": trusted_rehearsal.run_attempt,
+        "policy_digest": trusted_rehearsal.policy_digest,
+        "scope_digest": trusted_rehearsal.scope_digest,
+        "checks": normalized_checks,
+    }
+    next_state = dict(state)
+    seq = next_state.get("rehearsal_sequence", 0)
+    if not isinstance(seq, int) or isinstance(seq, bool) or seq < 0:
+        raise DomainError(
+            "invalid rehearsal_sequence",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    next_state["rehearsal_sequence"] = seq + 1
+    next_state["current_rehearsal_id"] = trusted_rehearsal.rehearsal_id
+    next_state["current_rehearsal_candidate_id"] = candidate_id
+    next_state["current_rehearsal_main_sha"] = trusted_rehearsal.main_sha
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            rehearsal_path: rehearsal,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_integration(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_integration: TrustedIntegrationContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    if trusted_integration is None:
+        raise DomainError(
+            "trusted Integration context is required",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_integration.experiment_id != experiment_id:
+        raise DomainError(
+            "trusted Integration experiment identity mismatch",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    if state.get("archive_lock") is not None:
+        raise DomainError(
+            "integration rejected while archive mutation lock is active",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+    if state.get("lifecycle") != "SELECTED":
+        raise DomainError(
+            f"Integration requires SELECTED lifecycle, got {state.get('lifecycle')!r}",
+            code="DOMAIN_INVALID_TRANSITION",
+        )
+
+    candidate_id = state.get("current_candidate_id")
+    rehearsal_id = state.get("current_rehearsal_id")
+    if (
+        not isinstance(candidate_id, str)
+        or not isinstance(rehearsal_id, str)
+        or trusted_integration.candidate_id != candidate_id
+        or trusted_integration.rehearsal_id != rehearsal_id
+    ):
+        raise DomainError(
+            "Integration must bind current Candidate and Rehearsal",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+
+    rehearsal = _read_json_file(
+        repo_dir,
+        f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+        where=experiment_id,
+    )
+    if (
+        rehearsal.get("kind") != "rehearsal"
+        or rehearsal.get("candidate_id") != candidate_id
+        or rehearsal.get("rehearsal_id") != rehearsal_id
+    ):
+        raise DomainError(
+            "current Rehearsal record is invalid",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+
+    issue_number = experiment_id.removeprefix("EXP-")
+    match = INTEGRATION_RE.fullmatch(trusted_integration.integration_id)
+    if (
+        not match
+        or match.group(1) != issue_number
+        or match.group(2) != trusted_integration.pr_number
+    ):
+        raise DomainError(
+            "Integration id does not bind experiment/PR identity",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+    if not re.fullmatch(r"[1-9][0-9]*", trusted_integration.pr_number):
+        raise DomainError("Integration pr_number must be a positive decimal string")
+    if not re.fullmatch(r"[0-9]+", trusted_integration.pr_id):
+        raise DomainError("Integration pr_id must be a decimal string")
+    if not re.fullmatch(r"[0-9]+", trusted_integration.merged_by_user_id):
+        raise DomainError("Integration merged_by_user_id must be a decimal string")
+    if not re.fullmatch(r"[0-9]+", trusted_integration.run_id):
+        raise DomainError("Integration run_id must be a decimal string")
+    if not re.fullmatch(r"[1-9][0-9]*", trusted_integration.run_attempt):
+        raise DomainError("Integration run_attempt must be a positive decimal string")
+
+    expected_head_ref = f"game-exp/integration/{issue_number}/{rehearsal_id}"
+    if trusted_integration.head_ref != expected_head_ref:
+        raise DomainError(
+            "Integration PR head ref is not canonical",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+    for name, value in (
+        ("head_sha", trusted_integration.head_sha),
+        ("head_tree_sha", trusted_integration.head_tree_sha),
+        ("merge_sha", trusted_integration.merge_sha),
+        ("merge_tree_sha", trusted_integration.merge_tree_sha),
+        ("workflow_source_sha", trusted_integration.workflow_source_sha),
+    ):
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise DomainError(f"Integration {name} must be a 40-character SHA")
+
+    rehearsal_tree = rehearsal.get("integration_tree_sha")
+    if (
+        trusted_integration.head_tree_sha != rehearsal_tree
+        or trusted_integration.merge_tree_sha != rehearsal_tree
+    ):
+        raise DomainError(
+            "Integration tree differs from selected Rehearsal tree",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+    if not trusted_integration.pr_url or not trusted_integration.merged_at:
+        raise DomainError("Integration PR URL/merged_at is required")
+    if not trusted_integration.merged_by_login:
+        raise DomainError("Integration merged_by_login is required")
+
+    integration_path = (
+        f"experiments/{experiment_id}/integrations/{trusted_integration.integration_id}.json"
+    )
+    if (repo_dir / integration_path).exists():
+        raise DomainError(
+            "integration_id already exists",
+            code="DOMAIN_INTEGRATION_CONFLICT",
+        )
+
+    next_sequence = state["sequence"] + 1
+    record = {
+        "kind": "integration",
+        "integration_id": trusted_integration.integration_id,
+        "experiment_id": experiment_id,
+        "candidate_id": candidate_id,
+        "rehearsal_id": rehearsal_id,
+        "sequence": next_sequence,
+        "pr": {
+            "number": trusted_integration.pr_number,
+            "id": trusted_integration.pr_id,
+            "url": trusted_integration.pr_url,
+            "head_ref": trusted_integration.head_ref,
+            "head_sha": trusted_integration.head_sha,
+            "head_tree_sha": trusted_integration.head_tree_sha,
+            "merge_sha": trusted_integration.merge_sha,
+            "merge_tree_sha": trusted_integration.merge_tree_sha,
+            "merged_at": trusted_integration.merged_at,
+            "merged_by": {
+                "login": trusted_integration.merged_by_login,
+                "user_id": trusted_integration.merged_by_user_id,
+            },
+        },
+        "workflow_source_sha": trusted_integration.workflow_source_sha,
+        "github_run_id": trusted_integration.run_id,
+        "github_run_attempt": trusted_integration.run_attempt,
+        "registered_by_request_id": request_id,
+    }
+
+    next_state = dict(state)
+    seq = next_state.get("integration_sequence", 0)
+    if not isinstance(seq, int) or isinstance(seq, bool) or seq < 0:
+        raise DomainError(
+            "invalid integration_sequence",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    next_state["integration_sequence"] = seq + 1
+    next_state["current_integration_id"] = trusted_integration.integration_id
+    next_state["integrated_by_request_id"] = request_id
+    next_state["lifecycle"] = "INTEGRATED"
+    next_state["sequence"] = next_sequence
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            integration_path: record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+ARCHIVE_MODES = {"ATOMIC_DELETE", "RETAIN_BRANCH"}
+ARCHIVABLE_LIFECYCLES = {
+    "ACTIVE",
+    "REVIEW",
+    "PROMISING",
+    "SELECTED",
+    "REJECTED",
+    "ABANDONED",
+    "INTEGRATED",
+}
+
+
+def _require_archive_actor(actor: TrustedActorContext | None) -> TrustedActorContext:
+    if actor is None:
+        raise DomainError(
+            "trusted actor context is required for archive human action",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            f"actor {actor.login!r} lacks write permission",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    return actor
+
+
+def _archive_record_path(experiment_id: str, archive_id: str) -> str:
+    return f"experiments/{experiment_id}/archives/{archive_id}.json"
+
+
+def _load_archive_record(
+    repo_dir: Path,
+    experiment_id: str,
+    archive_id: str,
+) -> dict[str, Any]:
+    if not ARCHIVE_RE.fullmatch(archive_id):
+        raise DomainError("archive_id must be A-<issue>-<sequence>")
+    return _read_json_file(
+        repo_dir,
+        _archive_record_path(experiment_id, archive_id),
+        where=experiment_id,
+    )
+
+
+def _require_archive_lock(state: dict[str, Any], archive_id: str) -> dict[str, Any]:
+    lock = state.get("archive_lock")
+    if not isinstance(lock, dict) or lock.get("archive_id") != archive_id:
+        raise DomainError(
+            "archive mutation lock does not match archive_id",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    return lock
+
+
+def _require_archive_context(
+    context: TrustedArchiveContext | None,
+    *,
+    action: str,
+    experiment_id: str,
+    archive_id: str | None = None,
+) -> TrustedArchiveContext:
+    if context is None:
+        raise DomainError(
+            f"trusted archive context is required for {action}",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if context.action != action or context.experiment_id != experiment_id:
+        raise DomainError(
+            "trusted archive context action/experiment mismatch",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    if archive_id is not None and context.archive_id != archive_id:
+        raise DomainError(
+            "trusted archive context archive_id mismatch",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    return context
+
+
+def _archive_actor_record(actor: TrustedActorContext) -> dict[str, str]:
+    return {
+        "login": actor.login,
+        "user_id": actor.user_id,
+        "permission": actor.permission,
+        "source": "github-collaborator-permission",
+    }
+
+
+def _plan_archive_prepare(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+    trusted_archive: TrustedArchiveContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id", "mode"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    mode = _string(input_value["mode"], "operation.input.mode")
+    if mode not in ARCHIVE_MODES:
+        raise DomainError("archive mode must be ATOMIC_DELETE or RETAIN_BRANCH")
+    actor = _require_archive_actor(trusted_actor)
+    context = _require_archive_context(
+        trusted_archive,
+        action="PREPARE",
+        experiment_id=experiment_id,
+    )
+    if context.mode != mode:
+        raise DomainError("trusted archive mode mismatch", code="DOMAIN_ARCHIVE_CONFLICT")
+
+    binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    lifecycle = state.get("lifecycle")
+    if lifecycle not in ARCHIVABLE_LIFECYCLES:
+        raise DomainError(
+            f"archive prepare is invalid from lifecycle {lifecycle!r}",
+            code="DOMAIN_INVALID_TRANSITION",
+        )
+    if state.get("archive_lock") is not None:
+        raise DomainError(
+            "archive prepare rejected because mutation lock already exists",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+
+    initialization = binding.get("initialization")
+    if not isinstance(initialization, dict):
+        raise DomainError("binding initialization missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    expected_branch_ref = initialization.get("branch_ref")
+    expected_final_tag_ref = initialization.get("final_tag_ref")
+    if (
+        context.branch_ref != expected_branch_ref
+        or context.final_tag_ref != expected_final_tag_ref
+    ):
+        raise DomainError(
+            "trusted archive refs differ from canonical binding refs",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    if not re.fullmatch(r"[0-9a-f]{40}", context.expected_branch_sha):
+        raise DomainError("trusted archive expected branch SHA is invalid")
+
+    seq = state.get("archive_sequence", 0)
+    if not isinstance(seq, int) or isinstance(seq, bool) or seq < 0:
+        raise DomainError("invalid archive_sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    next_archive_sequence = seq + 1
+    issue = experiment_id.removeprefix("EXP-")
+    archive_id = f"A-{issue}-{next_archive_sequence}"
+    archive_path = _archive_record_path(experiment_id, archive_id)
+    if (repo_dir / archive_path).exists():
+        raise DomainError("archive_id already exists", code="DOMAIN_ARCHIVE_CONFLICT")
+
+    record = {
+        "kind": "archive_operation",
+        "archive_id": archive_id,
+        "experiment_id": experiment_id,
+        "sequence": next_archive_sequence,
+        "phase": "PREPARED",
+        "mode": mode,
+        "prepared_request_id": request_id,
+        "prepared_from_lifecycle": lifecycle,
+        "expected_branch_sha": context.expected_branch_sha,
+        "branch_ref": context.branch_ref,
+        "final_tag_ref": context.final_tag_ref,
+        "prepared_by": _archive_actor_record(actor),
+    }
+    next_state = dict(state)
+    next_state["archive_sequence"] = next_archive_sequence
+    next_state["current_archive_id"] = archive_id
+    next_state["archive_lock"] = {
+        "archive_id": archive_id,
+        "phase": "PREPARED",
+        "prepared_request_id": request_id,
+    }
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            archive_path: record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_archive_claim(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_archive: TrustedArchiveContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id", "archive_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    archive_id = _string(input_value["archive_id"], "operation.input.archive_id")
+    context = _require_archive_context(
+        trusted_archive,
+        action="CLAIM",
+        experiment_id=experiment_id,
+        archive_id=archive_id,
+    )
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    _require_archive_lock(state, archive_id)
+    record = _load_archive_record(repo_dir, experiment_id, archive_id)
+    if record.get("phase") != "PREPARED":
+        raise DomainError(
+            f"archive claim requires PREPARED, got {record.get('phase')!r}",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    for key, expected in (
+        ("mode", context.mode),
+        ("branch_ref", context.branch_ref),
+        ("final_tag_ref", context.final_tag_ref),
+        ("expected_branch_sha", context.expected_branch_sha),
+    ):
+        if record.get(key) != expected:
+            raise DomainError(
+                f"archive claim context mismatch for {key}",
+                code="DOMAIN_ARCHIVE_CONFLICT",
+            )
+    next_record = dict(record)
+    next_record["phase"] = "CLAIMED"
+    next_record["claimed_by_request_id"] = request_id
+    next_state = dict(state)
+    next_state["archive_lock"] = {
+        "archive_id": archive_id,
+        "phase": "CLAIMED",
+        "prepared_request_id": record["prepared_request_id"],
+        "claimed_by_request_id": request_id,
+    }
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            _archive_record_path(experiment_id, archive_id): next_record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_archive_abort(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "archive_id", "reason"},
+        where="operation.input",
+    )
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    archive_id = _string(input_value["archive_id"], "operation.input.archive_id")
+    reason = _string(input_value["reason"], "operation.input.reason")
+    actor = _require_archive_actor(trusted_actor)
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    _require_archive_lock(state, archive_id)
+    record = _load_archive_record(repo_dir, experiment_id, archive_id)
+    if record.get("phase") != "PREPARED":
+        raise DomainError(
+            "archive abort is allowed only while PREPARED and before Claim",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    next_record = dict(record)
+    next_record["phase"] = "ABORTED"
+    next_record["aborted_by_request_id"] = request_id
+    next_record["abort_reason"] = reason
+    next_record["aborted_by"] = _archive_actor_record(actor)
+    next_state = dict(state)
+    next_state["archive_lock"] = None
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            _archive_record_path(experiment_id, archive_id): next_record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_archive_observe(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_archive: TrustedArchiveContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id", "archive_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    archive_id = _string(input_value["archive_id"], "operation.input.archive_id")
+    context = _require_archive_context(
+        trusted_archive,
+        action="OBSERVE",
+        experiment_id=experiment_id,
+        archive_id=archive_id,
+    )
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    _require_archive_lock(state, archive_id)
+    record = _load_archive_record(repo_dir, experiment_id, archive_id)
+    if record.get("phase") not in {"CLAIMED", "REF_CONFLICT"}:
+        raise DomainError(
+            "archive ref observation requires CLAIMED or REF_CONFLICT",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    for key, expected in (
+        ("mode", context.mode),
+        ("branch_ref", context.branch_ref),
+        ("final_tag_ref", context.final_tag_ref),
+        ("expected_branch_sha", context.expected_branch_sha),
+    ):
+        if record.get(key) != expected:
+            raise DomainError(
+                f"archive ref context mismatch for {key}",
+                code="DOMAIN_ARCHIVE_CONFLICT",
+            )
+    if context.ref_status not in {"REF_COMMITTED", "REF_CONFLICT"}:
+        raise DomainError(
+            "archive observation must classify REF_COMMITTED or REF_CONFLICT",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    next_record = dict(record)
+    next_record["phase"] = context.ref_status
+    next_record["ref_observed_by_request_id"] = request_id
+    next_record["ref_observation"] = {
+        "branch_sha": context.observed_branch_sha,
+        "final_tag_target": context.observed_final_tag_target,
+    }
+    next_state = dict(state)
+    next_state["archive_lock"] = {
+        "archive_id": archive_id,
+        "phase": context.ref_status,
+        "prepared_request_id": record["prepared_request_id"],
+        "claimed_by_request_id": record.get("claimed_by_request_id"),
+    }
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            _archive_record_path(experiment_id, archive_id): next_record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_archive_commit(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_archive: TrustedArchiveContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"experiment_id", "archive_id"}, where="operation.input")
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    archive_id = _string(input_value["archive_id"], "operation.input.archive_id")
+    context = _require_archive_context(
+        trusted_archive,
+        action="COMMIT",
+        experiment_id=experiment_id,
+        archive_id=archive_id,
+    )
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir,
+        experiment_id,
+    )
+    _require_archive_lock(state, archive_id)
+    record = _load_archive_record(repo_dir, experiment_id, archive_id)
+    if record.get("phase") != "REF_COMMITTED":
+        raise DomainError(
+            "archive commit requires REF_COMMITTED",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    if context.ref_status != "REF_COMMITTED":
+        raise DomainError(
+            "archive commit requires fresh REF_COMMITTED verification",
+            code="DOMAIN_ARCHIVE_CONFLICT",
+        )
+    for key, expected in (
+        ("mode", context.mode),
+        ("branch_ref", context.branch_ref),
+        ("final_tag_ref", context.final_tag_ref),
+        ("expected_branch_sha", context.expected_branch_sha),
+    ):
+        if record.get(key) != expected:
+            raise DomainError(
+                f"archive commit context mismatch for {key}",
+                code="DOMAIN_ARCHIVE_CONFLICT",
+            )
+
+    next_record = dict(record)
+    next_record["phase"] = "COMMITTED"
+    next_record["committed_by_request_id"] = request_id
+    next_record["final_ref_observation"] = {
+        "branch_sha": context.observed_branch_sha,
+        "final_tag_target": context.observed_final_tag_target,
+    }
+    next_state = dict(state)
+    sequence = next_state.get("sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+        raise DomainError("invalid lifecycle sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    next_state["sequence"] = sequence + 1
+    next_state["lifecycle"] = "ARCHIVED"
+    next_state["archive_lock"] = None
+    next_state["current_archive_id"] = archive_id
+    next_state["archived_by_request_id"] = request_id
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            _archive_record_path(experiment_id, archive_id): next_record,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_execution_claim(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "action", "arguments", "state_digest"},
+        where="operation.input",
+    )
+    experiment_id = _string(
+        input_value["experiment_id"], "operation.input.experiment_id"
+    )
+    action = _string(input_value["action"], "operation.input.action")
+    if action not in ASYNC_EXECUTION_ACTIONS:
+        raise DomainError(
+            f"unsupported async execution action: {action}",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    arguments = _mapping(input_value["arguments"], "operation.input.arguments")
+    allowed_argument_keys = {
+        "initialize": set(),
+        "candidate_build": set(),
+        "rehearse": set(),
+        "integrate": set(),
+        "integrate_finalize": {"pr_number"},
+        "archive": {"mode"},
+    }[action]
+    if set(arguments) != allowed_argument_keys:
+        raise DomainError(
+            f"execution arguments mismatch for {action}: "
+            f"expected={sorted(allowed_argument_keys)} actual={sorted(arguments)}",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    if action == "integrate_finalize":
+        pr_number = arguments.get("pr_number")
+        if not isinstance(pr_number, str) or not re.fullmatch(r"[1-9][0-9]*", pr_number):
+            raise DomainError(
+                "integrate_finalize requires a positive decimal pr_number",
+                code="DOMAIN_EXECUTION_INVALID",
+            )
+    if action == "archive" and arguments.get("mode") not in {
+        "ATOMIC_DELETE",
+        "RETAIN_BRANCH",
+    }:
+        raise DomainError(
+            "archive execution requires ATOMIC_DELETE or RETAIN_BRANCH",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    state_digest = _string(input_value["state_digest"], "operation.input.state_digest")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", state_digest):
+        raise DomainError(
+            "execution state_digest must be sha256:<64 lowercase hex>",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    if trusted_actor is None:
+        raise DomainError(
+            "trusted actor context is required for async execution claims",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            f"actor {trusted_actor.login!r} lacks write permission",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+        repo_dir, experiment_id
+    )
+    actual_state_digest = digest_object(state)
+    if actual_state_digest != state_digest:
+        raise DomainError(
+            "async execution claim was based on stale experiment state",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+    if state.get("archive_lock") is not None and action != "archive":
+        raise DomainError(
+            "async execution is blocked while archive mutation lock is active",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+    lifecycle = state.get("lifecycle")
+    allowed_lifecycles = {
+        "initialize": {"ACTIVE"},
+        "candidate_build": {"ACTIVE", "REVIEW"},
+        "rehearse": {"PROMISING", "SELECTED"},
+        "integrate": {"SELECTED"},
+        "integrate_finalize": {"SELECTED"},
+        "archive": {
+            "ACTIVE",
+            "REVIEW",
+            "PROMISING",
+            "SELECTED",
+            "REJECTED",
+            "ABANDONED",
+            "INTEGRATED",
+        },
+    }[action]
+    if lifecycle not in allowed_lifecycles:
+        raise DomainError(
+            f"{action} is not allowed in lifecycle {lifecycle!r}",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+    return DomainPlan(
+        status="REQUEST_ONLY",
+        experiment_id=experiment_id,
+        writes={},
+    )
+
+
+def plan_domain_mutation(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    payload_digest: str,
+    repository_full_name: str,
+    trusted_binding: TrustedBindingContext | None = None,
+    trusted_actor: TrustedActorContext | None = None,
+    trusted_candidate: TrustedCandidateContext | None = None,
+    trusted_retention: TrustedRetentionContext | None = None,
+    trusted_rehearsal: TrustedRehearsalContext | None = None,
+    trusted_integration: TrustedIntegrationContext | None = None,
+    trusted_archive: TrustedArchiveContext | None = None,
+) -> DomainPlan:
+    if payload.get("kind") != "operation_request":
+        return DomainPlan(status="REQUEST_ONLY", experiment_id=None, writes={})
+    operation = payload.get("operation")
+    if operation == "execution.claim":
+        return _plan_execution_claim(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+        )
+    if operation == "archive.prepare":
+        return _plan_archive_prepare(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+            trusted_archive=trusted_archive,
+        )
+    if operation == "archive.claim":
+        return _plan_archive_claim(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_archive=trusted_archive,
+        )
+    if operation == "archive.abort":
+        return _plan_archive_abort(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+        )
+    if operation == "archive.observe":
+        return _plan_archive_observe(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_archive=trusted_archive,
+        )
+    if operation == "archive.commit":
+        return _plan_archive_commit(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_archive=trusted_archive,
+        )
+    if operation == "integration.register":
+        return _plan_integration(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_integration=trusted_integration,
+        )
+    if operation == "rehearsal.register":
+        return _plan_rehearsal(
+            repo_dir=repo_dir,
+            payload=payload,
+            trusted_rehearsal=trusted_rehearsal,
+        )
+    if operation == "review.record":
+        return _plan_review(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+        )
+    if operation == "candidate.register":
+        return _plan_candidate(
+            repo_dir=repo_dir,
+            payload=payload,
+            trusted_candidate=trusted_candidate,
+        )
+    if operation == "experiment.decision":
+        return _plan_decision(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+            trusted_retention=trusted_retention,
+            trusted_rehearsal=trusted_rehearsal,
+        )
+    if operation != "experiment.bind":
+        return DomainPlan(status="REQUEST_ONLY", experiment_id=None, writes={})
+
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(input_value, {"manifest"}, where="operation.input")
+    manifest = validate_manifest(_mapping(input_value["manifest"], "operation.input.manifest"))
+
+    if manifest["operation_id"] != request_id:
+        raise DomainError("manifest.operation_id must equal request_id")
+
+    if trusted_binding is None:
+        raise DomainError("trusted binding context is required")
+    if (
+        trusted_actor is not None
+        and trusted_actor.permission not in {"admin", "maintain", "write"}
+    ):
+        raise DomainError(
+            f"actor {trusted_actor.login!r} lacks write permission",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+
+    exp = manifest["experiment"]
+    expected = {
+        "host": trusted_binding.host,
+        "repository_id": trusted_binding.repository_id,
+        "issue_id": trusted_binding.issue_id,
+        "issue_number": trusted_binding.issue_number,
+    }
+    actual = {
+        "host": exp["host"],
+        "repository_id": exp["repository_id"],
+        "issue_id": exp["issue_id"],
+        "issue_number": exp["issue_number"],
+    }
+    if actual != expected:
+        raise DomainError(
+            f"trusted identity mismatch: expected {expected}, got {actual}",
+            code="DOMAIN_IDENTITY_CONFLICT",
+        )
+    if manifest["parent"]["commit"] != trusted_binding.parent_sha:
+        raise DomainError(
+            "trusted parent SHA differs from manifest.parent.commit",
+            code="DOMAIN_PARENT_CONFLICT",
+        )
+    if trusted_binding.host != "github.com":
+        raise DomainError("only github.com is supported by the current trusted resolver")
+
+    issue_number = exp["issue_number"]
+    experiment_id = f"EXP-{issue_number}"
+
+    for relation in manifest.get("relationships", []):
+        target_id = relation["experiment_id"]
+        if target_id == experiment_id:
+            raise DomainError(
+                "experiment relationship cannot target itself",
+                code="DOMAIN_RELATIONSHIP_CONFLICT",
+            )
+        try:
+            _load_bound_experiment(repo_dir, target_id)
+        except DomainError as exc:
+            raise DomainError(
+                f"experiment relationship target is not a valid bound experiment: {target_id}",
+                code="DOMAIN_RELATIONSHIP_CONFLICT",
+            ) from exc
+
+    root = f"experiments/{experiment_id}"
+    binding_path = f"{root}/binding.json"
+    manifest_path = f"{root}/manifest.json"
+    state_path = f"{root}/state.json"
+
+    for path in (binding_path, manifest_path, state_path):
+        if (repo_dir / path).exists():
+            raise DomainError(
+                f"{experiment_id} already has authoritative domain state at {path}",
+                code="EXPERIMENT_IDENTITY_CONFLICT",
+            )
+
+    binding = _binding_record(
+        request_id=request_id,
+        payload_digest=payload_digest,
+        manifest=manifest,
+        initiator=trusted_actor,
+    )
+    writes = {
+        binding_path: binding,
+        manifest_path: manifest,
+        state_path: _state_record(experiment_id, request_id),
+    }
+    return DomainPlan(status="APPLIED", experiment_id=experiment_id, writes=writes)

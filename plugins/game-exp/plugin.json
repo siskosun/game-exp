@@ -1,0 +1,35 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "game-exp",
+  "version": "0.17.0",
+  "description": "Harness-neutral trusted game experiment workflow with complete repository trust setup, self-describing Manifest v2, project-policy v2, first-class abandonment semantics, live-safe multi-Harness installation, rich cross-Harness Board status, cross-interface recovery, conformance simulation, resumable collaboration notifications, portable implementation handoffs, and protected human gates.",
+  "repository": "https://github.com/siskosun/game-exp",
+  "keywords": [
+    "game-development",
+    "experiments",
+    "mcp",
+    "chatgpt",
+    "codex",
+    "github-bridge"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "game-exp",
+        "shortDescription": "明确终止语义 + 多Harness统一实验控制",
+        "longDescription": "Create PROJECT_READY repositories without guessing the project runtime, expose repository-local Manifest v2 and project-policy v2 contracts, then provide consistent readiness, access, trust checks, statistics and onboarding across Harnesses before managing experiments through the versioned MCP/CLI/GitHub-Bridge contract.",
+        "developerName": "game-exp",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "用 game-exp 建立一个完整可用的新项目。",
+          "打开 game-exp 面板，优先显示需要我处理的实验。",
+          "运行 game-exp Harness 行为一致性测试。"
+        ]
+      }
+    }
+  }
+}
