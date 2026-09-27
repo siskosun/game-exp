@@ -26,6 +26,14 @@ python tools/game-exp/install_harnesses.py --harness codex --check --json
 
 The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
 
+Legacy 0.17.x shared installs under `~/.agents/tools/game-exp` / `~/.agents/skills/game-exp` are detected but preserved during a single-Harness upgrade. After all three Harnesses have been explicitly migrated, the old shared copy can be removed with:
+
+```powershell
+python tools/game-exp/install_harnesses.py --harness all --cleanup-legacy-shared --json
+```
+
+The cleanup flag is intentionally invalid for a single-Harness install.
+
 Each Harness now gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
 ## Source layout
