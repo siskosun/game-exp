@@ -7,9 +7,17 @@ description: Create and operate complete trusted game-exp repositories and gamep
 
 Use game-exp as the experiment control plane. Route by available interface, not Harness brand: prefer native `game_exp_*` MCP tools, then the repository `game-exp` CLI when shell execution is available, then the authorized GitHub Bridge. All three interfaces share the same versioned operation/recovery semantics and re-enter the trusted execution boundary. Read `references/public-contract.md` before changing cross-interface behavior. Use the host's authorized source-editing capability for source changes.
 
+## Distribution source and Harness-local upgrades
+
+Canonical source: `https://github.com/siskosun/game-exp`.
+
+When the user asks to install or upgrade from that repository, read the repository root `INSTALL.json`, detect the current Harness, and update only that Harness by default. Do not synchronize application repositories, old sandboxes, or other local Harnesses as a release side effect. Use the explicit `all` installer mode only when the user requests all supported Harnesses.
+
+Each supported Harness uses an isolated runtime and Skill copy. Installation and upgrade are the same operation for that Harness.
+
 ## Repository identity in global Harness installs
 
-The same local game-exp runtime may be shared by Codex, Qoder and Cursor. A global MCP registration must not hard-code one repository.
+A global MCP registration must not hard-code one repository, regardless of which Harness-local runtime is installed.
 
 - Resolve the current workspace repository as an exact GitHub `owner/name` before using game-exp.
 - Pass that `repo` explicitly to every native `game_exp_*` call whenever the MCP server is globally installed or `GAME_EXP_REPO` is not intentionally project-bound.
