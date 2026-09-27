@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -16,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.17.0")
+        self.assertEqual(manifest["version"], "0.18.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -47,7 +46,7 @@ class GameExpSkillContractTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        self.assertEqual(market["name"], "toy2game-local")
+        self.assertEqual(market["name"], "game-exp")
         entry = next(row for row in market["plugins"] if row["name"] == "game-exp")
         self.assertEqual(entry["source"]["source"], "local")
         self.assertEqual(entry["source"]["path"], "./plugins/game-exp")
@@ -56,13 +55,23 @@ class GameExpSkillContractTests(unittest.TestCase):
             {"AVAILABLE", "INSTALLED_BY_DEFAULT"},
         )
 
-    def test_codex_project_config_enables_mcp_and_plugin(self):
-        config = tomllib.loads((ROOT / ".codex" / "config.toml").read_text(encoding="utf-8"))
-        server = config["mcp_servers"]["game-exp"]
-        self.assertEqual(server["command"], "uv")
-        self.assertIn("tools/game-exp/mcp_server.py", server["args"])
-        self.assertEqual(server["env"]["GAME_EXP_REPO"], "siskosun/toy2game")
-        self.assertTrue(config["plugins"]["game-exp@toy2game-local"]["enabled"])
+    def test_standalone_distribution_has_machine_readable_install_contract(self):
+        self.assertFalse((ROOT / ".codex" / "config.toml").exists())
+        install = json.loads((ROOT / "INSTALL.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            install["source_of_truth"],
+            "https://github.com/siskosun/game-exp",
+        )
+        self.assertEqual(
+            install["policy"]["default_update_scope"],
+            "current_harness_only",
+        )
+        self.assertFalse(install["policy"]["updates_other_harnesses"])
+        self.assertFalse(install["policy"]["updates_consumer_repositories"])
+        for harness in ("codex", "qoder", "cursor"):
+            command = install["harnesses"][harness]["install_or_upgrade"]
+            self.assertIn("--harness", command)
+            self.assertIn(harness, command)
 
     def test_skill_frontmatter_and_domain_tools(self):
         content = SKILL.read_text(encoding="utf-8")
