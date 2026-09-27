@@ -134,20 +134,40 @@ def _remove_toml_table(text: str, table_prefix: str) -> str:
     return "".join(out).rstrip() + ("\n" if out else "")
 
 
+SUPPORTED_HARNESSES = ("codex", "qoder", "cursor")
+CANONICAL_SOURCE = "https://github.com/siskosun/game-exp"
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    parts = value.strip().split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
+
+
 class HarnessInstaller:
     def __init__(
         self,
         source_root: pathlib.Path,
         home: pathlib.Path,
         *,
+        harness: str,
         runtime_dir: pathlib.Path | None = None,
+        allow_downgrade: bool = False,
     ):
+        if harness not in SUPPORTED_HARNESSES:
+            raise HarnessInstallError(
+                f"unsupported harness {harness!r}; choose one of "
+                + ", ".join(SUPPORTED_HARNESSES)
+            )
         self.source_root = source_root.resolve()
         self.home = home.resolve()
+        self.harness = harness
+        self.allow_downgrade = allow_downgrade
         self.runtime_dir = (
             runtime_dir.resolve()
             if runtime_dir is not None
-            else self.home / ".agents" / "tools" / "game-exp"
+            else self.home / ".game-exp" / "runtimes" / harness
         )
         self.plugin_path = self.source_root / "plugins" / "game-exp" / "plugin.json"
         self.skill_source = self.source_root / "plugins" / "game-exp" / "skills" / "game-exp"
@@ -185,7 +205,8 @@ class HarnessInstaller:
         stage = self.runtime_dir.with_name(
             self.runtime_dir.name + ".stage-" + uuid.uuid4().hex
         )
-        stage.mkdir(parents=True, exist_ok=False)
+        stage.parent.mkdir(parents=True, exist_ok=True)
+        stage.mkdir(parents=False, exist_ok=False)
         try:
             for rel in _managed_paths():
                 src = self.source_root / rel
@@ -193,6 +214,20 @@ class HarnessInstaller:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
+            (stage / "INSTALL_SOURCE.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "source": CANONICAL_SOURCE,
+                        "version": self.version,
+                        "harness": self.harness,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             self._validate_runtime(stage)
             return stage
         except Exception:
@@ -209,6 +244,16 @@ class HarnessInstaller:
             raise HarnessInstallError("staged VERSION.txt mismatch")
         if not (root / "tools" / "game-exp" / "mcp_server.py").is_file():
             raise HarnessInstallError("staged MCP server is missing")
+        provenance = json.loads(
+            (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
+        )
+        if provenance != {
+            "schema_version": 1,
+            "source": CANONICAL_SOURCE,
+            "version": self.version,
+            "harness": self.harness,
+        }:
+            raise HarnessInstallError("staged install provenance mismatch")
         icon = root / "plugins" / "game-exp" / "skills" / "game-exp" / "assets" / "icon.svg"
         raw = icon.read_bytes()
         if len(raw) < 64 or b"<svg" not in raw[:512].lower():
@@ -218,37 +263,104 @@ class HarnessInstaller:
     def mcp_script(self) -> pathlib.Path:
         return self.runtime_dir / "tools" / "game-exp" / "mcp_server.py"
 
-    def _preflight_configs(self) -> None:
-        codex = self.home / ".codex" / "config.toml"
-        if codex.exists():
-            try:
-                tomllib.loads(codex.read_text(encoding="utf-8"))
-            except Exception as exc:
-                raise HarnessInstallError(f"invalid Codex TOML config {codex}: {exc}") from exc
+    @property
+    def skill_target(self) -> pathlib.Path:
+        roots = {
+            "codex": self.home / ".codex" / "skills" / "game-exp",
+            "qoder": self.home / ".qoder" / "skills" / "game-exp",
+            "cursor": self.home / ".cursor" / "skills" / "game-exp",
+        }
+        return roots[self.harness]
 
-        for path in (
-            self.home / ".qoder" / "settings.json",
-            self.home / ".cursor" / "mcp.json",
-        ):
-            if not path.exists():
-                continue
+    @property
+    def config_path(self) -> pathlib.Path:
+        paths = {
+            "codex": self.home / ".codex" / "config.toml",
+            "qoder": self.home / ".qoder" / "settings.json",
+            "cursor": self.home / ".cursor" / "mcp.json",
+        }
+        return paths[self.harness]
+
+    def _preflight_config(self) -> None:
+        path = self.config_path
+        if not path.exists():
+            return
+        if self.harness == "codex":
             try:
-                value = json.loads(path.read_text(encoding="utf-8"))
+                tomllib.loads(path.read_text(encoding="utf-8"))
             except Exception as exc:
-                raise HarnessInstallError(f"invalid JSON config {path}: {exc}") from exc
-            if not isinstance(value, dict):
-                raise HarnessInstallError(f"JSON config must be an object: {path}")
-            servers = value.get("mcpServers")
-            if servers is not None and not isinstance(servers, dict):
-                raise HarnessInstallError(f"mcpServers must be an object: {path}")
+                raise HarnessInstallError(f"invalid Codex TOML config {path}: {exc}") from exc
+            return
+
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise HarnessInstallError(f"invalid JSON config {path}: {exc}") from exc
+        if not isinstance(value, dict):
+            raise HarnessInstallError(f"JSON config must be an object: {path}")
+        servers = value.get("mcpServers")
+        if servers is not None and not isinstance(servers, dict):
+            raise HarnessInstallError(f"mcpServers must be an object: {path}")
+
+    def installed_version(self) -> str | None:
+        marker = self.runtime_dir / "VERSION.txt"
+        if not marker.is_file():
+            return None
+        value = marker.read_text(encoding="utf-8").strip()
+        return value or None
+
+    def plan(self) -> dict[str, Any]:
+        self._validate_source()
+        installed = self.installed_version()
+        if installed is None:
+            state = "NOT_INSTALLED"
+        elif installed == self.version:
+            state = "CURRENT"
+        else:
+            source_tuple = _version_tuple(self.version)
+            installed_tuple = _version_tuple(installed)
+            if source_tuple is None or installed_tuple is None:
+                state = "VERSION_UNCOMPARABLE"
+            elif installed_tuple < source_tuple:
+                state = "UPGRADE_AVAILABLE"
+            else:
+                state = "SOURCE_OLDER_THAN_INSTALLED"
+        return {
+            "status": "PASS",
+            "harness": self.harness,
+            "source": CANONICAL_SOURCE,
+            "source_version": self.version,
+            "installed_version": installed,
+            "install_state": state,
+            "runtime_dir": str(self.runtime_dir),
+            "would_update_other_harnesses": False,
+        }
+
+    def _guard_downgrade(self) -> None:
+        plan = self.plan()
+        if (
+            plan["install_state"] == "SOURCE_OLDER_THAN_INSTALLED"
+            and not self.allow_downgrade
+        ):
+            raise HarnessInstallError(
+                "source version is older than the installed Harness runtime; "
+                "use --allow-downgrade only for an explicit rollback"
+            )
+
+    def preflight(self) -> None:
+        self._validate_source()
+        self._guard_downgrade()
+        if shutil.which("uv") is None:
+            raise HarnessInstallError(
+                "uv is required for the game-exp MCP command but was not found in PATH"
+            )
+        self._preflight_config()
 
     def _install_runtime(self) -> str:
         stage = self._stage_runtime()
         old_cwd = pathlib.Path.cwd()
         mode = "directory-swap"
         try:
-            # Windows can refuse directory renames when a running MCP process,
-            # file watcher, or cwd keeps the managed directory open.
             os.chdir(self.home)
             try:
                 _atomic_replace_dir(stage, self.runtime_dir)
@@ -265,24 +377,9 @@ class HarnessInstaller:
         self._validate_runtime(self.runtime_dir)
         return mode
 
-    def _install_skills(self) -> tuple[dict[str, str], dict[str, str]]:
+    def _install_skill(self) -> str:
         source = self.runtime_dir / "plugins" / "game-exp" / "skills" / "game-exp"
-        agents_target = self.home / ".agents" / "skills" / "game-exp"
-        qoder_target = self.home / ".qoder" / "skills" / "game-exp"
-        agents_mode = _copy_tree_atomic(source, agents_target)
-        qoder_mode = _copy_tree_atomic(source, qoder_target)
-        return (
-            {
-                "shared_agents": str(agents_target),
-                "qoder": str(qoder_target),
-                "cursor": str(agents_target),
-                "codex": str(agents_target),
-            },
-            {
-                "shared_agents": agents_mode,
-                "qoder": qoder_mode,
-            },
-        )
+        return _copy_tree_atomic(source, self.skill_target)
 
     def _mcp_json_entry(self) -> dict[str, Any]:
         return {
@@ -298,7 +395,7 @@ class HarnessInstaller:
         }
 
     def _install_codex(self) -> pathlib.Path:
-        path = self.home / ".codex" / "config.toml"
+        path = self.config_path
         text = path.read_text(encoding="utf-8") if path.exists() else ""
         text = _remove_toml_table(text, "mcp_servers.game-exp")
         args = json.dumps(self._mcp_json_entry()["args"], ensure_ascii=False)
@@ -314,12 +411,12 @@ class HarnessInstaller:
         if text.strip():
             text += "\n"
         text += block
-        # Fail before replacing the user's config if the merged TOML is invalid.
         tomllib.loads(text)
         _atomic_write(path, text.encode("utf-8"))
         return path
 
-    def _install_json_mcp(self, path: pathlib.Path) -> pathlib.Path:
+    def _install_json_mcp(self) -> pathlib.Path:
+        path = self.config_path
         if path.exists():
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
@@ -341,52 +438,108 @@ class HarnessInstaller:
         _atomic_write(path, encoded)
         return path
 
-    def install(self) -> dict[str, Any]:
-        self._validate_source()
-        if shutil.which("uv") is None:
-            raise HarnessInstallError(
-                "uv is required for the shared game-exp MCP command but was not found in PATH"
-            )
-        self._preflight_configs()
+    def _install_config(self) -> pathlib.Path:
+        if self.harness == "codex":
+            return self._install_codex()
+        return self._install_json_mcp()
 
+    def _install_after_preflight(self) -> dict[str, Any]:
         runtime_update_mode = self._install_runtime()
-        skills, skill_update_modes = self._install_skills()
-        configs = {
-            "codex": str(self._install_codex()),
-            "qoder": str(
-                self._install_json_mcp(self.home / ".qoder" / "settings.json")
-            ),
-            "cursor": str(
-                self._install_json_mcp(self.home / ".cursor" / "mcp.json")
-            ),
-        }
+        skill_update_mode = self._install_skill()
+        config = self._install_config()
         return {
             "status": "PASS",
             "version": self.version,
+            "harness": self.harness,
+            "updated_harnesses": [self.harness],
             "runtime_dir": str(self.runtime_dir),
             "mcp_script": str(self.mcp_script),
             "runtime_update_mode": runtime_update_mode,
-            "skills": skills,
-            "skill_update_modes": skill_update_modes,
-            "configs": configs,
+            "skill": str(self.skill_target),
+            "skill_update_mode": skill_update_mode,
+            "config": str(config),
             "repo_binding": "dynamic",
+            "shared_runtime": False,
             "next_zh": (
-                "Codex/Qoder/Cursor 已共享同一 game-exp runtime；"
-                "新会话应显式把当前 owner/repo 传给 game_exp_* 工具。"
+                f"仅已更新 {self.harness} 的 game-exp runtime、Skill 与 MCP 配置；"
+                "其他 Harness 未被修改。新会话应显式把当前 owner/repo 传给 game_exp_* 工具。"
             ),
         }
+
+    def install(self) -> dict[str, Any]:
+        self.preflight()
+        return self._install_after_preflight()
+
+
+def install_many(
+    source_root: pathlib.Path,
+    home: pathlib.Path,
+    harnesses: tuple[str, ...],
+    *,
+    allow_downgrade: bool = False,
+) -> dict[str, Any]:
+    installers = [
+        HarnessInstaller(
+            source_root,
+            home,
+            harness=harness,
+            allow_downgrade=allow_downgrade,
+        )
+        for harness in harnesses
+    ]
+    for installer in installers:
+        installer.preflight()
+    results = {
+        installer.harness: installer._install_after_preflight()
+        for installer in installers
+    }
+    versions = {row["version"] for row in results.values()}
+    if len(versions) != 1:
+        raise HarnessInstallError("multi-Harness install produced inconsistent versions")
+    return {
+        "status": "PASS",
+        "version": next(iter(versions)),
+        "harness": "all",
+        "updated_harnesses": list(harnesses),
+        "results": results,
+        "repo_binding": "dynamic",
+        "shared_runtime": False,
+        "next_zh": (
+            "已按显式 all 请求分别更新 Codex/Qoder/Cursor；"
+            "三个 Harness 使用彼此独立的 runtime，不再因单 Harness 升级而联动。"
+        ),
+    }
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Atomically install one game-exp runtime for Codex, Qoder and Cursor"
+        description="Install or upgrade game-exp for one Harness without touching the others"
     )
     parser.add_argument(
         "--source-root",
         default=str(pathlib.Path(__file__).resolve().parents[2]),
     )
     parser.add_argument("--home", default=str(pathlib.Path.home()))
-    parser.add_argument("--runtime-dir")
+    parser.add_argument(
+        "--harness",
+        required=True,
+        choices=(*SUPPORTED_HARNESSES, "all"),
+        help="Harness to install/upgrade; use all only when explicitly requested",
+    )
+    parser.add_argument(
+        "--runtime-dir",
+        help="custom runtime path; valid only when installing one Harness",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report install/upgrade status without writing files",
+    )
+    parser.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="allow an explicit rollback to an older source version",
+    )
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -394,11 +547,48 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     try:
-        result = HarnessInstaller(
-            pathlib.Path(args.source_root),
-            pathlib.Path(args.home),
-            runtime_dir=pathlib.Path(args.runtime_dir) if args.runtime_dir else None,
-        ).install()
+        source_root = pathlib.Path(args.source_root)
+        home = pathlib.Path(args.home)
+        if args.harness == "all":
+            if args.runtime_dir:
+                raise HarnessInstallError("--runtime-dir cannot be combined with --harness all")
+            installers = [
+                HarnessInstaller(
+                    source_root,
+                    home,
+                    harness=harness,
+                    allow_downgrade=args.allow_downgrade,
+                )
+                for harness in SUPPORTED_HARNESSES
+            ]
+            if args.check:
+                result = {
+                    "status": "PASS",
+                    "version": installers[0].version,
+                    "harness": "all",
+                    "updated_harnesses": [],
+                    "plans": {
+                        installer.harness: installer.plan()
+                        for installer in installers
+                    },
+                    "would_update_other_harnesses": False,
+                }
+            else:
+                result = install_many(
+                    source_root,
+                    home,
+                    SUPPORTED_HARNESSES,
+                    allow_downgrade=args.allow_downgrade,
+                )
+        else:
+            installer = HarnessInstaller(
+                source_root,
+                home,
+                harness=args.harness,
+                runtime_dir=pathlib.Path(args.runtime_dir) if args.runtime_dir else None,
+                allow_downgrade=args.allow_downgrade,
+            )
+            result = installer.plan() if args.check else installer.install()
     except (HarnessInstallError, OSError, ValueError, json.JSONDecodeError) as exc:
         result = {"status": "FAIL", "error": str(exc)}
         if args.json:
@@ -411,9 +601,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"PASS\tgame-exp {result['version']}")
-        print(f"runtime\t{result['runtime_dir']}")
-        for name, path in result["configs"].items():
-            print(f"{name}\t{path}")
+        print("updated\t" + ",".join(result["updated_harnesses"]))
+        if result.get("runtime_dir"):
+            print(f"runtime\t{result['runtime_dir']}")
+        else:
+            for harness, row in result["results"].items():
+                print(f"{harness}\t{row['runtime_dir']}")
     return 0
 
 

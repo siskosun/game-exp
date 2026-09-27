@@ -76,7 +76,7 @@ class DomainBindingTests(unittest.TestCase):
             payload=payload,
             request_id=request_id,
             payload_digest=digest_object(payload),
-            repository_full_name="siskosun/toy2game",
+            repository_full_name="owner/repo",
             trusted_binding=self.ctx,
             trusted_actor=self.actor,
         )
@@ -122,7 +122,7 @@ class DomainBindingTests(unittest.TestCase):
             payload=payload,
             request_id="req_bind_1",
             payload_digest=before,
-            repository_full_name="siskosun/toy2game",
+            repository_full_name="owner/repo",
             trusted_binding=self.ctx,
             trusted_actor=self.actor,
         )
@@ -299,7 +299,7 @@ class DomainBindingTests(unittest.TestCase):
                 payload=payload,
                 request_id="req_bind_1",
                 payload_digest=digest_object(payload),
-                repository_full_name="siskosun/toy2game",
+                repository_full_name="owner/repo",
                 trusted_binding=self.ctx,
                 trusted_actor=readonly,
             )
@@ -312,7 +312,7 @@ class DomainBindingTests(unittest.TestCase):
             payload=payload,
             request_id="req_probe",
             payload_digest=digest_object(payload),
-            repository_full_name="siskosun/toy2game",
+            repository_full_name="owner/repo",
             trusted_binding=None,
         )
         self.assertEqual(plan.status, "REQUEST_ONLY")

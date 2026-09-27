@@ -50,11 +50,11 @@ class TrustedResolverTests(unittest.TestCase):
     @patch("trusted_writer.github_json")
     def test_resolver_uses_repo_issue_and_commit_facts(self, api):
         api.side_effect = [
-            {"id": 1384446218, "full_name": "siskosun/toy2game"},
+            {"id": 1384446218, "full_name": "owner/repo"},
             {"id": 2000000001, "number": 123},
             {"sha": "a" * 40},
         ]
-        ctx = resolve_trusted_binding("siskosun/toy2game", payload())
+        ctx = resolve_trusted_binding("owner/repo", payload())
         self.assertEqual(ctx.repository_id, "1384446218")
         self.assertEqual(ctx.issue_id, "2000000001")
         self.assertEqual(ctx.issue_number, "123")
@@ -67,7 +67,7 @@ class TrustedResolverTests(unittest.TestCase):
             {"id": 2000000001, "number": 123, "pull_request": {"url": "x"}},
         ]
         with self.assertRaisesRegex(DomainError, "not a pull request"):
-            resolve_trusted_binding("siskosun/toy2game", payload())
+            resolve_trusted_binding("owner/repo", payload())
 
     def test_candidate_register_requires_candidate_authority(self):
         payload = {
@@ -832,7 +832,7 @@ class TrustedResolverTests(unittest.TestCase):
             "user": {"login": "alice", "id": 1001},
         }
         ctx = resolve_trusted_actor(
-            "siskosun/toy2game",
+            "owner/repo",
             {"kind": "operation_request", "operation": "experiment.bind"},
         )
         self.assertEqual(ctx.login, "alice")
@@ -848,7 +848,7 @@ class TrustedResolverTests(unittest.TestCase):
         }
         with self.assertRaises(DomainError) as ctx:
             resolve_trusted_actor(
-                "siskosun/toy2game",
+                "owner/repo",
                 {"kind": "operation_request", "operation": "experiment.bind"},
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_AUTHORIZATION_FAILED")
@@ -861,7 +861,7 @@ class TrustedResolverTests(unittest.TestCase):
             "user": {"login": "alice", "id": 1001},
         }
         ctx = resolve_trusted_actor(
-            "siskosun/toy2game",
+            "owner/repo",
             {"kind": "operation_request", "operation": "execution.claim"},
         )
         self.assertEqual(ctx.login, "alice")
@@ -876,7 +876,7 @@ class TrustedResolverTests(unittest.TestCase):
         }
         with self.assertRaises(DomainError) as ctx:
             resolve_trusted_actor(
-                "siskosun/toy2game",
+                "owner/repo",
                 {"kind": "operation_request", "operation": "execution.claim"},
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_AUTHORIZATION_FAILED")
@@ -889,7 +889,7 @@ class TrustedResolverTests(unittest.TestCase):
             "user": {"login": "siskosun", "id": 202578583},
         }
         ctx = resolve_trusted_actor(
-            "siskosun/toy2game",
+            "owner/repo",
             {"kind": "operation_request", "operation": "experiment.decision"},
         )
         self.assertEqual(ctx.login, "siskosun")
@@ -904,7 +904,7 @@ class TrustedResolverTests(unittest.TestCase):
             "user": {"login": "siskosun", "id": 202578583},
         }
         ctx = resolve_trusted_actor(
-            "siskosun/toy2game",
+            "owner/repo",
             {"kind": "operation_request", "operation": "review.record"},
         )
         self.assertEqual(ctx.login, "siskosun")
@@ -914,7 +914,7 @@ class TrustedResolverTests(unittest.TestCase):
     def test_decision_actor_requires_trusted_github_login(self):
         with self.assertRaises(DomainError) as ctx:
             resolve_trusted_actor(
-                "siskosun/toy2game",
+                "owner/repo",
                 {"kind": "operation_request", "operation": "experiment.decision"},
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_AUTHORIZATION_FAILED")
@@ -928,7 +928,7 @@ class TrustedResolverTests(unittest.TestCase):
         }
         with self.assertRaises(DomainError) as ctx:
             resolve_trusted_actor(
-                "siskosun/toy2game",
+                "owner/repo",
                 {"kind": "operation_request", "operation": "experiment.decision"},
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_AUTHORIZATION_FAILED")
@@ -936,7 +936,7 @@ class TrustedResolverTests(unittest.TestCase):
     def test_non_binding_request_needs_no_github_resolution(self):
         self.assertIsNone(
             resolve_trusted_binding(
-                "siskosun/toy2game",
+                "owner/repo",
                 {"kind": "operation_request", "operation": "transport.probe"},
             )
         )
