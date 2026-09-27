@@ -82,6 +82,21 @@ Bootstrap must not guess Node/npm for an unknown repository type. It auto-genera
 
 This fail-closed behavior prevents a clean Godot, Python, or other repository from silently receiving an incorrect Node/npm validation policy.
 
+## Board presentation contract
+
+`game_exp_board` returns both machine-facing state and ready-to-render Chinese presentation data.
+
+For normal Chinese UI, `display` is authoritative presentation copy:
+
+- `display.presentation_version >= 3` means the host must not rebuild visible labels by translating raw field names;
+- render `display.rows_zh` and `display.trust_summary_zh`, or use `display.summary_text_zh` for a plain-text surface;
+- `presentation.primary=display` and `display.render_contract` explicitly mark raw `project`, `repository`, `statistics`, and enum fields as logic/diagnostic inputs;
+- raw codes such as `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, and internal names such as `doctor` are not ordinary UI copy;
+- `doctor` is presented as `仓库检查`, never a literal translation such as `医生检查`;
+- repository identifiers, branch names, commit hashes, experiment ids, and product names may remain literal.
+
+This contract exists specifically so Codex, Qoder, Cursor, ChatGPT, and future Harnesses render the same Chinese Board instead of independently translating engineering keys.
+
 ## Stable operation identity
 
 Every logical mutation has one stable `request_id` / operation id.
