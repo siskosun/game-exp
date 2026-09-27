@@ -18,6 +18,14 @@ python tools/game-exp/install_harnesses.py --harness codex --json
 
 Supported Harness values: `codex`, `qoder`, `cursor`. Use `--harness all` only when the user explicitly wants all three updated.
 
+Before writing anything, a Harness may check its state:
+
+```powershell
+python tools/game-exp/install_harnesses.py --harness codex --check --json
+```
+
+The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
+
 Each Harness now gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
 ## Source layout
