@@ -8,7 +8,8 @@
     "updates_other_harnesses": false,
     "updates_consumer_repositories": false,
     "repository_binding": "dynamic",
-    "use_all_only_with_explicit_user_request": true
+    "use_all_only_with_explicit_user_request": true,
+    "downgrade_requires_explicit_override": true
   },
   "harnesses": {
     "codex": {
@@ -21,7 +22,15 @@
       ],
       "runtime": "~/.game-exp/runtimes/codex",
       "skill": "~/.codex/skills/game-exp",
-      "config": "~/.codex/config.toml"
+      "config": "~/.codex/config.toml",
+      "check": [
+        "python",
+        "tools/game-exp/install_harnesses.py",
+        "--harness",
+        "codex",
+        "--check",
+        "--json"
+      ]
     },
     "qoder": {
       "install_or_upgrade": [
@@ -33,7 +42,15 @@
       ],
       "runtime": "~/.game-exp/runtimes/qoder",
       "skill": "~/.qoder/skills/game-exp",
-      "config": "~/.qoder/settings.json"
+      "config": "~/.qoder/settings.json",
+      "check": [
+        "python",
+        "tools/game-exp/install_harnesses.py",
+        "--harness",
+        "qoder",
+        "--check",
+        "--json"
+      ]
     },
     "cursor": {
       "install_or_upgrade": [
@@ -45,7 +62,15 @@
       ],
       "runtime": "~/.game-exp/runtimes/cursor",
       "skill": "~/.cursor/skills/game-exp",
-      "config": "~/.cursor/mcp.json"
+      "config": "~/.cursor/mcp.json",
+      "check": [
+        "python",
+        "tools/game-exp/install_harnesses.py",
+        "--harness",
+        "cursor",
+        "--check",
+        "--json"
+      ]
     }
   },
   "explicit_all": [
@@ -64,6 +89,16 @@
     "安装与升级使用同一命令。",
     "默认只更新当前 Harness；不要顺带更新其他 Harness。",
     "不要在普通升级中同步 toy2game、game-exp-sandbox 或其他消费仓库。",
-    "全局 MCP 保持动态仓库绑定，运行时显式传入当前 owner/repo。"
+    "全局 MCP 保持动态仓库绑定，运行时显式传入当前 owner/repo。",
+    "可先使用 --check 只读判断 NOT_INSTALLED / CURRENT / UPGRADE_AVAILABLE；不会写文件。",
+    "若源版本低于已安装版本，默认拒绝降级；仅显式回滚时使用 --allow-downgrade。"
+  ],
+  "explicit_all_check": [
+    "python",
+    "tools/game-exp/install_harnesses.py",
+    "--harness",
+    "all",
+    "--check",
+    "--json"
   ]
 }
