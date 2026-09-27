@@ -784,7 +784,7 @@ class ClientTests(unittest.TestCase):
                 "next_gate": "人工评审",
                 "attention_section": "需要你评审",
                 "attention_reason": "等待人工评审",
-                "attention_action": "完成 PASS / FAIL 人工评审",
+                "attention_action": "提交人工评审结果（通过 / 未通过）",
             },
         )
         self.assertEqual(
@@ -1006,6 +1006,59 @@ class ClientTests(unittest.TestCase):
             "创建第一个实验",
         )
         self.assertNotIn("project-init", result["project"]["message_zh"])
+
+    def test_board_display_contract_uses_natural_chinese_without_machine_codes(self):
+        transport = FakeTransport()
+        result = GameExpClient(transport).board()
+        display = result["display"]
+
+        self.assertEqual(display["locale"], "zh-CN")
+        self.assertEqual(display["presentation_version"], 2)
+        self.assertTrue(display["raw_machine_codes_hidden_by_default"])
+        self.assertEqual(
+            [row["label"] for row in display["rows_zh"]],
+            [
+                "仓库",
+                "项目状态",
+                "我的权限",
+                "实验记录快照",
+                "实验统计",
+                "下一步",
+            ],
+        )
+        self.assertEqual(
+            display["rows_zh"][1]["value"],
+            "项目已就绪 · 仓库检查正常",
+        )
+        self.assertEqual(
+            display["rows_zh"][2]["value"],
+            "可读写 · 可创建实验",
+        )
+        self.assertIn("实验记录 正常", display["trust_summary_zh"])
+        self.assertIn("可信写入部署密钥 正常", display["trust_summary_zh"])
+        self.assertIn("可信写入私钥 正常", display["trust_summary_zh"])
+
+        visible = "\n".join(
+            [
+                display["title_zh"],
+                *(f"{row['label']}：{row['value']}" for row in display["rows_zh"]),
+                display["trust_title_zh"],
+                display["trust_summary_zh"],
+                display["snapshot_note_zh"],
+            ]
+        )
+        for forbidden in (
+            "Doctor",
+            "医生检查",
+            "PROJECT_READY",
+            "ADMIN",
+            "WRITE",
+            "PASS",
+            "Deploy Key",
+            "Secret",
+            "Ledger",
+        ):
+            self.assertNotIn(forbidden, visible)
 
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
         transport = FakeTransport()
