@@ -151,6 +151,13 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         {"install": all_cmd, "check": all_check},
     )
 
+    add(
+        "distribution_check_command",
+        install.get("distribution_check")
+        == ["python", "tools/game-exp/distribution_check.py", "--json"],
+        install.get("distribution_check"),
+    )
+
     legacy = install.get("legacy_shared_install")
     legacy = legacy if isinstance(legacy, dict) else {}
     add(
