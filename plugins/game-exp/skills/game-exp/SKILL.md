@@ -15,6 +15,8 @@ When the user asks to install or upgrade from that repository, read the reposito
 
 Each supported Harness uses an isolated runtime and Skill copy. Installation and upgrade are the same operation for that Harness.
 
+If a legacy shared `~/.agents/tools/game-exp` or `~/.agents/skills/game-exp` copy exists, a single-Harness upgrade must only report and preserve it. Legacy cleanup is allowed only after an explicit all-Harness migration with `--cleanup-legacy-shared`; never delete the shared copy while another Harness may still depend on it.
+
 ## Repository identity in global Harness installs
 
 A global MCP registration must not hard-code one repository, regardless of which Harness-local runtime is installed.
