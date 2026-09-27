@@ -1557,6 +1557,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["contract"]["recommended_manifest_schema_version"], 2)
         self.assertTrue(result["features"]["self_describing_manifest"])
         self.assertTrue(result["features"]["manifest_schema_v2"])
+        self.assertTrue(result["features"]["board_presentation_v3"])
+        self.assertTrue(result["features"]["natural_chinese_board"])
         self.assertIn("experiment_template", result["queries"])
         self.assertTrue(result["recovery"]["cross_interface"])
         self.assertFalse(result["access_snapshot_authoritative_for_execution"])
