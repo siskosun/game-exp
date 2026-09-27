@@ -319,7 +319,7 @@ class HarnessInstaller:
             else None
         )
         return {
-            "detected": runtime.exists() || skill.exists(),
+            "detected": runtime.exists() or skill.exists(),
             "runtime_dir": str(runtime),
             "runtime_exists": runtime.exists(),
             "runtime_version": version or None,
