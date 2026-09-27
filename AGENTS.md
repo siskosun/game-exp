@@ -14,4 +14,4 @@ When a user asks to install or upgrade game-exp from this repository:
 8. Keep repository binding dynamic; never hard-code a target project into the global MCP registration.
 9. Preserve protected Ledger, Trusted Writer, human gates, and recovery semantics.
 
-For development, branch from this repository's `main`, run the game-exp tests and Conformance suite, and merge changes here first. Consumer repositories pull a released version only when explicitly requested.
+For development, branch from this repository's `main`, run `python tools/game-exp/distribution_check.py --json`, the game-exp tests, and the Conformance suite, then merge changes here first. Consumer repositories pull a released version only when explicitly requested.
