@@ -91,7 +91,9 @@
     "不要在普通升级中同步 toy2game、game-exp-sandbox 或其他消费仓库。",
     "全局 MCP 保持动态仓库绑定，运行时显式传入当前 owner/repo。",
     "可先使用 --check 只读判断 NOT_INSTALLED / CURRENT / UPGRADE_AVAILABLE；不会写文件。",
-    "若源版本低于已安装版本，默认拒绝降级；仅显式回滚时使用 --allow-downgrade。"
+    "若源版本低于已安装版本，默认拒绝降级；仅显式回滚时使用 --allow-downgrade。",
+    "检测到 0.17.x 及更早的共享安装时，单 Harness 升级只报告并保留旧共享副本，不会删除其他 Harness 可能仍在使用的文件。",
+    "只有显式 --harness all --cleanup-legacy-shared 才会在三个独立运行时安装成功后删除旧 ~/.agents 共享 runtime/Skill。"
   ],
   "explicit_all_check": [
     "python",
@@ -100,5 +102,19 @@
     "all",
     "--check",
     "--json"
-  ]
+  ],
+  "legacy_shared_install": {
+    "detect_runtime": "~/.agents/tools/game-exp",
+    "detect_skill": "~/.agents/skills/game-exp",
+    "single_harness_behavior": "detect_and_preserve",
+    "cleanup_requires_explicit_all": true,
+    "cleanup_command": [
+      "python",
+      "tools/game-exp/install_harnesses.py",
+      "--harness",
+      "all",
+      "--cleanup-legacy-shared",
+      "--json"
+    ]
+  }
 }
