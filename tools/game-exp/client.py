@@ -851,12 +851,12 @@ class GameExpClient:
         }.get(doctor_status, doctor_status)
 
         check_labels = {
-            "ledger_ref": "Ledger",
+            "ledger_ref": "实验记录",
             "rulesets": "保护规则",
-            "trusted_writer_deploy_key": "可信写入 Deploy Key",
-            "trusted_writer_secret": "可信写入 Secret",
+            "trusted_writer_deploy_key": "可信写入部署密钥",
+            "trusted_writer_secret": "可信写入私钥",
             "immutable_releases": "不可变发布",
-            "archive_health": "归档健康",
+            "archive_health": "归档状态",
         }
         check_status_zh = {
             "PASS": "正常",
@@ -874,7 +874,7 @@ class GameExpClient:
             trust_checks.append(
                 {
                     "name": name,
-                    "label_zh": check_labels.get(name, name),
+                    "label_zh": check_labels.get(name, "其他检查项"),
                     "status": status,
                     "status_zh": check_status_zh.get(status, status),
                     "detail": raw.get("detail"),
@@ -890,7 +890,7 @@ class GameExpClient:
         elif readiness == "PROJECT_INCOMPLETE":
             message_zh = "仓库信任检查未通过；先修复失败项，不要创建或推进实验。"
         else:
-            message_zh = "当前无法完整确认仓库信任状态；先核验 Doctor 结果。"
+            message_zh = "当前无法完整确认仓库信任状态；先核验仓库检查结果。"
 
         if experiment_count == 0:
             if readiness == "PROJECT_READY" and can_create:
@@ -918,7 +918,7 @@ class GameExpClient:
                 "primary_action_zh": onboarding_action_zh,
                 "why_zh": (
                     "先确认项目可信边界和权限，再建立真实实验；"
-                    "Doctor PASS 后不应重复建议 project-init。"
+                    "仓库检查通过后，不应重复建议项目初始化。"
                 ),
             }
         else:
@@ -960,7 +960,7 @@ class GameExpClient:
                 "next_action_zh": next_action_zh,
                 "message_zh": message_zh,
                 "scope_note_zh": (
-                    "实验视图固定于当前 Ledger 快照；"
+                    "实验视图固定于当前实验记录快照；"
                     "仓库信任检查、可见性与权限反映调用时的当前状态。"
                 ),
             },
@@ -1160,7 +1160,7 @@ class GameExpClient:
                 "review": {
                     "required_keys": ["protocol"],
                     "default_protocol": "manual-playtest-v1",
-                    "default_protocol_zh": "用户实际试玩后明确给出 PASS / FAIL",
+                    "default_protocol_zh": "用户实际试玩后明确给出通过 / 未通过",
                 },
             },
             "project_policy": {
@@ -1182,9 +1182,9 @@ class GameExpClient:
                 "candidate": policy.get("candidate"),
                 "raw": policy,
                 "note_zh": (
-                    "node-npm 使用受信任的 Node 工具链设置；其他 schema v2 adapter "
-                    "不会获得隐式运行时安装，install/test/build 命令必须在 GitHub "
-                    "ubuntu-latest runner 上自洽执行。"
+                    "Node/npm 项目使用受信任的 Node 工具链设置；其他第二版适配器 "
+                    "不会获得隐式运行时安装，安装/测试/构建命令必须在 GitHub "
+                    "Ubuntu 运行环境中自洽执行。"
                 ),
             },
             "defaults": {
@@ -1196,7 +1196,7 @@ class GameExpClient:
             "example_manifest": example_manifest,
             "example_manifest_bindable": False,
             "next_zh": (
-                "直接基于当前仓库策略生成 Manifest；不要搜索其他仓库或历史 Ledger 作为模板来源。"
+                "直接基于当前仓库策略生成实验定义；不要搜索其他仓库或历史实验记录作为模板来源。"
             ),
         }
 
@@ -1839,7 +1839,7 @@ class GameExpClient:
                 "reason_zh": "等待人工评审",
                 "section": "REVIEW",
                 "section_zh": "需要你评审",
-                "action_zh": "完成 PASS / FAIL 人工评审",
+                "action_zh": "提交人工评审结果（通过 / 未通过）",
             }
         if next_gate in {
             "HUMAN_PROMOTION",
@@ -2730,14 +2730,98 @@ class GameExpClient:
                 f"需要处理 {len(attention_ids)}；已终止 {len(abandoned_ids)}；"
                 f"已归档 {len(archive_ids)}；异常/未知 {abnormal_health_count}"
             )
+        repository_display = project_context["repository"]
+        project_display = project_context["project"]
+        default_branch = repository_display.get("default_branch")
+        repository_parts = [
+            self.transport.repo,
+            str(repository_display.get("visibility_zh") or "可见性未知"),
+        ]
+        if isinstance(default_branch, str) and default_branch:
+            repository_parts.append(f"默认分支 {default_branch}")
+
+        permission_suffix_zh = (
+            "可创建实验"
+            if project_display.get("can_create_experiment")
+            else "不可创建实验"
+        )
+        project_status_zh = (
+            f"{project_display['readiness_zh']} · "
+            f"仓库检查{project_display['doctor_status_zh']}"
+        )
+
+        trust_checks = project_display.get("trust_checks") or []
+        trust_fragments_zh = [
+            f"{row.get('label_zh')} {row.get('status_zh')}"
+            for row in trust_checks
+            if isinstance(row, dict)
+            and isinstance(row.get("label_zh"), str)
+            and isinstance(row.get("status_zh"), str)
+        ]
+        passed_trust_checks = sum(
+            1
+            for row in trust_checks
+            if isinstance(row, dict) and row.get("status") == "PASS"
+        )
+        if trust_fragments_zh:
+            trust_summary_zh = " · ".join(trust_fragments_zh)
+            if passed_trust_checks == len(trust_checks):
+                trust_summary_zh += (
+                    f"（{passed_trust_checks}/{len(trust_checks)} 项通过，仓库已就绪）"
+                )
+            else:
+                trust_summary_zh += (
+                    f"（{passed_trust_checks}/{len(trust_checks)} 项正常）"
+                )
+        else:
+            trust_summary_zh = "暂无可显示的仓库检查结果"
+
+        rows_zh = [
+            {
+                "label": "仓库",
+                "value": " · ".join(repository_parts),
+            },
+            {
+                "label": "项目状态",
+                "value": project_status_zh,
+            },
+            {
+                "label": "我的权限",
+                "value": (
+                    f"{project_display['access_zh']} · {permission_suffix_zh}"
+                ),
+            },
+            {
+                "label": "实验记录快照",
+                "value": snapshot_head[:8],
+            },
+            {
+                "label": "实验统计",
+                "value": statistics_zh,
+            },
+            {
+                "label": "下一步",
+                "value": project_display["next_action_zh"],
+            },
+        ]
+
         display = {
+            "locale": "zh-CN",
+            "presentation_version": 2,
             "title_zh": f"game-exp 面板 · {self.transport.repo}（总览）",
-            "project_status_zh": project_context["project"]["message_zh"],
+            "rows_zh": rows_zh,
+            "project_status_zh": project_status_zh,
+            "permission_zh": (
+                f"{project_display['access_zh']} · {permission_suffix_zh}"
+            ),
             "statistics_zh": statistics_zh,
-            "next_action_zh": project_context["project"]["next_action_zh"],
+            "next_action_zh": project_display["next_action_zh"],
             "empty_state_zh": "暂无实验" if len(items) == 0 else None,
-            "snapshot_zh": f"Ledger 快照 {snapshot_head[:8]}",
-            "snapshot_note_zh": project_context["project"]["scope_note_zh"],
+            "snapshot_zh": f"实验记录快照 {snapshot_head[:8]}",
+            "snapshot_note_zh": project_display["scope_note_zh"],
+            "trust_title_zh": "仓库信任检查",
+            "trust_summary_zh": trust_summary_zh,
+            "raw_machine_codes_hidden_by_default": True,
         }
 
         return {
