@@ -70,6 +70,18 @@ class HarnessInstallerTests(unittest.TestCase):
                 (runtime / "VERSION.txt").read_text(encoding="utf-8").strip(),
                 "0.18.0",
             )
+            provenance = json.loads(
+                (runtime / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                provenance,
+                {
+                    "schema_version": 1,
+                    "source": "https://github.com/siskosun/game-exp",
+                    "version": "0.18.0",
+                    "harness": "codex",
+                },
+            )
             codex_data = tomllib.loads(codex.read_text(encoding="utf-8"))
             game_exp = codex_data["mcp_servers"]["game-exp"]
             self.assertEqual(game_exp["command"], "uv")
@@ -82,6 +94,48 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(cursor.read_bytes(), cursor_before)
             self.assertFalse((home / ".qoder" / "skills" / "game-exp").exists())
             self.assertFalse((home / ".cursor" / "skills" / "game-exp").exists())
+
+    def test_check_plan_is_read_only_and_reports_upgrade_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            before = installer.plan()
+            self.assertEqual(before["install_state"], "NOT_INSTALLED")
+            self.assertFalse(installer.runtime_dir.exists())
+
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                installer.install()
+
+            current = HarnessInstaller(ROOT, home, harness="codex").plan()
+            self.assertEqual(current["install_state"], "CURRENT")
+            self.assertEqual(current["installed_version"], "0.18.0")
+            self.assertFalse(current["would_update_other_harnesses"])
+
+    def test_downgrade_requires_explicit_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            installer.runtime_dir.mkdir(parents=True)
+            (installer.runtime_dir / "VERSION.txt").write_text(
+                "9.0.0\n",
+                encoding="utf-8",
+            )
+
+            plan = installer.plan()
+            self.assertEqual(plan["install_state"], "SOURCE_OLDER_THAN_INSTALLED")
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                with self.assertRaisesRegex(HarnessInstallError, "older than the installed"):
+                    installer.install()
+
+            rollback = HarnessInstaller(
+                ROOT,
+                home,
+                harness="codex",
+                allow_downgrade=True,
+            )
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                result = rollback.install()
+            self.assertEqual(result["version"], "0.18.0")
 
     def test_explicit_all_uses_separate_runtimes(self):
         with tempfile.TemporaryDirectory() as td:
