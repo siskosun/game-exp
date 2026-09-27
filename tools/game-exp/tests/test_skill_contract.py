@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.18.3")
+        self.assertEqual(manifest["version"], "0.18.4")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -200,6 +200,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "代码贡献者",
             "contributors_complete",
             "display.rows_zh",
+            "display.summary_text_zh",
+            "display.presentation_version >= 3",
             "仓库检查",
             "never `医生检查`",
             "实验记录快照",
@@ -293,6 +295,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "READ_ONLY",
             "发起人",
             "代码贡献者",
+            "display.rows_zh",
+            "display.summary_text_zh",
+            "never `医生检查`",
+            "diagnostics-only",
             "Text fallback",
         ):
             self.assertIn(phrase, content)
@@ -382,6 +388,10 @@ class GameExpSkillContractTests(unittest.TestCase):
 
         for phrase in (
             "Current public contract: `1.0`",
+            "## Board presentation contract",
+            "display.presentation_version >= 3",
+            "presentation.primary=display",
+            "医生检查",
             "Same id + same request",
             "Same id + different request",
             "Authorization failure",

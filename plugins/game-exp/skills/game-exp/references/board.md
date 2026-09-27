@@ -22,8 +22,10 @@ For the normal Chinese Board:
 
 - render `display.title_zh` as the title;
 - render `display.rows_zh` in order as the summary rows;
-- render `display.trust_title_zh` + `display.trust_summary_zh` for repository trust;
+- render `display.trust_title_zh` + `display.trust_summary_zh` for repository checks;
+- when the host needs one text block instead of a rich table, render `display.summary_text_zh` directly;
 - use `display.snapshot_note_zh` only as secondary help text;
+- treat `display.render_contract` as normative: raw fields are logic/diagnostic inputs, not copy to translate;
 - use `project`, `repository`, `statistics`, and raw enums for logic, not as primary UI copy.
 
 The standard rows are:
@@ -35,7 +37,7 @@ The standard rows are:
 - `实验统计`
 - `下一步`
 
-Do not append machine codes to these values. In particular, normal rendering must not produce forms such as `readiness=PROJECT_READY`, `管理员 (ADMIN)`, `5/5 PASS`, or literal translations such as `医生检查`. The engineering field/tool name `doctor` is presented as `仓库检查`, never `医生检查`.
+Do not append machine codes to these values. In particular, normal rendering must not produce forms such as `readiness=PROJECT_READY`, `管理员 (ADMIN)`, `5/5 PASS`, or literal translations such as `医生检查`. The engineering field/tool name `doctor` is presented as `仓库检查`, never `医生检查`. Do not translate raw key names at all when a ready-to-render `display` value exists.
 
 The experiment views are pinned to `snapshot_head`. Repository visibility, access and trust checks are current repository state at call time; do not present them as historical experiment-record state.
 
@@ -155,14 +157,16 @@ Do not fabricate timestamps for timeline events. Events without an authoritative
 
 All system-generated panel entries must use natural Chinese as the primary text: view names, section names, lifecycle labels, health labels, next actions, relationship labels, activity labels, repository trust checks, and permission/status summaries.
 
-For ordinary Board rendering, do not expose or parenthesize raw machine enums. `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, `WARN`, and similar codes are machine-facing values and may be shown only when the user explicitly asks for diagnostics.
+For ordinary Board rendering, do not expose or parenthesize raw machine enums. `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, `WARN`, and similar codes are machine-facing values and may be shown only when the user explicitly asks for diagnostics. A host must not reconstruct the normal summary from raw fields when `display.presentation_version >= 3`; use `display.rows_zh`, `display.trust_summary_zh`, or `display.summary_text_zh` instead.
 
 Do not mechanically translate internal English identifiers. Required presentation mappings include:
 
 - `doctor` / Doctor -> `仓库检查` (never `医生检查`)
 - Ledger -> `实验记录`
+- Rulesets -> `分支与引用保护`
 - Deploy Key -> `部署密钥`
 - Secret -> `私钥` or the more specific Chinese label already emitted by `display`
+- Immutable Releases -> `发布保护`
 - PASS / FAIL Review -> `通过 / 未通过人工评审`
 
 Literal identifiers that are part of the repository itself, such as `owner/repo`, branch names such as `main`, commit hashes, experiment ids, and product names such as `game-exp` / GitHub, may remain unchanged.

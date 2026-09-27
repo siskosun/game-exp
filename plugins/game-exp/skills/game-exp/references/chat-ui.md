@@ -37,14 +37,19 @@ When onboarding or when repository capability is uncertain, render the result of
 
 ## Repository view
 
-Use the rich repository-level Board blocks before the five tabs:
+Use the ready-to-render repository-level `display` block before the five tabs:
 
 1. `display.title_zh`
-2. project status strip: `project.readiness_zh`, `repository.visibility_zh`, `project.access_zh`, `project.doctor_status_zh`
-3. `statistics`: total / active / attention / archived / abnormal-health
-4. primary next action: `project.next_action_zh`
-5. compact trust checks from `project.trust_checks` with expandable details
-6. pinned Ledger snapshot from `snapshot_head`
+2. `display.rows_zh` in order
+3. `display.trust_title_zh` + `display.trust_summary_zh`
+4. optional expandable check rows from `display.trust_checks_zh`
+5. `display.snapshot_note_zh` as secondary help text
+
+If the host needs one plain-text representation, use `display.summary_text_zh` directly.
+
+Do not reconstruct the visible status strip from `project.readiness`, `project.doctor_status`, `project.access`, or other machine fields. Do not translate raw key names such as `doctor`; in normal Chinese UI it is always `仓库检查`, never `医生检查`. `PROJECT_READY`, `ADMIN`, `PASS` and similar enums are diagnostics-only.
+
+The raw `repository`, `project`, `statistics`, and `snapshot_head` fields remain available for interaction logic, filtering, and diagnostics.
 
 Then provide five tabs:
 
