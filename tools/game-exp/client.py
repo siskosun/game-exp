@@ -852,10 +852,10 @@ class GameExpClient:
 
         check_labels = {
             "ledger_ref": "实验记录",
-            "rulesets": "保护规则",
+            "rulesets": "分支与引用保护",
             "trusted_writer_deploy_key": "可信写入部署密钥",
             "trusted_writer_secret": "可信写入私钥",
-            "immutable_releases": "不可变发布",
+            "immutable_releases": "发布保护",
             "archive_health": "归档状态",
         }
         check_status_zh = {
@@ -950,6 +950,8 @@ class GameExpClient:
                 "complete": readiness == "PROJECT_READY",
                 "doctor_status": doctor_status,
                 "doctor_status_zh": doctor_status_zh,
+                "repository_check_status": doctor_status,
+                "repository_check_status_zh": doctor_status_zh,
                 "access": access_status,
                 "access_zh": access_zh,
                 "access_message_zh": access_result.get("message_zh"),
@@ -2726,9 +2728,9 @@ class GameExpClient:
             statistics_zh = "暂无实验"
         else:
             statistics_zh = (
-                f"全部 {len(items)} 个实验；进行中 {len(active_ids)}；"
+                f"总计 {len(items)} 个实验；进行中 {len(active_ids)}；"
                 f"需要处理 {len(attention_ids)}；已终止 {len(abandoned_ids)}；"
-                f"已归档 {len(archive_ids)}；异常/未知 {abnormal_health_count}"
+                f"已归档 {len(archive_ids)}；异常或未知 {abnormal_health_count}"
             )
         repository_display = project_context["repository"]
         project_display = project_context["project"]
@@ -2747,12 +2749,12 @@ class GameExpClient:
         )
         project_status_zh = (
             f"{project_display['readiness_zh']} · "
-            f"仓库检查{project_display['doctor_status_zh']}"
+            f"仓库检查：{project_display['repository_check_status_zh']}"
         )
 
         trust_checks = project_display.get("trust_checks") or []
         trust_fragments_zh = [
-            f"{row.get('label_zh')} {row.get('status_zh')}"
+            f"{row.get('label_zh')}：{row.get('status_zh')}"
             for row in trust_checks
             if isinstance(row, dict)
             and isinstance(row.get("label_zh"), str)
@@ -2767,7 +2769,7 @@ class GameExpClient:
             trust_summary_zh = " · ".join(trust_fragments_zh)
             if passed_trust_checks == len(trust_checks):
                 trust_summary_zh += (
-                    f"（{passed_trust_checks}/{len(trust_checks)} 项通过，仓库已就绪）"
+                    f"（{passed_trust_checks}/{len(trust_checks)} 项通过）"
                 )
             else:
                 trust_summary_zh += (
@@ -2805,10 +2807,26 @@ class GameExpClient:
             },
         ]
 
+        trust_checks_zh = [
+            {
+                "label": row["label_zh"],
+                "value": row["status_zh"],
+            }
+            for row in trust_checks
+            if isinstance(row, dict)
+            and isinstance(row.get("label_zh"), str)
+            and isinstance(row.get("status_zh"), str)
+        ]
+        title_zh = f"game-exp 面板 · {self.transport.repo}（总览）"
+        summary_lines_zh = [
+            title_zh,
+            *(f"{row['label']}：{row['value']}" for row in rows_zh),
+            f"仓库检查：{trust_summary_zh}",
+        ]
         display = {
             "locale": "zh-CN",
-            "presentation_version": 2,
-            "title_zh": f"game-exp 面板 · {self.transport.repo}（总览）",
+            "presentation_version": 3,
+            "title_zh": title_zh,
             "rows_zh": rows_zh,
             "project_status_zh": project_status_zh,
             "permission_zh": (
@@ -2819,8 +2837,18 @@ class GameExpClient:
             "empty_state_zh": "暂无实验" if len(items) == 0 else None,
             "snapshot_zh": f"实验记录快照 {snapshot_head[:8]}",
             "snapshot_note_zh": project_display["scope_note_zh"],
-            "trust_title_zh": "仓库信任检查",
+            "trust_title_zh": "仓库检查",
             "trust_summary_zh": trust_summary_zh,
+            "trust_checks_zh": trust_checks_zh,
+            "summary_text_zh": "\n".join(summary_lines_zh),
+            "render_contract": {
+                "primary_copy": "display",
+                "summary_rows": "display.rows_zh",
+                "trust_summary": "display.trust_summary_zh",
+                "raw_fields": "logic_only",
+                "machine_codes": "diagnostics_only",
+                "translate_machine_keys": False,
+            },
             "raw_machine_codes_hidden_by_default": True,
         }
 
