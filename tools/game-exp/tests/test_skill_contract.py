@@ -68,6 +68,11 @@ class GameExpSkillContractTests(unittest.TestCase):
         )
         self.assertFalse(install["policy"]["updates_other_harnesses"])
         self.assertFalse(install["policy"]["updates_consumer_repositories"])
+        self.assertEqual(
+            install["distribution_check"],
+            ["python", "tools/game-exp/distribution_check.py", "--json"],
+        )
+        self.assertTrue((ROOT / "tools" / "game-exp" / "distribution_check.py").is_file())
         for harness in ("codex", "qoder", "cursor"):
             command = install["harnesses"][harness]["install_or_upgrade"]
             self.assertIn("--harness", command)
