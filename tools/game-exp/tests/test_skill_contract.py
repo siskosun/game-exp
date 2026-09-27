@@ -200,6 +200,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "代码贡献者",
             "contributors_complete",
             "display.rows_zh",
+            "display.summary_text_zh",
+            "display.presentation_version >= 3",
             "仓库检查",
             "never `医生检查`",
             "实验记录快照",
@@ -293,6 +295,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "READ_ONLY",
             "发起人",
             "代码贡献者",
+            "display.rows_zh",
+            "display.summary_text_zh",
+            "never `医生检查`",
+            "diagnostics-only",
             "Text fallback",
         ):
             self.assertIn(phrase, content)
