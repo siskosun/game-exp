@@ -170,6 +170,12 @@ The check never writes files. A source version older than the selected installed
 runtime is blocked by default; `--allow-downgrade` is reserved for an explicit
 rollback.
 
+Legacy shared installs under `~/.agents/tools/game-exp` and
+`~/.agents/skills/game-exp` are reported in the plan but preserved when only
+one Harness is upgraded. After an explicit all-Harness migration, optional
+`--cleanup-legacy-shared` removes those two old shared directories only after
+all isolated installs succeed.
+
 For each Harness the installer:
 
 - stages and validates an independent runtime under
