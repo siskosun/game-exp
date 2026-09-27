@@ -144,44 +144,45 @@ If a claim exists without a result, treat the request as `UNKNOWN`; inspect the 
 
 The bridge does not grant source-editing authority. ChatGPT should use its normal authorized GitHub connector for experiment branch edits, PR creation when the trusted Integration workflow cannot open the PR, and explicit user-authorized PR merge actions.
 
-## One local runtime for Codex, Qoder and Cursor
+## Harness-isolated install and upgrade
 
-v0.16.3 uses one local installer so the three Harnesses do not drift onto
-different game-exp copies. On Windows, if a live Harness keeps the managed
-runtime/Skill directory open, the installer first falls back from directory
-swap to per-file atomic replacement. If a specific file also denies
-delete-sharing, that file alone is backed up and overwritten in-place with
-flush/fsync, then validated before the installation is reported as PASS.
+v0.18 makes the standalone repository the distribution source and stops
+single-Harness upgrades from rewriting every local Harness.
 
-From a trusted game-exp checkout:
+Read the repository root `INSTALL.json`, identify the current Harness, and use
+the same command for first install and upgrade:
 
 ```powershell
-python tools/game-exp/install_harnesses.py --json
+python tools/game-exp/install_harnesses.py --harness codex --json
+python tools/game-exp/install_harnesses.py --harness qoder --json
+python tools/game-exp/install_harnesses.py --harness cursor --json
 ```
 
-The installer:
+Use `--harness all` only when the user explicitly requests all three.
 
-- stages and validates one runtime under `~/.agents/tools/game-exp`, then swaps
-  the directory instead of updating files in place;
-- validates `icon.svg`, `SKILL.md`, MCP server presence and plugin version
+For each Harness the installer:
+
+- stages and validates an independent runtime under
+  `~/.game-exp/runtimes/<harness>`;
+- installs an independent Skill copy under the Harness-specific Skill directory;
+- edits only that Harness's MCP configuration;
+- preserves unrelated MCP servers/settings and leaves other Harness configs,
+  runtimes, and Skills untouched;
+- validates `icon.svg`, `SKILL.md`, MCP server presence, and plugin version
   before activating the new runtime;
-- installs the shared Skill at `~/.agents/skills/game-exp` for Codex/Cursor and
-  a Qoder-compatible copy at `~/.qoder/skills/game-exp`;
-- merges a global stdio MCP entry into `~/.codex/config.toml`,
-  `~/.qoder/settings.json`, and `~/.cursor/mcp.json`;
-- preserves unrelated MCP servers/settings;
-- preflights existing TOML/JSON before changing the runtime;
-- never writes a global `GAME_EXP_REPO`. The shared MCP remains repository
-  dynamic, so the Skill must resolve the current GitHub `owner/name` and pass
-  `repo` explicitly to `game_exp_*` tools.
+- preflights only the selected Harness's existing TOML/JSON;
+- never writes a global `GAME_EXP_REPO`; repository binding remains dynamic.
 
-The installer requires `uv` on PATH. Re-running it is supported and replaces
-the previous managed game-exp runtime/Skill/config entry without duplicating
-entries.
+On Windows, if a live process keeps the selected runtime or Skill directory
+open, the installer falls back from directory swap to per-file atomic
+replacement and, only when necessary, a backed-up in-place overwrite for the
+locked file. The installed runtime is validated before PASS is reported.
+
+The installer requires `uv` on PATH. Re-running the same Harness command is
+idempotent at configuration semantics.
 
 After installation, start a new Harness session (or reload MCP/Skills where the
-Harness supports it) so the running process picks up the new Skill and MCP
-configuration.
+Harness supports it) so the running process picks up the new version.
 
 ## MCP hosts: Codex and ChatGPT Web
 
@@ -214,7 +215,7 @@ Low-level fallback:
 
 ## Self-describing first experiment
 
-v0.15 removes the need for a new Harness to inspect toy2game or historical Ledger records before creating its first experiment. v0.16 also removes the hidden Node/npm assumption from project-policy generation and publishes project-policy schema v2.
+v0.15 removes the need for a new Harness to inspect another repository or historical Ledger records before creating its first experiment. v0.16 also removes the hidden Node/npm assumption from project-policy generation and publishes project-policy schema v2.
 
 Use:
 
@@ -283,7 +284,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The repo-local `game-exp` plugin is enabled from `.codex/config.toml` and packages the game-exp Skill. Current plugin version: `0.17.0`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `0.18.0`.
 
 ### Windows UTF-8 compatibility
 
