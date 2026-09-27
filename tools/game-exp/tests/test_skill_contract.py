@@ -159,7 +159,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "分支图",
             "归档",
             "stable `subject`",
-            "system-generated panel entries in Chinese",
+            "system-generated panel entries in natural Chinese",
             "`relationships`",
             "references/chat-ui.md",
         ):
@@ -199,6 +199,11 @@ class GameExpSkillContractTests(unittest.TestCase):
             "发起人",
             "代码贡献者",
             "contributors_complete",
+            "display.rows_zh",
+            "仓库检查",
+            "never `医生检查`",
+            "实验记录快照",
+            "Do not append machine codes",
         ):
             self.assertIn(phrase, board)
 
