@@ -309,6 +309,25 @@ class HarnessInstaller:
         value = marker.read_text(encoding="utf-8").strip()
         return value or None
 
+    def legacy_shared_state(self) -> dict[str, Any]:
+        runtime = self.home / ".agents" / "tools" / "game-exp"
+        skill = self.home / ".agents" / "skills" / "game-exp"
+        marker = runtime / "VERSION.txt"
+        version = (
+            marker.read_text(encoding="utf-8").strip()
+            if marker.is_file()
+            else None
+        )
+        return {
+            "detected": runtime.exists() or skill.exists(),
+            "runtime_dir": str(runtime),
+            "runtime_exists": runtime.exists(),
+            "runtime_version": version or None,
+            "skill_dir": str(skill),
+            "skill_exists": skill.exists(),
+            "cleanup_requires_explicit_all": True,
+        }
+
     def plan(self) -> dict[str, Any]:
         self._validate_source()
         installed = self.installed_version()
@@ -334,6 +353,7 @@ class HarnessInstaller:
             "install_state": state,
             "runtime_dir": str(self.runtime_dir),
             "would_update_other_harnesses": False,
+            "legacy_shared": self.legacy_shared_state(),
         }
 
     def _guard_downgrade(self) -> None:
@@ -477,6 +497,7 @@ def install_many(
     harnesses: tuple[str, ...],
     *,
     allow_downgrade: bool = False,
+    cleanup_legacy_shared: bool = False,
 ) -> dict[str, Any]:
     installers = [
         HarnessInstaller(
@@ -496,6 +517,23 @@ def install_many(
     versions = {row["version"] for row in results.values()}
     if len(versions) != 1:
         raise HarnessInstallError("multi-Harness install produced inconsistent versions")
+
+    legacy_cleanup = {
+        "requested": cleanup_legacy_shared,
+        "performed": False,
+        "removed": [],
+    }
+    if cleanup_legacy_shared:
+        legacy_paths = [
+            home / ".agents" / "tools" / "game-exp",
+            home / ".agents" / "skills" / "game-exp",
+        ]
+        for path in legacy_paths:
+            if path.exists():
+                shutil.rmtree(path)
+                legacy_cleanup["removed"].append(str(path))
+        legacy_cleanup["performed"] = True
+
     return {
         "status": "PASS",
         "version": next(iter(versions)),
@@ -504,6 +542,7 @@ def install_many(
         "results": results,
         "repo_binding": "dynamic",
         "shared_runtime": False,
+        "legacy_cleanup": legacy_cleanup,
         "next_zh": (
             "已按显式 all 请求分别更新 Codex/Qoder/Cursor；"
             "三个 Harness 使用彼此独立的 runtime，不再因单 Harness 升级而联动。"
@@ -540,6 +579,14 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="allow an explicit rollback to an older source version",
     )
+    parser.add_argument(
+        "--cleanup-legacy-shared",
+        action="store_true",
+        help=(
+            "after an explicit --harness all migration, remove the old shared "
+            "~/.agents runtime and Skill"
+        ),
+    )
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -552,6 +599,10 @@ def main() -> int:
         if args.harness == "all":
             if args.runtime_dir:
                 raise HarnessInstallError("--runtime-dir cannot be combined with --harness all")
+            if args.check and args.cleanup_legacy_shared:
+                raise HarnessInstallError(
+                    "--cleanup-legacy-shared cannot be combined with --check"
+                )
             installers = [
                 HarnessInstaller(
                     source_root,
@@ -579,8 +630,13 @@ def main() -> int:
                     home,
                     SUPPORTED_HARNESSES,
                     allow_downgrade=args.allow_downgrade,
+                    cleanup_legacy_shared=args.cleanup_legacy_shared,
                 )
         else:
+            if args.cleanup_legacy_shared:
+                raise HarnessInstallError(
+                    "--cleanup-legacy-shared requires --harness all"
+                )
             installer = HarnessInstaller(
                 source_root,
                 home,

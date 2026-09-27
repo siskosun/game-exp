@@ -170,6 +170,12 @@ The check never writes files. A source version older than the selected installed
 runtime is blocked by default; `--allow-downgrade` is reserved for an explicit
 rollback.
 
+Legacy shared installs under `~/.agents/tools/game-exp` and
+`~/.agents/skills/game-exp` are reported in the plan but preserved when only
+one Harness is upgraded. After an explicit all-Harness migration, optional
+`--cleanup-legacy-shared` removes those two old shared directories only after
+all isolated installs succeed.
+
 For each Harness the installer:
 
 - stages and validates an independent runtime under
@@ -294,7 +300,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `0.18.0`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `0.18.1`.
 
 ### Windows UTF-8 compatibility
 
