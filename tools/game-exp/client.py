@@ -990,6 +990,8 @@ class GameExpClient:
             "contract": contract_descriptor(),
             "features": {
                 "board": True,
+                "board_presentation_v3": True,
+                "natural_chinese_board": True,
                 "request_recovery": True,
                 "async_execution_claims": True,
                 "notifications": True,
