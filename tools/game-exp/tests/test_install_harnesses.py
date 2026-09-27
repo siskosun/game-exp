@@ -65,7 +65,7 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(result["updated_harnesses"], ["codex"])
             self.assertFalse(result["shared_runtime"])
             runtime = home / ".game-exp" / "runtimes" / "codex"
-            self.assertEqual(pathlib.Path(result["runtime_dir"]), runtime)
+            self.assertEqual(pathlib.Path(result["runtime_dir"]).resolve(), runtime.resolve())
             self.assertEqual(
                 (runtime / "VERSION.txt").read_text(encoding="utf-8").strip(),
                 "0.18.0",
