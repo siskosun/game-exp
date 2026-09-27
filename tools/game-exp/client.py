@@ -952,6 +952,12 @@ class GameExpClient:
                 "doctor_status_zh": doctor_status_zh,
                 "repository_check_status": doctor_status,
                 "repository_check_status_zh": doctor_status_zh,
+                "repository_check": {
+                    "label_zh": "仓库检查",
+                    "status": doctor_status,
+                    "status_zh": doctor_status_zh,
+                    "checks": trust_checks,
+                },
                 "access": access_status,
                 "access_zh": access_zh,
                 "access_message_zh": access_result.get("message_zh"),
@@ -2854,6 +2860,13 @@ class GameExpClient:
 
         return {
             "status": "PASS",
+            "display": display,
+            "presentation": {
+                "primary": "display",
+                "locale": "zh-CN",
+                "copy_is_ready_to_render": True,
+                "raw_fields_are_diagnostics": True,
+            },
             "repo": self.transport.repo,
             "repository_name": self.transport.repo.split("/", 1)[-1],
             "snapshot_head": snapshot_head,
@@ -2865,7 +2878,6 @@ class GameExpClient:
             "project": project_context["project"],
             "statistics": statistics,
             "onboarding": project_context["onboarding"],
-            "display": display,
             "focus": focus,
             "experiments": items,
             "views": {
