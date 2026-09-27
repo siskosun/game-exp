@@ -135,6 +135,14 @@ def _remove_toml_table(text: str, table_prefix: str) -> str:
 
 
 SUPPORTED_HARNESSES = ("codex", "qoder", "cursor")
+CANONICAL_SOURCE = "https://github.com/siskosun/game-exp"
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    parts = value.strip().split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
 
 
 class HarnessInstaller:
@@ -145,6 +153,7 @@ class HarnessInstaller:
         *,
         harness: str,
         runtime_dir: pathlib.Path | None = None,
+        allow_downgrade: bool = False,
     ):
         if harness not in SUPPORTED_HARNESSES:
             raise HarnessInstallError(
@@ -154,6 +163,7 @@ class HarnessInstaller:
         self.source_root = source_root.resolve()
         self.home = home.resolve()
         self.harness = harness
+        self.allow_downgrade = allow_downgrade
         self.runtime_dir = (
             runtime_dir.resolve()
             if runtime_dir is not None
@@ -204,6 +214,20 @@ class HarnessInstaller:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
+            (stage / "INSTALL_SOURCE.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "source": CANONICAL_SOURCE,
+                        "version": self.version,
+                        "harness": self.harness,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             self._validate_runtime(stage)
             return stage
         except Exception:
@@ -220,6 +244,16 @@ class HarnessInstaller:
             raise HarnessInstallError("staged VERSION.txt mismatch")
         if not (root / "tools" / "game-exp" / "mcp_server.py").is_file():
             raise HarnessInstallError("staged MCP server is missing")
+        provenance = json.loads(
+            (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
+        )
+        if provenance != {
+            "schema_version": 1,
+            "source": CANONICAL_SOURCE,
+            "version": self.version,
+            "harness": self.harness,
+        }:
+            raise HarnessInstallError("staged install provenance mismatch")
         icon = root / "plugins" / "game-exp" / "skills" / "game-exp" / "assets" / "icon.svg"
         raw = icon.read_bytes()
         if len(raw) < 64 or b"<svg" not in raw[:512].lower():
@@ -268,8 +302,54 @@ class HarnessInstaller:
         if servers is not None and not isinstance(servers, dict):
             raise HarnessInstallError(f"mcpServers must be an object: {path}")
 
+    def installed_version(self) -> str | None:
+        marker = self.runtime_dir / "VERSION.txt"
+        if not marker.is_file():
+            return None
+        value = marker.read_text(encoding="utf-8").strip()
+        return value or None
+
+    def plan(self) -> dict[str, Any]:
+        self._validate_source()
+        installed = self.installed_version()
+        if installed is None:
+            state = "NOT_INSTALLED"
+        elif installed == self.version:
+            state = "CURRENT"
+        else:
+            source_tuple = _version_tuple(self.version)
+            installed_tuple = _version_tuple(installed)
+            if source_tuple is None or installed_tuple is None:
+                state = "VERSION_UNCOMPARABLE"
+            elif installed_tuple < source_tuple:
+                state = "UPGRADE_AVAILABLE"
+            else:
+                state = "SOURCE_OLDER_THAN_INSTALLED"
+        return {
+            "status": "PASS",
+            "harness": self.harness,
+            "source": CANONICAL_SOURCE,
+            "source_version": self.version,
+            "installed_version": installed,
+            "install_state": state,
+            "runtime_dir": str(self.runtime_dir),
+            "would_update_other_harnesses": False,
+        }
+
+    def _guard_downgrade(self) -> None:
+        plan = self.plan()
+        if (
+            plan["install_state"] == "SOURCE_OLDER_THAN_INSTALLED"
+            and not self.allow_downgrade
+        ):
+            raise HarnessInstallError(
+                "source version is older than the installed Harness runtime; "
+                "use --allow-downgrade only for an explicit rollback"
+            )
+
     def preflight(self) -> None:
         self._validate_source()
+        self._guard_downgrade()
         if shutil.which("uv") is None:
             raise HarnessInstallError(
                 "uv is required for the game-exp MCP command but was not found in PATH"
@@ -395,9 +475,16 @@ def install_many(
     source_root: pathlib.Path,
     home: pathlib.Path,
     harnesses: tuple[str, ...],
+    *,
+    allow_downgrade: bool = False,
 ) -> dict[str, Any]:
     installers = [
-        HarnessInstaller(source_root, home, harness=harness)
+        HarnessInstaller(
+            source_root,
+            home,
+            harness=harness,
+            allow_downgrade=allow_downgrade,
+        )
         for harness in harnesses
     ]
     for installer in installers:
@@ -443,6 +530,16 @@ def _parse_args() -> argparse.Namespace:
         "--runtime-dir",
         help="custom runtime path; valid only when installing one Harness",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report install/upgrade status without writing files",
+    )
+    parser.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="allow an explicit rollback to an older source version",
+    )
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -455,14 +552,43 @@ def main() -> int:
         if args.harness == "all":
             if args.runtime_dir:
                 raise HarnessInstallError("--runtime-dir cannot be combined with --harness all")
-            result = install_many(source_root, home, SUPPORTED_HARNESSES)
+            installers = [
+                HarnessInstaller(
+                    source_root,
+                    home,
+                    harness=harness,
+                    allow_downgrade=args.allow_downgrade,
+                )
+                for harness in SUPPORTED_HARNESSES
+            ]
+            if args.check:
+                result = {
+                    "status": "PASS",
+                    "version": installers[0].version,
+                    "harness": "all",
+                    "updated_harnesses": [],
+                    "plans": {
+                        installer.harness: installer.plan()
+                        for installer in installers
+                    },
+                    "would_update_other_harnesses": False,
+                }
+            else:
+                result = install_many(
+                    source_root,
+                    home,
+                    SUPPORTED_HARNESSES,
+                    allow_downgrade=args.allow_downgrade,
+                )
         else:
-            result = HarnessInstaller(
+            installer = HarnessInstaller(
                 source_root,
                 home,
                 harness=args.harness,
                 runtime_dir=pathlib.Path(args.runtime_dir) if args.runtime_dir else None,
-            ).install()
+                allow_downgrade=args.allow_downgrade,
+            )
+            result = installer.plan() if args.check else installer.install()
     except (HarnessInstallError, OSError, ValueError, json.JSONDecodeError) as exc:
         result = {"status": "FAIL", "error": str(exc)}
         if args.json:
