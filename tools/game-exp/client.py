@@ -1839,6 +1839,7 @@ class GameExpClient:
         notes: str,
         request_id: str,
         result_source_sha: str | None = None,
+        handoff: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
         input_value: dict[str, Any] = {
@@ -1849,6 +1850,8 @@ class GameExpClient:
         }
         if result_source_sha is not None:
             input_value["result_source_sha"] = result_source_sha
+        if handoff is not None:
+            input_value["handoff"] = handoff
         return self.submit(
             operation="work.release",
             input_value=input_value,
@@ -4155,6 +4158,14 @@ class GameExpClient:
         value = payload.get("input")
         return value if isinstance(value, dict) else None
 
+    @staticmethod
+    def _execution_preconditions_from_record(
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = record.get("payload")
+        value = payload.get("preconditions") if isinstance(payload, dict) else None
+        return dict(value) if isinstance(value, dict) else {}
+
     def _execution_claim_matches(
         self,
         record: dict[str, Any],
@@ -4320,6 +4331,7 @@ class GameExpClient:
         experiment_id = claim.get("experiment_id")
         arguments = claim.get("arguments")
         state_digest = claim.get("state_digest")
+        claim_preconditions = self._execution_preconditions_from_record(record)
         if (
             not isinstance(action, str)
             or action not in ASYNC_EXECUTION_ACTIONS
@@ -4367,6 +4379,37 @@ class GameExpClient:
                 "expected_state_digest": state_digest,
                 "actual_state_digest": digest_object(state),
             }
+
+        if claim_preconditions.get("protocol_version") == 2:
+            try:
+                current_preconditions = self.execution_preconditions(
+                    action,
+                    experiment_id,
+                    state=state,
+                    snapshot_head=snapshot_head,
+                )
+            except ClientError as exc:
+                return {
+                    "status": "UNKNOWN",
+                    "operation_status": "PRECONDITION_UNAVAILABLE",
+                    "request_id": rid,
+                    "repo": self.transport.repo,
+                    "experiment_id": experiment_id,
+                    "action": action,
+                    "error": str(exc),
+                }
+            if current_preconditions != claim_preconditions:
+                return {
+                    "status": "CONFLICT",
+                    "conflict_type": "EXECUTION_PRECONDITION_CHANGED",
+                    "operation_status": "STALE",
+                    "request_id": rid,
+                    "repo": self.transport.repo,
+                    "experiment_id": experiment_id,
+                    "action": action,
+                    "expected_preconditions": claim_preconditions,
+                    "actual_preconditions": current_preconditions,
+                }
         try:
             workflow_url = self.transport.dispatch_execution(
                 action=action,
@@ -4395,6 +4438,87 @@ class GameExpClient:
             "arguments": arguments,
             "workflow_url": workflow_url,
         }
+
+    @staticmethod
+    def _ref_commit_sha(ref: dict[str, Any] | None, name: str) -> str:
+        obj = ref.get("object") if isinstance(ref, dict) else None
+        sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ClientError(f"{name} ref does not resolve to a commit SHA")
+        return sha
+
+    def execution_preconditions(
+        self,
+        action: str,
+        experiment_id: str,
+        *,
+        state: dict[str, Any] | None = None,
+        snapshot_head: str | None = None,
+    ) -> dict[str, Any]:
+        if action not in ASYNC_EXECUTION_ACTIONS:
+            raise ClientError(f"unsupported async execution action: {action}")
+        head = snapshot_head or self.transport.ledger_head()
+        current_state = state or self.transport.ledger_json(
+            f"experiments/{experiment_id}/state.json",
+            ref=head,
+        )
+        binding = self.transport.ledger_json(
+            f"experiments/{experiment_id}/binding.json",
+            ref=head,
+        )
+        if not isinstance(current_state, dict) or not isinstance(binding, dict):
+            raise ClientError("experiment binding/state is unavailable")
+        initialization = binding.get("initialization")
+        if not isinstance(initialization, dict):
+            raise ClientError("binding initialization is unavailable")
+
+        pre: dict[str, Any] = {
+            "protocol_version": 2,
+            "experiment_state_digest": digest_object(current_state),
+        }
+
+        if action in {"initialize", "candidate_build"}:
+            manifest_digest = initialization.get("manifest_digest")
+            if not isinstance(manifest_digest, str) or not manifest_digest.startswith("sha256:"):
+                raise ClientError("binding manifest digest is unavailable")
+            pre["manifest_digest"] = manifest_digest
+
+        if action in {"candidate_build", "archive"}:
+            branch_ref = initialization.get("branch_ref")
+            if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+                raise ClientError("canonical experiment branch is unavailable")
+            pre["source_sha"] = self._ref_commit_sha(
+                self.transport.git_ref(branch_ref.removeprefix("refs/")),
+                "canonical experiment branch",
+            )
+
+        if action in {"rehearse", "integrate", "integrate_finalize"}:
+            candidate_id = current_state.get("current_candidate_id")
+            if not isinstance(candidate_id, str) or not candidate_id:
+                raise ClientError("experiment has no current Candidate")
+            pre["candidate_id"] = candidate_id
+            if action == "rehearse":
+                candidate = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                    ref=head,
+                )
+                source_sha = candidate.get("source_sha") if isinstance(candidate, dict) else None
+                if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+                    raise ClientError("current Candidate source SHA is unavailable")
+                pre["candidate_source_sha"] = source_sha
+
+        if action in {"integrate", "integrate_finalize"}:
+            rehearsal_id = current_state.get("current_rehearsal_id")
+            if not isinstance(rehearsal_id, str) or not rehearsal_id:
+                raise ClientError("experiment has no current Rehearsal")
+            pre["rehearsal_id"] = rehearsal_id
+
+        if action in {"rehearse", "integrate"}:
+            pre["main_sha"] = self._ref_commit_sha(
+                self.transport.git_ref("heads/main"),
+                "main",
+            )
+        return pre
 
     def start_execution(
         self,
@@ -4463,6 +4587,23 @@ class GameExpClient:
                 "experiment_id": experiment_id,
                 "error": "experiment is not bound in the authoritative Ledger",
             }
+        try:
+            execution_preconditions = self.execution_preconditions(
+                action,
+                experiment_id,
+                state=state,
+                snapshot_head=snapshot_head,
+            )
+        except ClientError as exc:
+            return {
+                "status": "UNKNOWN",
+                "operation_status": "PRECONDITION_UNAVAILABLE",
+                "request_id": rid,
+                "repo": self.transport.repo,
+                "experiment_id": experiment_id,
+                "action": action,
+                "error": str(exc),
+            }
         claim = self.submit(
             operation="execution.claim",
             input_value={
@@ -4471,6 +4612,7 @@ class GameExpClient:
                 "arguments": values,
                 "state_digest": digest_object(state),
             },
+            preconditions=execution_preconditions,
             request_id=rid,
         )
         claim = self._wait_for_request_commit(rid, claim)
