@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1710,8 +1711,9 @@ class GameExpClient:
                 "experiment_id": experiment_id,
                 "reason": "active_work_claim_ids_invalid",
             }
-        current_claims: list[dict[str, Any]] = []
-        stale_claims: list[dict[str, Any]] = []
+        claims: list[dict[str, Any]] = []
+        overlap_eligible_claims: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc)
         for claim_id in active_ids:
             if not isinstance(claim_id, str) or not claim_id:
                 continue
@@ -1721,25 +1723,48 @@ class GameExpClient:
             )
             if not isinstance(claim, dict):
                 continue
+            base_sha = claim.get("base_source_sha")
+            if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+                freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif base_sha == branch_head_sha:
+                freshness = {"status": "CURRENT", "reason": None}
+            else:
+                freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+
+            lease_expires_at = claim.get("lease_expires_at")
+            lease_status = "UNKNOWN"
+            if isinstance(lease_expires_at, str):
+                try:
+                    expires = datetime.fromisoformat(lease_expires_at.replace("Z", "+00:00"))
+                except ValueError:
+                    lease_status = "UNKNOWN"
+                else:
+                    lease_status = "EXPIRED" if expires <= now else "ACTIVE"
+
             row = {
                 "claim_id": claim.get("claim_id"),
+                "claim_schema_version": claim.get("claim_schema_version", 1),
                 "summary": claim.get("summary"),
+                "summary_trust": "participant_reported",
                 "paths": claim.get("paths") or [],
                 "actor": claim.get("actor"),
                 "executor": claim.get("executor"),
-                "base_source_sha": claim.get("base_source_sha"),
+                "base_source_sha": base_sha,
+                "freshness": freshness,
+                "release_status": "OPEN",
+                "lease_status": lease_status,
+                "lease_expires_at": lease_expires_at,
             }
-            if claim.get("base_source_sha") == branch_head_sha:
-                current_claims.append(row)
-            else:
-                stale_claims.append(row)
+            claims.append(row)
+            if lease_status != "EXPIRED":
+                overlap_eligible_claims.append(row)
 
         conflicts: list[dict[str, Any]] = []
-        for index, left in enumerate(current_claims):
+        for index, left in enumerate(overlap_eligible_claims):
             left_paths = [
                 str(item) for item in left.get("paths") or [] if isinstance(item, str)
             ]
-            for right in current_claims[index + 1 :]:
+            for right in overlap_eligible_claims[index + 1 :]:
                 right_paths = [
                     str(item) for item in right.get("paths") or [] if isinstance(item, str)
                 ]
@@ -1759,23 +1784,113 @@ class GameExpClient:
                     )
 
         if observed_source_sha is None:
-            sync_status = "UNKNOWN"
+            source_freshness = {"status": "UNKNOWN", "reason": "NOT_REPORTED"}
         elif observed_source_sha == branch_head_sha:
-            sync_status = "CURRENT"
+            source_freshness = {"status": "CURRENT", "reason": None}
         else:
-            sync_status = "STALE"
+            source_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
 
-        if sync_status == "STALE":
-            next_action = "SYNC_SOURCE"
-            next_action_zh = "当前工作区已落后于实验分支；先同步到最新实验分支，再声明工作意图。"
-        elif conflicts:
-            next_action = "COORDINATE_WORK"
-            next_action_zh = (
-                "存在并发工作范围重叠；先协调范围，或使用隔离工作区后合并并验证。"
+        candidate_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        candidate_id = state.get("current_candidate_id")
+        candidate = None
+        if isinstance(candidate_id, str) and candidate_id:
+            candidate = self.transport.ledger_json(
+                f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                ref=snapshot_head,
             )
-        else:
-            next_action = "CLAIM_WORK"
-            next_action_zh = "当前状态可继续；在修改源码前声明本次工作意图。"
+            candidate_source = candidate.get("source_sha") if isinstance(candidate, dict) else None
+            if not isinstance(candidate_source, str):
+                candidate_freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif candidate_source == branch_head_sha:
+                candidate_freshness = {"status": "CURRENT", "reason": None}
+            else:
+                candidate_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+
+        review_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        review_id = state.get("current_review_id")
+        if isinstance(review_id, str) and review_id:
+            review_candidate = state.get("current_review_candidate_id")
+            if review_candidate != candidate_id:
+                review_freshness = {
+                    "status": "STALE",
+                    "reason": "BOUND_TO_OLDER_CANDIDATE",
+                }
+            elif candidate_freshness["status"] == "STALE":
+                review_freshness = {
+                    "status": "STALE",
+                    "reason": "SOURCE_ADVANCED",
+                }
+            else:
+                review_freshness = {
+                    "status": candidate_freshness["status"],
+                    "reason": candidate_freshness["reason"],
+                }
+
+        rehearsal_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        rehearsal_id = state.get("current_rehearsal_id")
+        if isinstance(rehearsal_id, str) and rehearsal_id:
+            rehearsal = self.transport.ledger_json(
+                f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+                ref=snapshot_head,
+            )
+            if not isinstance(rehearsal, dict):
+                rehearsal_freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif rehearsal.get("candidate_id") != candidate_id:
+                rehearsal_freshness = {
+                    "status": "STALE",
+                    "reason": "BOUND_TO_OLDER_CANDIDATE",
+                }
+            else:
+                try:
+                    main_ref = self.transport.git_ref("heads/main")
+                    main_obj = main_ref.get("object") if isinstance(main_ref, dict) else None
+                    live_main = main_obj.get("sha") if isinstance(main_obj, dict) else None
+                except Exception:
+                    live_main = None
+                if not isinstance(live_main, str):
+                    rehearsal_freshness = {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+                elif rehearsal.get("main_sha") != live_main:
+                    rehearsal_freshness = {"status": "STALE", "reason": "MAIN_ADVANCED"}
+                elif candidate_freshness["status"] == "STALE":
+                    rehearsal_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+                else:
+                    rehearsal_freshness = {"status": "CURRENT", "reason": None}
+
+        attention_reasons: list[str] = []
+        next_actions: list[str] = []
+        if source_freshness["status"] == "STALE":
+            next_actions.append("SYNC_SOURCE")
+        elif source_freshness["status"] == "UNKNOWN":
+            next_actions.append("VERIFY_SOURCE")
+        if conflicts:
+            attention_reasons.append("WORK_SCOPE_OVERLAP")
+            next_actions.append("REVIEW_OVERLAP")
+        if state.get("lifecycle") == "REVIEW" and candidate_freshness["status"] == "STALE":
+            attention_reasons.append("REVIEW_TARGET_SUPERSEDED")
+        if rehearsal_freshness.get("reason") == "MAIN_ADVANCED":
+            attention_reasons.append("INTEGRATION_VERIFICATION_STALE")
+            next_actions.append("RERUN_INTEGRATION_VERIFICATION")
+        if not next_actions:
+            next_actions.append("CLAIM_WORK")
+
+        attention_level = 2 if attention_reasons else 0
+        if source_freshness["status"] == "UNKNOWN" and not attention_reasons:
+            attention_level = 1
+
+        latest_handoff = None
+        last_release_id = state.get("last_work_release_id")
+        if isinstance(last_release_id, str) and last_release_id:
+            release = self.transport.ledger_json(
+                f"experiments/{experiment_id}/work-releases/{last_release_id}.json",
+                ref=snapshot_head,
+            )
+            if isinstance(release, dict) and isinstance(release.get("handoff"), dict):
+                latest_handoff = {
+                    "release_id": last_release_id,
+                    "claim_id": release.get("claim_id"),
+                    "handoff": release.get("handoff"),
+                    "trust": "participant_reported",
+                }
 
         return {
             "status": "PASS",
@@ -1786,13 +1901,54 @@ class GameExpClient:
             "branch_ref": branch_ref,
             "branch_head_sha": branch_head_sha,
             "observed_source_sha": observed_source_sha,
-            "sync_status": sync_status,
-            "active_claims": current_claims,
-            "stale_claims": stale_claims,
+            "sync_status": source_freshness["status"],
+            "as_of": {
+                "ledger_commit": snapshot_head,
+                "canonical_source_sha": branch_head_sha,
+                "read": "LIVE",
+            },
+            "freshness": {
+                "source": {
+                    **source_freshness,
+                    "observed": observed_source_sha,
+                    "canonical": branch_head_sha,
+                },
+                "candidate": {
+                    **candidate_freshness,
+                    "candidate_id": candidate_id,
+                    "source_sha": (
+                        candidate.get("source_sha") if isinstance(candidate, dict) else None
+                    ),
+                },
+                "review": {
+                    **review_freshness,
+                    "review_id": review_id,
+                    "candidate_id": state.get("current_review_candidate_id"),
+                },
+                "rehearsal": {
+                    **rehearsal_freshness,
+                    "rehearsal_id": rehearsal_id,
+                },
+            },
+            "claims": claims,
+            "active_claims": [
+                row for row in claims if row.get("lease_status") != "EXPIRED"
+            ],
+            "expired_claims": [
+                row for row in claims if row.get("lease_status") == "EXPIRED"
+            ],
+            "stale_claims": [
+                row for row in claims if row.get("freshness", {}).get("status") == "STALE"
+            ],
             "conflicts": conflicts,
             "coordination_required": bool(conflicts),
-            "next_action": next_action,
-            "next_action_zh": next_action_zh,
+            "attention": {
+                "level": attention_level,
+                "reasons": attention_reasons,
+            },
+            "next_actions": list(dict.fromkeys(next_actions)),
+            "next_action": next_actions[0],
+            "latest_handoff": latest_handoff,
             "policy": {
                 "overlap_blocks_work": False,
                 "prefer_isolated_workspace_on_overlap": True,
