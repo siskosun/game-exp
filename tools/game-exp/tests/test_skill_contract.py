@@ -145,7 +145,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "UNKNOWN",
             "Keep game-exp orchestration self-contained",
             ".ai/HANDOFF.md",
-            "global MCP registration must not hard-code one repository",
+            "Global MCP registration must not hard-code one repository",
             "Pass that `repo` explicitly",
             "Do not fabricate a `FAIL` Review",
             "game_exp_abandon",
