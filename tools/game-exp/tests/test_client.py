@@ -1212,7 +1212,7 @@ class ClientTests(unittest.TestCase):
 
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
         transport = FakeTransport()
-        transport._rules = []
+        transport.ruleset_details = lambda: {}
         result = GameExpClient(transport).board()
 
         self.assertEqual(result["project"]["readiness"], "PROJECT_INCOMPLETE")
