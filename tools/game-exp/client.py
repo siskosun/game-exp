@@ -1174,6 +1174,7 @@ class GameExpClient:
                 "manifest_schema_v2": True,
                 "manifest_schema_v3": True,
                 "evaluation_evidence_v1": True,
+                "contextual_surface_v1": True,
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
