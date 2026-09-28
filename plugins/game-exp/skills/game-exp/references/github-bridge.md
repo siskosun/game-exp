@@ -8,6 +8,17 @@
 - Lifecycle actions
 - Archive actions
 
+## Privilege boundary
+
+The production Bridge is two-stage:
+
+1. an unprivileged validation job checks that the event is an Issue comment, the command is syntactically valid, the Issue/experiment identity matches, `author_association` is one of `OWNER / MEMBER / COLLABORATOR`, and the GitHub actor currently has repository write permission;
+2. only after that job passes does a second job enter the main-only `game-exp-trusted-writer` Environment and receive the writer key.
+
+The first stage never receives `GAME_EXP_WRITER_KEY`. The second stage reuses the same event and trusted source SHA and still performs the normal actor/domain checks. `author_association` is only an early filter; it is not authority by itself.
+
+Bridge concurrency is comment-scoped rather than Issue-scoped so an unrelated or unauthorized comment cannot cancel or occupy another command's logical slot.
+
 ## Envelope and placement
 
 Post the command as a top-level comment on the canonical experiment Issue. The Issue number must equal the numeric part of the experiment id.
