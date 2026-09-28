@@ -46,7 +46,7 @@ def valid_policy_v3(adapter="command"):
     policy = valid_policy_v2(adapter)
     policy["schema_version"] = 3
     policy["evaluation"] = {
-        "argv": ["python", ".game-exp/evaluate.py"],
+        "argv": ["python", "control/.game-exp/evaluation/evaluate.py"],
         "output_dir": ".game-exp/evaluation-output",
     }
     return policy
@@ -78,12 +78,18 @@ class ProjectPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             validated["evaluation"]["argv"],
-            ["python", ".game-exp/evaluate.py"],
+            ["python", "control/.game-exp/evaluation/evaluate.py"],
         )
 
     def test_schema_v3_requires_fixed_evaluation_output_dir(self):
         policy = valid_policy_v3("command")
         policy["evaluation"]["output_dir"] = "tmp/evaluation"
+        with self.assertRaises(ProjectPolicyError):
+            validate_policy(policy)
+
+    def test_schema_v3_rejects_evaluator_from_candidate_source(self):
+        policy = valid_policy_v3("command")
+        policy["evaluation"]["argv"] = ["python", ".game-exp/evaluate.py"]
         with self.assertRaises(ProjectPolicyError):
             validate_policy(policy)
 
