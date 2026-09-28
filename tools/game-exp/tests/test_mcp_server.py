@@ -57,7 +57,7 @@ class FakeClient:
         return {
             "status": "PASS",
             "repo": "owner/repo",
-            "manifest_contract": {"current_schema_version": 2},
+            "manifest_contract": {"current_schema_version": 3},
             "project_policy": {"adapter": "node-npm"},
         }
 
@@ -203,6 +203,28 @@ class FakeClient:
         return {
             "status": "ACCEPTED",
             "experiment_id": experiment_id,
+            "request_id": request_id,
+            "actor_claim": actor_claim,
+        }
+
+    def review_record(
+        self,
+        experiment_id,
+        *,
+        candidate_id,
+        outcome,
+        notes,
+        comparison=None,
+        actor_claim=None,
+        request_id=None,
+    ):
+        return {
+            "status": "ACCEPTED",
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "outcome": outcome,
+            "notes": notes,
+            "comparison": comparison,
             "request_id": request_id,
             "actor_claim": actor_claim,
         }
