@@ -130,6 +130,20 @@ def _json_output(proc: subprocess.CompletedProcess[str]) -> Any:
         raise ClientError(f"command returned invalid JSON: {proc.stdout!r}") from exc
 
 
+def _runtime_version() -> str:
+    marker = Path(__file__).resolve().parents[2] / "VERSION.txt"
+    try:
+        value = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "UNKNOWN"
+    return value if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value) else "UNKNOWN"
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", value)
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
 def _journal_root() -> Path:
     proc = _run(["git", "rev-parse", "--git-common-dir"], check=False, timeout=5)
     if proc.returncode == 0 and proc.stdout.strip():
@@ -5469,10 +5483,91 @@ class GameExpClient:
         }
 
     def status(self) -> dict[str, Any]:
+        runtime_version = _runtime_version()
+        try:
+            ledger_head = self.transport.ledger_head()
+        except TransportUncertainError as exc:
+            return {
+                "status": "UNKNOWN",
+                "code": "LEDGER_HEAD_UNAVAILABLE",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "error": str(exc),
+                "retryable": True,
+            }
+
+        try:
+            access = self.transport.repository_access()
+        except TransportUncertainError as exc:
+            access = {
+                "status": "UNKNOWN",
+                "can_read": True,
+                "can_write": False,
+                "can_admin": False,
+                "reason": str(exc),
+            }
+
+        repository_version = None
+        try:
+            plugin = self.transport.repository_json("plugins/game-exp/plugin.json")
+        except TransportUncertainError:
+            plugin = None
+        if isinstance(plugin, dict) and isinstance(plugin.get("version"), str):
+            repository_version = plugin["version"]
+
+        runtime_tuple = _version_tuple(runtime_version)
+        repository_tuple = _version_tuple(repository_version or "")
+        if runtime_tuple is None or repository_tuple is None:
+            version_state = "UNKNOWN"
+            version_action = "VERIFY_INSTALLATION"
+        elif runtime_tuple == repository_tuple:
+            version_state = "MATCH"
+            version_action = "NONE"
+        elif runtime_tuple < repository_tuple:
+            version_state = "RUNTIME_OLDER"
+            version_action = "UPGRADE_CURRENT_HARNESS"
+        else:
+            version_state = "REPOSITORY_OLDER"
+            version_action = "UPGRADE_REPOSITORY_OR_USE_MATCHING_RUNTIME"
+
+        access_status = str(access.get("status") or "UNKNOWN")
+        overall = (
+            "PASS"
+            if access_status in {"READ_ONLY", "WRITE", "ADMIN"}
+            and version_state == "MATCH"
+            else "WARN"
+            if access_status in {"READ_ONLY", "WRITE", "ADMIN"}
+            else "UNKNOWN"
+        )
         return {
-            "status": "PASS",
+            "status": overall,
             "repo": self.transport.repo,
-            "ledger_head": self.transport.ledger_head(),
+            "ledger_head": ledger_head,
+            "runtime_version": runtime_version,
+            "repository_version": repository_version,
+            "version_state": version_state,
+            "version_action": version_action,
+            "access": {
+                "status": access_status,
+                "can_read": bool(access.get("can_read")),
+                "can_write": bool(access.get("can_write")),
+                "can_admin": bool(access.get("can_admin")),
+            },
+            "protocol": {
+                "manifest_schema_versions": contract_descriptor().get(
+                    "manifest_schema_versions"
+                ),
+                "project_policy_schema_versions": contract_descriptor().get(
+                    "project_policy_schema_versions"
+                ),
+            },
+            "message_zh": (
+                "game-exp 运行时与仓库版本一致。"
+                if version_state == "MATCH"
+                else "game-exp 运行时与仓库版本不一致；先完成版本对齐再执行写操作。"
+                if version_state in {"RUNTIME_OLDER", "REPOSITORY_OLDER"}
+                else "暂时无法确认 game-exp 运行时与仓库版本是否一致。"
+            ),
         }
 
     def archive_health(self, experiment_id: str) -> dict[str, Any]:
