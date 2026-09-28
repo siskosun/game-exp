@@ -70,8 +70,32 @@ class CLIRoutingTests(unittest.TestCase):
         ):
             code = cli.main(["--repo", "owner/repo", "project-init"])
         self.assertEqual(code, 0)
-        provision.assert_called_once_with("owner/repo", run_selftest=True)
+        provision.assert_called_once_with(
+            "owner/repo", run_selftest=True, trust_mode="auto"
+        )
 
+    def test_project_init_forwards_explicit_trust_mode(self):
+        transport = MagicMock()
+        transport.repo = "owner/repo"
+        with (
+            patch("cli.GitHubTransport", return_value=transport),
+            patch(
+                "cli.project_provision",
+                return_value={"status": "PASS", "complete": True},
+            ) as provision,
+            patch("cli._print_result"),
+        ):
+            code = cli.main([
+                "--repo",
+                "owner/repo",
+                "project-init",
+                "--trust-mode",
+                "multi-principal",
+            ])
+        self.assertEqual(code, 0)
+        provision.assert_called_once_with(
+            "owner/repo", run_selftest=True, trust_mode="multi-principal"
+        )
     def test_project_init_skip_selftest_is_incomplete(self):
         transport = MagicMock()
         transport.repo = "owner/repo"
