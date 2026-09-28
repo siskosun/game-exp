@@ -45,7 +45,7 @@ Use the ready-to-render repository-level `display` block before the five tabs:
 4. optional expandable check rows from `display.trust_checks_zh`
 5. `display.snapshot_note_zh` as secondary help text
 
-If the host needs one plain-text representation, use `display.summary_text_zh` directly.
+If the host needs one plain-text representation, use `display.summary_text_zh` directly. For presentation v4, `display.render_contract.strict_primary_copy=true`; do not recompose visible copy from raw fields, and ordinary primary copy must not contain any token listed in `forbidden_primary_tokens`.
 
 Do not reconstruct the visible status strip from `project.readiness`, `project.doctor_status`, `project.access`, or other machine fields. Do not translate raw key names such as `doctor`; in normal Chinese UI it is always `仓库检查`, never `医生检查`. `PROJECT_READY`, `ADMIN`, `PASS` and similar enums are diagnostics-only.
 
