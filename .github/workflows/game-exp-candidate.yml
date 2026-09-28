@@ -212,9 +212,7 @@ jobs:
           sparse-checkout: |
             tools/game-exp/project_policy.py
             tools/game-exp/protocol_core.py
-            tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
-            .game-exp/evaluation/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v6
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '1'
@@ -232,40 +230,87 @@ jobs:
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run test --cwd .
       - name: Build candidate
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run build --cwd .
-      - name: Freeze candidate bytes before evaluation
+      - name: Freeze candidate bytes
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
-      - name: Run trusted project evaluation
-        if: needs.resolve.outputs.evaluation_enabled == 'true'
-        env:
-          GAME_EXP_EVALUATION_PROFILE: ${{ needs.resolve.outputs.evaluation_profile_path }}
-          GAME_EXP_EVALUATION_PROFILE_DIGEST: ${{ needs.resolve.outputs.evaluation_profile_digest }}
-          GAME_EXP_EVALUATION_SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
-          GAME_EXP_EVALUATION_OUTPUT_DIR: ${{ needs.resolve.outputs.evaluation_output_dir }}
-        run: |
-          set -euo pipefail
-          test "$GAME_EXP_EVALUATION_OUTPUT_DIR" = ".game-exp/evaluation-output"
-          rm -rf "$GAME_EXP_EVALUATION_OUTPUT_DIR"
-          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py profile \
-            "$GAME_EXP_EVALUATION_PROFILE" \
-            --expected-digest "$GAME_EXP_EVALUATION_PROFILE_DIGEST"
-          python control/tools/game-exp/project_policy.py \
-            --policy control/.game-exp/project-policy.json \
-            run evaluation --cwd .
-          test -f "$GAME_EXP_EVALUATION_OUTPUT_DIR/result.json"
-          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py package \
-            "$GAME_EXP_EVALUATION_OUTPUT_DIR" evaluation-output.tgz
       - uses: actions/upload-artifact@v4
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate.tgz
           retention-days: 7
           if-no-files-found: error
+
+  evaluate:
+    needs: [resolve, build]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted evaluator control source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: evaluation-work/control
+          sparse-checkout: |
+            tools/game-exp/project_policy.py
+            tools/game-exp/protocol_core.py
+            tools/game-exp/evaluation_evidence.py
+            .game-exp/project-policy.json
+            .game-exp/evaluation/
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evaluation-work
+      - name: Run trusted evaluation against frozen Candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVALUATION_ENABLED: ${{ needs.resolve.outputs.evaluation_enabled }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          PROFILE_PATH: ${{ needs.resolve.outputs.evaluation_profile_path }}
+          PROFILE_DIGEST: ${{ needs.resolve.outputs.evaluation_profile_digest }}
+          EVALUATION_OUTPUT_DIR: ${{ needs.resolve.outputs.evaluation_output_dir }}
+        run: |
+          set -euo pipefail
+          cd evaluation-work
+          if [ "$EVALUATION_ENABLED" != "true" ]; then
+            printf '{"enabled":false}\n' > trusted-evaluation-summary.json
+            exit 0
+          fi
+
+          test "$EVALUATION_OUTPUT_DIR" = ".game-exp/evaluation-output"
+          mkdir -p candidate
+          python control/tools/game-exp/project_policy.py             --policy control/.game-exp/project-policy.json             verify --archive candidate.tgz > candidate-files.txt
+          tar -xzf candidate.tgz -C candidate
+
+          gh api -H 'Accept: application/vnd.github.raw+json'             "repos/$GITHUB_REPOSITORY/contents/$PROFILE_PATH?ref=$SOURCE_SHA"             > profile.json
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py profile             profile.json --expected-digest "$PROFILE_DIGEST"
+
+          rm -rf "$EVALUATION_OUTPUT_DIR"
+          export GAME_EXP_CANDIDATE_ROOT="$PWD/candidate"
+          export GAME_EXP_EVALUATION_PROFILE="$PWD/profile.json"
+          export GAME_EXP_EVALUATION_PROFILE_DIGEST="$PROFILE_DIGEST"
+          export GAME_EXP_EVALUATION_SOURCE_SHA="$SOURCE_SHA"
+          export GAME_EXP_EVALUATION_OUTPUT_DIR="$PWD/$EVALUATION_OUTPUT_DIR"
+
+          python control/tools/game-exp/project_policy.py             --policy control/.game-exp/project-policy.json             run evaluation --cwd "$PWD"
+
+          test -f "$EVALUATION_OUTPUT_DIR/result.json"
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py package             "$EVALUATION_OUTPUT_DIR" evaluation-output.tgz
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py observe             profile.json evaluation-output.tgz             --source-sha "$SOURCE_SHA"             --expected-profile-digest "$PROFILE_DIGEST"             --work-dir "$RUNNER_TEMP/evaluation-verify"             --summary-out trusted-evaluation-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-exp-candidate-evaluation-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evaluation-work/trusted-evaluation-summary.json
+          retention-days: 30
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: needs.resolve.outputs.evaluation_enabled == 'true'
         with:
           name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evaluation-output.tgz
-          retention-days: 7
+          path: evaluation-work/evaluation-output.tgz
+          retention-days: 30
           if-no-files-found: error
 
   observe:
@@ -283,40 +328,11 @@ jobs:
           sparse-checkout: |
             tools/game-exp/project_policy.py
             tools/game-exp/protocol_core.py
-            tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v5
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/download-artifact@v5
-        if: needs.resolve.outputs.evaluation_enabled == 'true'
-        with:
-          name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Verify trusted evaluation evidence without source checkout
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVALUATION_ENABLED: ${{ needs.resolve.outputs.evaluation_enabled }}
-          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
-          PROFILE_PATH: ${{ needs.resolve.outputs.evaluation_profile_path }}
-          PROFILE_DIGEST: ${{ needs.resolve.outputs.evaluation_profile_digest }}
-        run: |
-          set -euo pipefail
-          if [ "$EVALUATION_ENABLED" = "true" ]; then
-            mkdir -p "$RUNNER_TEMP/evaluation-observe"
-            gh api -H 'Accept: application/vnd.github.raw+json' \
-              "repos/$GITHUB_REPOSITORY/contents/$PROFILE_PATH?ref=$SOURCE_SHA" \
-              > "$RUNNER_TEMP/evaluation-observe/profile.json"
-            PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py observe \
-              "$RUNNER_TEMP/evaluation-observe/profile.json" \
-              evaluation-output.tgz \
-              --source-sha "$SOURCE_SHA" \
-              --expected-profile-digest "$PROFILE_DIGEST" \
-              --work-dir "$RUNNER_TEMP/evaluation-verify" \
-              --summary-out trusted-evaluation-summary.json
-          else
-            printf '{"enabled":false}\n' > trusted-evaluation-summary.json
-          fi
       - name: Observe artifact without source checkout
         shell: bash
         run: |
@@ -330,11 +346,10 @@ jobs:
           path: |
             artifact-files.txt
             observer.json
-            trusted-evaluation-summary.json
           retention-days: 30
 
   attest-retain-register:
-    needs: [resolve, build, observe]
+    needs: [resolve, build, evaluate, observe]
     permissions:
       contents: write
       id-token: write
@@ -362,6 +377,9 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: game-exp-candidate-observation-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: game-exp-candidate-evaluation-summary-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/download-artifact@v5
         if: needs.resolve.outputs.evaluation_enabled == 'true'
         with:
