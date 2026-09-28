@@ -1989,6 +1989,13 @@ class GameExpClient:
                     "requires_human_action": True,
                 }
 
+        if isinstance(human_gate, dict) and human_gate.get("requires_human_action") is True:
+            code = human_gate.get("code")
+            if isinstance(code, str) and code:
+                attention_reasons.append(code)
+                next_actions.append(code)
+                attention_level = max(attention_level, 2)
+
         trusted_evidence: dict[str, Any] = {}
         if isinstance(candidate, dict):
             trusted_evidence["candidate"] = {
