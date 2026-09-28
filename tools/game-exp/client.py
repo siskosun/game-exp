@@ -1635,6 +1635,51 @@ class GameExpClient:
             return []
         return rows if isinstance(rows, list) else []
 
+    def _write_version_guard(self) -> dict[str, Any] | None:
+        runtime_version = _runtime_version()
+        try:
+            plugin = self.transport.repository_json("plugins/game-exp/plugin.json")
+        except TransportUncertainError as exc:
+            return {
+                "status": "UNKNOWN",
+                "code": "VERSION_UNVERIFIED",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "retryable": True,
+                "error": str(exc),
+            }
+        repository_version = (
+            plugin.get("version")
+            if isinstance(plugin, dict) and isinstance(plugin.get("version"), str)
+            else None
+        )
+        runtime_tuple = _version_tuple(runtime_version)
+        repository_tuple = _version_tuple(repository_version or "")
+        if runtime_tuple is None or repository_tuple is None:
+            return {
+                "status": "REJECTED",
+                "code": "VERSION_UNVERIFIED",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "repository_version": repository_version,
+                "message_zh": "无法确认 game-exp 运行时与仓库版本；写操作已阻止。",
+            }
+        if runtime_tuple != repository_tuple:
+            return {
+                "status": "REJECTED",
+                "code": "VERSION_MISMATCH",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "repository_version": repository_version,
+                "required_action": (
+                    "UPGRADE_CURRENT_HARNESS"
+                    if runtime_tuple < repository_tuple
+                    else "UPGRADE_REPOSITORY_OR_USE_MATCHING_RUNTIME"
+                ),
+                "message_zh": "game-exp 运行时与仓库版本不一致；写操作已阻止。",
+            }
+        return None
+
     def submit(
         self,
         *,
@@ -1644,6 +1689,9 @@ class GameExpClient:
         actor_claim: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
+        version_block = self._write_version_guard()
+        if version_block is not None:
+            return version_block
         rid = validate_request_id(request_id or new_request_id())
         payload = build_operation_payload(
             operation,
@@ -1800,23 +1848,10 @@ class GameExpClient:
         outcome: str,
         notes: str,
         request_id: str,
-        candidate_id: str | None = None,
+        candidate_id: str,
         comparison: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
-        if candidate_id is None:
-            projection = self.experiment_get(experiment_id)
-            if projection.get("status") != "PASS":
-                return projection
-            candidate_id = projection.get("state", {}).get("current_candidate_id")
-            if not isinstance(candidate_id, str) or not candidate_id:
-                return {
-                    "status": "REJECTED",
-                    "repo": self.transport.repo,
-                    "experiment_id": experiment_id,
-                    "request_id": request_id,
-                    "error": "experiment has no current Candidate",
-                }
         input_value: dict[str, Any] = {
             "experiment_id": experiment_id,
             "candidate_id": candidate_id,
