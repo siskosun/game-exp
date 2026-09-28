@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "game-exp",
   "version": "1.0.0",
-  "description": "Harness-neutral trusted game experiment workflow with Evaluation Evidence v1, content-addressed Evaluation Profiles, trusted Candidate replay/check evidence, incumbent/challenger human comparison, resumable collaboration, Harness-isolated install/upgrade, protected Ledger authority, and human lifecycle gates.",
+  "description": "Stable 1.0 trusted game experiment control plane with main-only writer credentials, semantic repository protection, cached Ledger snapshots, compact MCP/Skill routing, Evaluation Evidence v1, collaboration recovery, and human lifecycle gates.",
   "repository": "https://github.com/siskosun/game-exp",
   "keywords": [
     "game-development",
@@ -16,8 +16,8 @@
     "com.openai": {
       "interface": {
         "displayName": "game-exp",
-        "shortDescription": "独立仓库 + Harness隔离升级 + 可信实验控制",
-        "longDescription": "Create PROJECT_READY repositories, expose Manifest v3 / project-policy v3 evaluation contracts when enabled, bind trusted Candidate evidence to frozen artifacts, surface tri-state human-comparison eligibility and incumbent/challenger human annotations, and preserve the same protected lifecycle authority across MCP, CLI and GitHub Bridge.",
+        "shortDescription": "可信实验控制 · 快照读取 · 多Harness协作",
+        "longDescription": "Stable 1.0 control plane for gameplay/prototype experiments: protected Ledger authority, main-only Trusted Writer Environment, semantic Ruleset verification, cached immutable snapshots, version handshake, compact MCP/Skill routing, trusted Candidate/evaluation evidence, resumable collaboration, and explicit human Review/selection gates.",
         "developerName": "game-exp",
         "category": "Productivity",
         "capabilities": [
