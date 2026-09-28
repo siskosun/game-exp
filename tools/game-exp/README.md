@@ -463,7 +463,7 @@ python tools/game-exp/cli.py --repo owner/repo --json project-preflight
 python tools/game-exp/cli.py --repo owner/repo --json project-init
 ```
 
-`project-init` completes Ledger initialization, Trusted Writer repository credentials, Immutable Releases, hardened Actions defaults, the four verified rulesets, Trusted Writer self-test, and a final repo-level Doctor. It succeeds only when Doctor is PASS.
+`project-init` completes Ledger initialization, Trusted Writer repository credentials, Immutable Releases, hardened Actions defaults, the seven verified 1.0 Rulesets, Trusted Writer self-test, and a final repo-level Doctor. It succeeds only when Doctor is PASS.
 
 Private repositories whose GitHub plan does not support repository rulesets fail at preflight with `RULESETS_PLAN_UNSUPPORTED`; game-exp does not silently weaken the trust model or make a repository public.
 
