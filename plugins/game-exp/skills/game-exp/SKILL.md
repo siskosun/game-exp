@@ -151,6 +151,19 @@ Do not treat code-contributor identity as lifecycle authority.
 
 Follow `references/exploration-thread.md`. Do not automatically fan one creative question into multiple parallel prototype branches. Prototype experiments may change the underlying concept substantially, so default to one active experiment per exploration thread and preserve later experiments as sequential history through subject identity and explicit relationships.
 
+## Collaboration preflight for source work
+
+Before editing source for an existing experiment, read `game_exp_collaboration_context` and follow `references/collaboration.md`.
+
+- Pass the source SHA currently observed by this Harness when known. If the context says `STALE`, synchronize to the canonical experiment branch before editing.
+- Once the implementation request is already authorized by the user, declare a protected work intent with `game_exp_work_claim` before source edits. This coordination claim is internal bookkeeping and does not require an extra user confirmation.
+- Keep the claim summary short and declare the narrowest repository paths you can reasonably predict. Do not invent precision; an empty path list means unknown scope and is treated conservatively.
+- If current claims overlap, tell the user/other executor what overlaps. The overlap is advisory, not a lock. Prefer an isolated workspace/worktree for concurrent work, then merge and verify.
+- Never spawn additional Agents merely because a claim overlaps. game-exp coordinates principals; it does not decide to create a swarm.
+- On cross-Harness continuation, treat the protected collaboration context and canonical branch SHA as current execution state. Do not treat a transferred chat transcript or local memory as authority.
+- After the implementation is represented by the canonical experiment branch, release the claim as `COMPLETED` with that current source SHA. If work is intentionally dropped, release it as `ABANDONED`.
+- Work claims do not authorize Review, PROMISING, SELECTED, merge, Archive, or any other human gate.
+
 ## Prototype implementation handoff
 
 When a game experiment needs implementation, runtime verification, export, or requested playable delivery, use `game_exp_prototype_handoff` and follow `references/prototype-handoff.md`. Handoff v2 binds the task to a Ledger snapshot and requires returned evidence to identify source SHA, build identity, check environment, artifact digest/location, and artifact portability.
