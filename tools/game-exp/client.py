@@ -2991,6 +2991,14 @@ class GameExpClient:
                 binding=binding if isinstance(binding, dict) else None,
             )
 
+            candidate_id = state.get("current_candidate_id")
+            candidate = None
+            if isinstance(candidate_id, str) and candidate_id:
+                candidate = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                    ref=snapshot_head,
+                )
+
             review_id = state.get("current_review_id")
             review = None
             if isinstance(review_id, str) and review_id:
@@ -3075,6 +3083,44 @@ class GameExpClient:
                             }
                         )
 
+            candidate_evaluation = (
+                candidate.get("evaluation")
+                if isinstance(candidate, dict)
+                and isinstance(candidate.get("evaluation"), dict)
+                else None
+            )
+            evaluation_screening = (
+                candidate_evaluation.get("screening")
+                if isinstance(candidate_evaluation, dict)
+                else None
+            )
+            human_comparison_eligibility = (
+                evaluation_screening
+                if evaluation_screening
+                in {"ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"}
+                else "UNKNOWN"
+            )
+            evaluation_summary_zh = {
+                "ELIGIBLE": "可信筛查通过，可进入人工比较",
+                "INELIGIBLE": "可信筛查发现必要条件缺陷，不建议进入人工比较",
+                "INCONCLUSIVE": "筛查证据不足，暂不能判断是否适合人工比较",
+                "UNKNOWN": "尚无可用的可信筛查结果",
+            }[human_comparison_eligibility]
+            review_comparison = (
+                review.get("comparison")
+                if isinstance(review, dict)
+                and isinstance(review.get("comparison"), dict)
+                else None
+            )
+            incumbent_experiment_id = next(
+                (
+                    relation.get("experiment_id")
+                    for relation in relationships_outgoing
+                    if relation.get("type") == "supersedes"
+                ),
+                None,
+            )
+
             item = {
                 "repository": self.transport.repo,
                 "repository_name": self.transport.repo.split("/", 1)[-1],
@@ -3103,8 +3149,18 @@ class GameExpClient:
                 "latest_activity": activity[-1] if activity else None,
                 "lifecycle": lifecycle,
                 "display": display,
-                "candidate_id": state.get("current_candidate_id"),
+                "candidate_id": candidate_id,
+                "candidate_evaluation": candidate_evaluation,
+                "evaluation_profile_digest": (
+                    candidate_evaluation.get("profile_digest")
+                    if isinstance(candidate_evaluation, dict)
+                    else None
+                ),
+                "eligible_for_human_comparison": human_comparison_eligibility,
+                "evaluation_summary_zh": evaluation_summary_zh,
+                "incumbent_experiment_id": incumbent_experiment_id,
                 "review_id": review_id,
+                "review_comparison": review_comparison,
                 "review_outcome": (
                     review.get("outcome") if isinstance(review, dict) else None
                 ),
@@ -3143,6 +3199,25 @@ class GameExpClient:
             )
 
         by_id = {item["experiment_id"]: item for item in items}
+        for item in items:
+            incumbent_id = item.get("incumbent_experiment_id")
+            incumbent = by_id.get(incumbent_id) if isinstance(incumbent_id, str) else None
+            if incumbent is not None:
+                item["incumbent_comparison"] = {
+                    "incumbent_experiment_id": incumbent_id,
+                    "incumbent_candidate_id": incumbent.get("candidate_id"),
+                    "challenger_experiment_id": item.get("experiment_id"),
+                    "challenger_candidate_id": item.get("candidate_id"),
+                    "profile_digest": item.get("evaluation_profile_digest"),
+                    "challenger_eligibility": item.get(
+                        "eligible_for_human_comparison"
+                    ),
+                    "human_comparison": item.get("review_comparison"),
+                    "source": "derived_from_relationship_candidate_and_review",
+                }
+            else:
+                item["incumbent_comparison"] = None
+
         relationship_edges: list[dict[str, Any]] = []
         for item in items:
             source_id = item["experiment_id"]
