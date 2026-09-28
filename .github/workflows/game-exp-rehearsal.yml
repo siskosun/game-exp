@@ -247,6 +247,7 @@ jobs:
 
   finalize:
     needs: [prepare, rehearse]
+    environment: game-exp-trusted-writer
     permissions:
       actions: read
       contents: read
