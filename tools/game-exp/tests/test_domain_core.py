@@ -305,18 +305,18 @@ class DomainBindingTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_AUTHORIZATION_FAILED")
 
-    def test_non_domain_operation_remains_request_only(self):
+    def test_unknown_domain_operation_is_rejected_fail_closed(self):
         payload = build_operation_payload("transport.probe", {"value": "x"})
-        plan = plan_domain_mutation(
-            repo_dir=self.root,
-            payload=payload,
-            request_id="req_probe",
-            payload_digest=digest_object(payload),
-            repository_full_name="owner/repo",
-            trusted_binding=None,
-        )
-        self.assertEqual(plan.status, "REQUEST_ONLY")
-        self.assertEqual(plan.writes, {})
+        with self.assertRaises(DomainError) as ctx:
+            plan_domain_mutation(
+                repo_dir=self.root,
+                payload=payload,
+                request_id="req_probe",
+                payload_digest=digest_object(payload),
+                repository_full_name="owner/repo",
+                trusted_binding=None,
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_OPERATION_UNSUPPORTED")
 
 
 if __name__ == "__main__":
