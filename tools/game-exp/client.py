@@ -892,6 +892,16 @@ class GitHubTransport:
 class GameExpClient:
     def __init__(self, transport: GitHubTransport):
         self.transport = transport
+        self._repo_doctor_cache: tuple[float, dict[str, Any]] | None = None
+
+    def _repo_doctor_cached(self, *, ttl_seconds: float = 30.0) -> dict[str, Any]:
+        now = time.monotonic()
+        cached = self._repo_doctor_cache
+        if cached is not None and now - cached[0] <= ttl_seconds:
+            return cached[1]
+        value = self.doctor()
+        self._repo_doctor_cache = (now, value)
+        return value
 
     def access_check(self) -> dict[str, Any]:
         access = self.transport.repository_access()
@@ -943,7 +953,7 @@ class GameExpClient:
         )
 
         try:
-            doctor = self.doctor()
+            doctor = self._repo_doctor_cached()
         except Exception as exc:
             doctor = {
                 "status": "UNKNOWN",
