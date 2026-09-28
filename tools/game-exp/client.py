@@ -731,6 +731,37 @@ class GitHubTransport:
         data = _json_output(proc)
         return data if isinstance(data, dict) else None
 
+    def write_principals(self) -> list[str] | None:
+        proc = _run_read(
+            [
+                "gh",
+                "api",
+                f"repos/{self.repo}/collaborators?affiliation=all&per_page=100",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        rows = _json_output(proc)
+        if not isinstance(rows, list):
+            return None
+        principals: list[str] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            permissions = row.get("permissions")
+            can_write = bool(
+                isinstance(permissions, dict)
+                and (
+                    permissions.get("push")
+                    or permissions.get("maintain")
+                    or permissions.get("admin")
+                )
+            )
+            if can_write and isinstance(row.get("login"), str):
+                principals.append(row["login"])
+        return sorted(set(principals))
+
     def repository_access(self) -> dict[str, Any]:
         proc = _run_read(["gh", "api", f"repos/{self.repo}"], check=False)
         if proc.returncode != 0:
@@ -5743,15 +5774,52 @@ class GameExpClient:
             add("ledger_ref", "FAIL", str(exc))
 
         trust_mode = None
+        trust_mode_source = "ruleset"
         try:
+            access_snapshot = self.transport.repository_access()
+            owner_type = access_snapshot.get("owner_type")
+            principals = self.transport.write_principals()
+            expected_mode = None
+            if owner_type == "Organization":
+                expected_mode = "multi-principal"
+                trust_mode_source = "repository_owner"
+            elif principals is not None:
+                expected_mode = (
+                    "multi-principal" if len(principals) > 1 else "single-principal"
+                )
+                trust_mode_source = "write_principals"
+
             details = self.transport.ruleset_details()
-            rule_check = validate_rulesets(details)
+            rule_check = validate_rulesets(details, expected_mode=expected_mode)
             trust_mode = rule_check.get("trust_mode")
+            rule_check["trust_mode_source"] = trust_mode_source
+            rule_check["write_principal_count"] = (
+                len(principals) if principals is not None else None
+            )
             add(
                 "rulesets",
                 rule_check["status"],
                 rule_check,
             )
+            if expected_mode is None:
+                add(
+                    "trust_mode_verification",
+                    "UNKNOWN",
+                    {
+                        "code": "TRUST_MODE_NOT_INDEPENDENTLY_VERIFIED",
+                        "configured_mode": trust_mode,
+                    },
+                )
+            else:
+                add(
+                    "trust_mode_verification",
+                    "PASS",
+                    {
+                        "mode": expected_mode,
+                        "source": trust_mode_source,
+                        "write_principals": principals,
+                    },
+                )
         except Exception as exc:
             detail = str(exc)
             lowered = detail.lower()
