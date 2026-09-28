@@ -427,6 +427,7 @@ def observe_bundle(
         evidence_root=extract_dir,
     )
     summary["enabled"] = True
+    summary["enabled"] = True
     summary["profile_id"] = profile["profile_id"]
     summary["profile_digest"] = actual_profile_digest
     summary["bundle_digest"] = _sha256_file(bundle_path)
