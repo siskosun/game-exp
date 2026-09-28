@@ -21,6 +21,36 @@ from install_harnesses import (  # noqa: E402
 
 
 class HarnessInstallerTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self._companion_result = [
+            {
+                "name": "godot-prototype-studio",
+                "repository": "https://github.com/siskosun/godot-prototype-studio",
+                "tag": "v1.0.1",
+                "version": "1.0.1",
+                "target": "mock-gps",
+                "update_mode": "directory-swap",
+            },
+            {
+                "name": "h5-game-prototype-agent",
+                "repository": "https://github.com/siskosun/h5-game-prototype-agent",
+                "tag": "v0.2.0",
+                "version": "0.2.0",
+                "target": "mock-h5",
+                "update_mode": "directory-swap",
+            },
+        ]
+        self._companion_patch = mock.patch(
+            "install_harnesses.CompanionSkillSynchronizer.sync",
+            return_value=self._companion_result,
+        )
+        self._companion_sync = self._companion_patch.start()
+
+    def tearDown(self):
+        self._companion_patch.stop()
+        super().tearDown()
+
     def _codex_config(self, home: pathlib.Path) -> pathlib.Path:
         path = home / ".codex" / "config.toml"
         path.parent.mkdir(parents=True)
@@ -64,6 +94,8 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(result["version"], "1.0.0")
             self.assertEqual(result["updated_harnesses"], ["codex"])
             self.assertFalse(result["shared_runtime"])
+            self.assertEqual(result["companion_skills"], self._companion_result)
+            self._companion_sync.assert_called()
             runtime = home / ".game-exp" / "runtimes" / "codex"
             self.assertEqual(pathlib.Path(result["runtime_dir"]).resolve(), runtime.resolve())
             self.assertEqual(
@@ -110,6 +142,11 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(current["install_state"], "CURRENT")
             self.assertEqual(current["installed_version"], "1.0.0")
             self.assertFalse(current["would_update_other_harnesses"])
+            self.assertTrue(current["would_sync_companion_skills"])
+            self.assertEqual(
+                [row["name"] for row in current["companion_skills"]],
+                ["godot-prototype-studio", "h5-game-prototype-agent"],
+            )
 
     def test_downgrade_requires_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
@@ -195,6 +232,7 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["version"], "1.0.0")
             self.assertEqual(result["updated_harnesses"], list(SUPPORTED_HARNESSES))
+            self.assertEqual(self._companion_sync.call_count, len(SUPPORTED_HARNESSES))
             runtime_paths = {
                 pathlib.Path(row["runtime_dir"]).resolve()
                 for row in result["results"].values()
