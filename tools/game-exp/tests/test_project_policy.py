@@ -42,6 +42,16 @@ def valid_policy_v2(adapter="node-npm"):
     }
 
 
+def valid_policy_v3(adapter="command"):
+    policy = valid_policy_v2(adapter)
+    policy["schema_version"] = 3
+    policy["evaluation"] = {
+        "argv": ["python", ".game-exp/evaluate.py"],
+        "output_dir": ".game-exp/evaluation-output",
+    }
+    return policy
+
+
 class ProjectPolicyTests(unittest.TestCase):
     def test_valid_policy_has_stable_digest(self):
         first = policy_digest(valid_policy())
@@ -57,6 +67,25 @@ class ProjectPolicyTests(unittest.TestCase):
         policy = valid_policy_v2("command")
         self.assertEqual(validate_policy(policy)["adapter"], "command")
         self.assertEqual(validate_policy(policy)["toolchain"], {})
+
+    def test_schema_v3_evaluation_policy_is_valid(self):
+        policy = valid_policy_v3("command")
+        validated = validate_policy(policy)
+        self.assertEqual(validated["schema_version"], 3)
+        self.assertEqual(
+            validated["evaluation"]["output_dir"],
+            ".game-exp/evaluation-output",
+        )
+        self.assertEqual(
+            validated["evaluation"]["argv"],
+            ["python", ".game-exp/evaluate.py"],
+        )
+
+    def test_schema_v3_requires_fixed_evaluation_output_dir(self):
+        policy = valid_policy_v3("command")
+        policy["evaluation"]["output_dir"] = "tmp/evaluation"
+        with self.assertRaises(ProjectPolicyError):
+            validate_policy(policy)
 
     def test_schema_v1_non_node_adapter_remains_rejected(self):
         policy = valid_policy()
