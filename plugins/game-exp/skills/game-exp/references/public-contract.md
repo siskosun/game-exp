@@ -161,6 +161,17 @@ The 1.0 default MCP surface keeps daily workflow tools only. Compatibility/diagn
 
 This is an Agent-context optimization only. It does not remove the underlying CLI/protocol compatibility contract.
 
+## Contextual surface contract v1
+
+`features.contextual_surface_v1=true` adds a read-only presentation hint to experiment projections.
+
+- `COMPACT_RESULT`: normal progress stays compact; the full Board is not the default end screen.
+- `CONTEXTUAL_PANEL`: current evidence says a human action, recovery item, health issue, archive choice, or dependency review deserves attention.
+- `surface_when_relevant` is presentation guidance for the host.
+- `authoritative=false` is required; the hint never changes experiment authority or the valid next action.
+- an explicit user request for the Board still opens the full Board.
+
+The trigger is whether the user needs to act now, not merely whether an Agent finished work.
 ## Routing and recovery
 
 Before any mutation has been submitted, prefer interfaces in this order:
