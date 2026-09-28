@@ -37,6 +37,8 @@ PRODUCTION_TOOLS = (
     "execution_guard.py",
     "evaluation_evidence.py",
     "install_harnesses.py",
+    "trust_policy.py",
+    "ledger_snapshot.py",
     "mcp_server.py",
     "project_policy.py",
     "project_setup.py",
