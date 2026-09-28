@@ -1649,6 +1649,16 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["manifest_schema_v2"])
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
+        self.assertTrue(result["features"]["collaboration_coordination_v1"])
+        coordination = result["collaboration_coordination"]
+        self.assertTrue(coordination["intent_before_source_edit"])
+        self.assertTrue(coordination["stale_base_rejected"])
+        self.assertEqual(coordination["overlap_policy"], "SURFACE_NOT_LOCK")
+        self.assertTrue(coordination["isolated_workspace_for_overlap"])
+        self.assertFalse(coordination["lifecycle_authority"])
+        self.assertIn("collaboration_context", result["queries"])
+        self.assertIn("work.claim", result["commands"])
+        self.assertIn("work.release", result["commands"])
         godot = result["recommended_capabilities"]["godot_prototype_studio"]
         self.assertEqual(godot["id"], "godot-prototype-studio")
         self.assertEqual(
@@ -1678,6 +1688,101 @@ class ClientTests(unittest.TestCase):
         self.assertIn("experiment_template", result["queries"])
         self.assertTrue(result["recovery"]["cross_interface"])
         self.assertFalse(result["access_snapshot_authoritative_for_execution"])
+
+    def test_collaboration_context_detects_sync_and_nonblocking_overlap(self):
+        transport = FakeTransport()
+        transport._ledger_json["experiments/EXP-7/state.json"] = {
+            "kind": "experiment_state",
+            "experiment_id": "EXP-7",
+            "lifecycle": "ACTIVE",
+            "active_work_claim_ids": ["req_work_1", "req_work_2"],
+        }
+        transport._ledger_json["experiments/EXP-7/binding.json"] = {
+            "initialization": {"branch_ref": "refs/heads/exp/7"},
+        }
+        transport._ledger_json[
+            "experiments/EXP-7/work-claims/req_work_1.json"
+        ] = {
+            "kind": "work_claim",
+            "claim_id": "req_work_1",
+            "experiment_id": "EXP-7",
+            "base_source_sha": "b" * 40,
+            "summary": "Tune movement",
+            "paths": ["games/player"],
+            "actor": {"login": "alice"},
+            "executor": {"harness": "codex", "agent": "gpt"},
+        }
+        transport._ledger_json[
+            "experiments/EXP-7/work-claims/req_work_2.json"
+        ] = {
+            "kind": "work_claim",
+            "claim_id": "req_work_2",
+            "experiment_id": "EXP-7",
+            "base_source_sha": "b" * 40,
+            "summary": "Adjust movement input",
+            "paths": ["games/player/input"],
+            "actor": {"login": "bob"},
+            "executor": {"harness": "qoder", "agent": "qoder-agent"},
+        }
+        transport._git_refs["heads/exp/7"] = {
+            "object": {"type": "commit", "sha": "b" * 40}
+        }
+
+        result = GameExpClient(transport).collaboration_context(
+            "EXP-7",
+            observed_source_sha="b" * 40,
+        )
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["sync_status"], "CURRENT")
+        self.assertEqual(result["next_action"], "COORDINATE_WORK")
+        self.assertTrue(result["coordination_required"])
+        self.assertEqual(len(result["conflicts"]), 1)
+        self.assertFalse(result["conflicts"][0]["blocking"])
+        self.assertEqual(
+            result["conflicts"][0]["claim_ids"],
+            ["req_work_1", "req_work_2"],
+        )
+
+        stale_observer = GameExpClient(transport).collaboration_context(
+            "EXP-7",
+            observed_source_sha="c" * 40,
+        )
+        self.assertEqual(stale_observer["sync_status"], "STALE")
+        self.assertEqual(stale_observer["next_action"], "SYNC_SOURCE")
+
+        transport._git_refs["heads/exp/7"] = {
+            "object": {"type": "commit", "sha": "d" * 40}
+        }
+        advanced = GameExpClient(transport).collaboration_context("EXP-7")
+        self.assertEqual(len(advanced["active_claims"]), 0)
+        self.assertEqual(len(advanced["stale_claims"]), 2)
+        self.assertFalse(advanced["coordination_required"])
+
+    def test_work_claim_and_release_use_protected_operations(self):
+        transport = FakeTransport()
+        client = GameExpClient(transport)
+        claim = client.work_claim(
+            "EXP-7",
+            base_source_sha="b" * 40,
+            summary="Tune movement",
+            paths=["games/player"],
+            harness="codex",
+            agent="gpt",
+            session_id="s1",
+            request_id="req_work_claim_7",
+        )
+        self.assertEqual(claim["status"], "ACCEPTED")
+        payload = transport.dispatched[-1]
+        self.assertEqual(payload["request_id"], "req_work_claim_7")
+        release = client.work_release(
+            "EXP-7",
+            claim_id="req_work_claim_7",
+            outcome="ABANDONED",
+            notes="Superseded by another implementation.",
+            request_id="req_work_release_7",
+        )
+        self.assertEqual(release["status"], "ACCEPTED")
+        self.assertEqual(transport.dispatched[-1]["request_id"], "req_work_release_7")
 
     def test_async_mutation_requires_stable_request_id(self):
         result = GameExpClient(FakeTransport()).candidate("EXP-21")
