@@ -350,6 +350,7 @@ jobs:
 
   attest-retain-register:
     needs: [resolve, build, evaluate, observe]
+    environment: game-exp-trusted-writer
     permissions:
       contents: write
       id-token: write
