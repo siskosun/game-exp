@@ -400,6 +400,53 @@ class HarnessInstaller:
         value = marker.read_text(encoding="utf-8").strip()
         return value or None
 
+    def _validate_installed_config(self) -> None:
+        path = self.config_path
+        if not path.is_file():
+            raise HarnessInstallError("selected Harness MCP config is missing")
+        if self.harness == "codex":
+            value = tomllib.loads(path.read_text(encoding="utf-8"))
+            servers = value.get("mcp_servers")
+        else:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            servers = value.get("mcpServers") if isinstance(value, dict) else None
+        if not isinstance(servers, dict):
+            raise HarnessInstallError("selected Harness MCP server table is missing")
+        entry = servers.get("game-exp")
+        if not isinstance(entry, dict):
+            raise HarnessInstallError("selected Harness game-exp MCP entry is missing")
+        if entry.get("command") != "uv":
+            raise HarnessInstallError("selected Harness game-exp MCP command drifted")
+        args = entry.get("args")
+        if not isinstance(args, list) or not args:
+            raise HarnessInstallError("selected Harness game-exp MCP args are missing")
+        try:
+            configured_script = pathlib.Path(str(args[-1])).resolve()
+        except Exception as exc:
+            raise HarnessInstallError("selected Harness game-exp MCP path is invalid") from exc
+        if configured_script != self.mcp_script.resolve():
+            raise HarnessInstallError("selected Harness game-exp MCP path drifted")
+
+    def _same_version_install_detail(self) -> tuple[bool, str | None, str | None]:
+        installed_digest = None
+        try:
+            provenance = json.loads(
+                (self.runtime_dir / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
+            )
+            if isinstance(provenance, dict):
+                raw_digest = provenance.get("source_digest")
+                if isinstance(raw_digest, str):
+                    installed_digest = raw_digest
+            self._validate_runtime(self.runtime_dir)
+            if not (self.skill_target / "SKILL.md").is_file():
+                raise HarnessInstallError("installed game-exp Skill entrypoint is missing")
+            if not (self.skill_target / "agents" / "openai.yaml").is_file():
+                raise HarnessInstallError("installed game-exp Skill metadata is missing")
+            self._validate_installed_config()
+        except Exception as exc:
+            return False, str(exc), installed_digest
+        return True, None, installed_digest
+
     def legacy_shared_state(self) -> dict[str, Any]:
         runtime = self.home / ".agents" / "tools" / "game-exp"
         skill = self.home / ".agents" / "skills" / "game-exp"
@@ -421,11 +468,26 @@ class HarnessInstaller:
 
     def plan(self) -> dict[str, Any]:
         self._validate_source()
+        source_digest = _managed_digest(self.source_root)
         installed = self.installed_version()
+        installed_digest = None
+        reason = None
+        footprint = self.runtime_dir.exists() or self.skill_target.exists()
         if installed is None:
-            state = "NOT_INSTALLED"
+            if footprint:
+                state = "UPGRADE_AVAILABLE"
+                reason = "INSTALLED_FOOTPRINT_INCOMPLETE"
+            else:
+                state = "NOT_INSTALLED"
         elif installed == self.version:
-            state = "CURRENT"
+            valid, detail, installed_digest = self._same_version_install_detail()
+            if valid:
+                state = "CURRENT"
+            else:
+                state = "UPGRADE_AVAILABLE"
+                reason = "SAME_VERSION_INSTALL_DRIFT"
+                if detail:
+                    reason += ": " + detail
         else:
             source_tuple = _version_tuple(self.version)
             installed_tuple = _version_tuple(installed)
@@ -433,6 +495,7 @@ class HarnessInstaller:
                 state = "VERSION_UNCOMPARABLE"
             elif installed_tuple < source_tuple:
                 state = "UPGRADE_AVAILABLE"
+                reason = "VERSION_UPGRADE"
             else:
                 state = "SOURCE_OLDER_THAN_INSTALLED"
         return {
@@ -440,8 +503,11 @@ class HarnessInstaller:
             "harness": self.harness,
             "source": CANONICAL_SOURCE,
             "source_version": self.version,
+            "source_digest": source_digest,
             "installed_version": installed,
+            "installed_digest": installed_digest,
             "install_state": state,
+            "install_reason": reason,
             "runtime_dir": str(self.runtime_dir),
             "would_update_other_harnesses": False,
             "would_sync_companion_skills": True,
