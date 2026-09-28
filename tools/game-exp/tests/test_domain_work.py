@@ -69,6 +69,8 @@ class WorkCoordinationTests(unittest.TestCase):
             experiment_id="EXP-77",
             branch_ref="refs/heads/exp/77",
             branch_head_sha="b" * 40,
+            observed_at="2026-09-28T12:00:00+00:00",
+            lease_expires_at="2026-09-29T12:00:00+00:00",
         )
 
         bind_request = "req_bind_77"
@@ -151,6 +153,7 @@ class WorkCoordinationTests(unittest.TestCase):
         actor=None,
         outcome="COMPLETED",
         result_source_sha=None,
+        handoff=None,
     ):
         value = {
             "experiment_id": "EXP-77",
@@ -160,8 +163,10 @@ class WorkCoordinationTests(unittest.TestCase):
         }
         if result_source_sha is not None:
             value["result_source_sha"] = result_source_sha
-        elif outcome == "COMPLETED":
+        elif outcome in {"COMPLETED", "HANDED_OFF"}:
             value["result_source_sha"] = "b" * 40
+        if handoff is not None:
+            value["handoff"] = handoff
         payload = build_operation_payload("work.release", value)
         return plan_domain_mutation(
             repo_dir=self.root,
@@ -184,6 +189,51 @@ class WorkCoordinationTests(unittest.TestCase):
         self.assertEqual(claim["paths"], ["games/player"])
         self.assertFalse(claim["coordination_required"])
         self.assertEqual(state["active_work_claim_ids"], ["req_work_1"])
+
+    def test_v2_claim_records_session_and_lease(self):
+        plan = self.claim("req_work_v2")
+        claim = plan.writes["experiments/EXP-77/work-claims/req_work_v2.json"]
+        self.assertEqual(claim["claim_schema_version"], 2)
+        self.assertEqual(claim["executor"]["session_id"], "session-req_work_v2")
+        self.assertEqual(claim["lease_expires_at"], "2026-09-29T12:00:00+00:00")
+        self.assertEqual(claim["observed_at"], "2026-09-28T12:00:00+00:00")
+
+    def test_handed_off_release_requires_pushed_sha_and_structured_handoff(self):
+        first = self.claim("req_work_handoff")
+        self.apply(first)
+        handoff = {
+            "head_sha": "b" * 40,
+            "done": ["Implemented movement acceleration."],
+            "remaining": ["Tune controller deadzone."],
+            "known_failures": [],
+            "user_constraints": ["Keep placeholder art."],
+            "open_questions": ["Final deadzone target?"],
+        }
+        plan = self.release(
+            "req_release_handoff",
+            "req_work_handoff",
+            outcome="HANDED_OFF",
+            handoff=handoff,
+        )
+        release = plan.writes[
+            "experiments/EXP-77/work-releases/req_release_handoff.json"
+        ]
+        self.assertEqual(release["outcome"], "HANDED_OFF")
+        self.assertEqual(release["handoff"]["head_sha"], "b" * 40)
+        self.assertEqual(release["handoff_trust"], "participant_reported")
+
+        second = self.claim("req_work_handoff_bad")
+        self.apply(second)
+        stale = dict(handoff)
+        stale["head_sha"] = "c" * 40
+        with self.assertRaises(DomainError) as ctx:
+            self.release(
+                "req_release_handoff_bad",
+                "req_work_handoff_bad",
+                outcome="HANDED_OFF",
+                handoff=stale,
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_WORK_STALE")
 
     def test_stale_work_claim_is_rejected_before_editing(self):
         with self.assertRaises(DomainError) as ctx:
