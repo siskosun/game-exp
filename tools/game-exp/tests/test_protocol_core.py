@@ -63,7 +63,7 @@ class ProtocolCoreTests(unittest.TestCase):
         self.assertEqual(descriptor["major"], 1)
         self.assertEqual(descriptor["manifest_schema_versions"], [1, 2, 3])
         self.assertEqual(descriptor["recommended_manifest_schema_version"], 2)
-        self.assertEqual(descriptor["project_policy_schema_versions"], [1, 2])
+        self.assertEqual(descriptor["project_policy_schema_versions"], [1, 2, 3])
         self.assertEqual(
             descriptor["recommended_project_policy_schema_version"],
             2,
