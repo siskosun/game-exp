@@ -199,6 +199,9 @@ class LedgerSnapshotLoader:
                 temp.write_text(blob["text"], encoding="utf-8")
                 temp.replace(target)
 
+    def cached(self, ref: str) -> LedgerSnapshot | None:
+        return self._memory.get(ref)
+
     def load(self, ref: str) -> LedgerSnapshot:
         if not SHA_RE.fullmatch(ref):
             raise SnapshotError("Ledger snapshot ref must be a 40-character commit SHA")
