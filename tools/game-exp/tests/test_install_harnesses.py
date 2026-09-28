@@ -191,7 +191,7 @@ class HarnessInstallerTests(unittest.TestCase):
             installer = HarnessInstaller(ROOT, home, harness="codex")
             gps = home / ".codex" / "skills" / "godot-prototype-studio"
 
-            def partial_sync(_self):
+            def partial_sync():
                 gps.mkdir(parents=True)
                 (gps / "VERSION").write_text("9.9.9\n", encoding="utf-8")
                 raise RuntimeError("simulated second companion download failure")
@@ -222,7 +222,7 @@ class HarnessInstallerTests(unittest.TestCase):
             (gps / "VERSION").write_text("old-gps\n", encoding="utf-8")
             (h5 / "VERSION").write_text("old-h5\n", encoding="utf-8")
 
-            def changed_sync(_self):
+            def changed_sync():
                 (gps / "VERSION").write_text("new-gps\n", encoding="utf-8")
                 (h5 / "VERSION").write_text("new-h5\n", encoding="utf-8")
                 return self._companion_result
