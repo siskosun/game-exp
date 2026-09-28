@@ -1364,6 +1364,8 @@ def main() -> int:
             [
                 "git",
                 "clone",
+                "--depth",
+                "1",
                 "--single-branch",
                 "--branch",
                 "game-exp/ledger",
