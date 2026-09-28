@@ -51,6 +51,22 @@ Scope overlap is surfaced but not hard-locked. Prefer isolated workspaces plus m
 
 See `collaboration.md` for the full cross-Harness contract.
 
+## Evaluation evidence
+
+For project-policy schema v3 experiments, Manifest schema v3 binds a content-addressed Evaluation Profile. Candidate build executes the declared project evaluation command inside the trusted workflow, then a source-free observation job independently validates the result/evidence bundle.
+
+Interpret Candidate screening conservatively:
+
+- \`ELIGIBLE\`: required trusted observations passed;
+- \`INELIGIBLE\`: at least one required condition has a trusted product-defect failure;
+- \`INCONCLUSIVE\`: required trusted evidence is unavailable/unstable or failed for non-product reasons.
+
+No screening result changes lifecycle.
+
+For incumbent/challenger product judgment, keep the challenger linked with \`supersedes\`. If its declared review protocol is \`incumbent-challenger-blind-ab-v1\`, record optional structured human comparison through the normal Review mutation. The human still explicitly supplies Review PASS/FAIL.
+
+See \`evaluation.md\`.
+
 ## Tool map
 
 | User intent | Preferred MCP tool | Notes |
