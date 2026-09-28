@@ -11,12 +11,6 @@ from typing import Any
 
 from project_policy import POLICY_PATH, ProjectPolicyError, policy_digest, validate_policy
 from protocol_core import (
-from trust_policy import (
-    WRITER_ENVIRONMENT,
-    WRITER_KEY_TITLE,
-    WRITER_SECRET,
-    validate_rulesets,
-)
     ASYNC_EXECUTION_ACTIONS,
     build_operation_payload,
     contract_descriptor,
@@ -24,6 +18,13 @@ from trust_policy import (
     encode_payload_b64,
     new_request_id,
     validate_request_id,
+)
+
+from trust_policy import (
+    WRITER_ENVIRONMENT,
+    WRITER_KEY_TITLE,
+    WRITER_SECRET,
+    validate_rulesets,
 )
 
 RUN_URL_RE = re.compile(r"/actions/runs/(\d+)(?:$|[/?#])")
