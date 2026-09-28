@@ -60,4 +60,6 @@ Develop and release from this repository only. Do not automatically synchronize 
 
 Before merging a release change, run core tests, MCP tests, and the standing Conformance suite. Human gates, protected Ledger authority, and Trusted Writer boundaries remain unchanged.
 
-Current version: `0.20.0`.
+v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
+
+Current version: `0.21.0`.

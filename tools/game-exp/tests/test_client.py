@@ -553,11 +553,12 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(FakeTransport()).experiment_template()
 
         self.assertEqual(result["status"], "PASS")
-        self.assertEqual(result["manifest_contract"]["current_schema_version"], 2)
+        self.assertEqual(result["manifest_contract"]["current_schema_version"], 3)
         self.assertEqual(
             result["manifest_contract"]["supported_schema_versions"],
-            [1, 2],
+            [1, 2, 3],
         )
+        self.assertEqual(result["manifest_contract"]["recommended_schema_version"], 2)
         self.assertEqual(result["project_policy"]["schema_version"], 2)
         self.assertEqual(result["project_policy"]["adapter"], "node-npm")
         self.assertEqual(
@@ -583,6 +584,9 @@ class ClientTests(unittest.TestCase):
             result["example_manifest"]["experiment"]["repository_id"],
             "1384446218",
         )
+        self.assertEqual(result["example_manifest"]["schema_version"], 2)
+        self.assertNotIn("evaluation_profile", result["example_manifest"])
+        self.assertFalse(result["defaults"]["evaluation_enabled"])
         self.assertFalse(result["example_manifest_bindable"])
         self.assertIn("不要搜索其他仓库", result["next_zh"])
         self.assertNotIn("toy2game", str(result))
@@ -1650,10 +1654,22 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(FakeTransport()).capabilities()
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["contract"]["version"], "1.0")
-        self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2])
+        self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2, 3])
         self.assertEqual(result["contract"]["recommended_manifest_schema_version"], 2)
+        self.assertEqual(result["contract"]["project_policy_schema_versions"], [1, 2, 3])
         self.assertTrue(result["features"]["self_describing_manifest"])
         self.assertTrue(result["features"]["manifest_schema_v2"])
+        self.assertTrue(result["features"]["manifest_schema_v3"])
+        self.assertTrue(result["features"]["evaluation_evidence_v1"])
+        evaluation = result["evaluation_evidence"]
+        self.assertEqual(evaluation["protocol_version"], 1)
+        self.assertEqual(
+            evaluation["screening_states"],
+            ["ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"],
+        )
+        self.assertFalse(evaluation["screening_changes_lifecycle"])
+        self.assertFalse(evaluation["persistent_comparison_set"])
+        self.assertEqual(evaluation["small_candidate_ranking"], "PAIRWISE_NO_ELO")
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v1"])

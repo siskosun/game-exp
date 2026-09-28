@@ -245,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--outcome", choices=("PASS", "FAIL"), required=True)
     review.add_argument("--notes", required=True)
     review.add_argument("--candidate-id")
+    review.add_argument("--comparison-json")
     review.add_argument("--request-id", required=True)
     review.add_argument("--actor-claim")
 
@@ -530,45 +531,21 @@ def main(argv: list[str] | None = None) -> int:
                 actor_claim=args.actor_claim,
             )
         elif args.command == "review":
-            candidate_id = args.candidate_id
-            if candidate_id is None:
-                projection = client.experiment_get(args.experiment_id)
-                if projection.get("status") != "PASS":
-                    result = projection
-                else:
-                    candidate_id = projection.get("state", {}).get("current_candidate_id")
-                    if not isinstance(candidate_id, str) or not candidate_id:
-                        result = {
-                            "status": "REJECTED",
-                            "repo": client.transport.repo,
-                            "experiment_id": args.experiment_id,
-                            "request_id": args.request_id,
-                            "error": "experiment has no current Candidate",
-                        }
-                    else:
-                        result = client.submit(
-                            operation="review.record",
-                            input_value={
-                                "experiment_id": args.experiment_id,
-                                "candidate_id": candidate_id,
-                                "outcome": args.outcome,
-                                "notes": args.notes,
-                            },
-                            actor_claim=args.actor_claim,
-                            request_id=args.request_id,
-                        )
-            else:
-                result = client.submit(
-                    operation="review.record",
-                    input_value={
-                        "experiment_id": args.experiment_id,
-                        "candidate_id": candidate_id,
-                        "outcome": args.outcome,
-                        "notes": args.notes,
-                    },
-                    actor_claim=args.actor_claim,
-                    request_id=args.request_id,
-                )
+            comparison = None
+            if args.comparison_json:
+                value = json.loads(args.comparison_json)
+                if not isinstance(value, dict):
+                    raise ValueError("--comparison-json must decode to an object")
+                comparison = value
+            result = client.review_record(
+                args.experiment_id,
+                candidate_id=args.candidate_id,
+                outcome=args.outcome,
+                notes=args.notes,
+                comparison=comparison,
+                actor_claim=args.actor_claim,
+                request_id=args.request_id,
+            )
         elif args.command == "decision":
             previous_decision_id = args.previous_decision_id
             if previous_decision_id is None:

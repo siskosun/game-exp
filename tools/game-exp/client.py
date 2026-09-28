@@ -1036,6 +1036,8 @@ class GameExpClient:
                 "complete_project_setup": True,
                 "self_describing_manifest": True,
                 "manifest_schema_v2": True,
+                "manifest_schema_v3": True,
+                "evaluation_evidence_v1": True,
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
@@ -1063,6 +1065,18 @@ class GameExpClient:
                     "previous_review_carries_forward": False,
                 },
                 "selected_or_terminal_work_reopens_automatically": False,
+            },
+            "evaluation_evidence": {
+                "protocol_version": 1,
+                "manifest_schema": 3,
+                "profile_schema": 1,
+                "profile_reference": "CONTENT_ADDRESSED",
+                "trusted_result_source": "TRUSTED_OBSERVED",
+                "screening_states": ["ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"],
+                "screening_changes_lifecycle": False,
+                "persistent_comparison_set": False,
+                "small_candidate_ranking": "PAIRWISE_NO_ELO",
+                "human_selection_authority": True,
             },
             "collaboration_coordination": {
                 "protocol_version": 2,
@@ -1157,6 +1171,8 @@ class GameExpClient:
             "policy_path": POLICY_PATH,
         }
         review = {"protocol": "manual-playtest-v1"}
+        evaluation_enabled = policy.get("schema_version") == 3
+        manifest_schema_version = 3 if evaluation_enabled else 2
         required_user_input = [
             "目标原型/主体",
             "想改什么",
@@ -1173,7 +1189,7 @@ class GameExpClient:
             "review.protocol",
         ]
         example_manifest = {
-            "schema_version": 2,
+            "schema_version": manifest_schema_version,
             "experiment": {
                 "host": "github.com",
                 "repository_id": access.get("repository_id") or "<resolve:repository_id>",
@@ -1200,6 +1216,17 @@ class GameExpClient:
                 "avoid": [],
             },
             "runtime": runtime,
+            **(
+                {
+                    "evaluation_profile": {
+                        "path": ".game-exp/evaluation-profiles/<draft:profile-id>.json",
+                        "digest": "<resolve:sha256 canonical profile digest>",
+                        "version": 1,
+                    }
+                }
+                if evaluation_enabled
+                else {}
+            ),
             "review": review,
             "created_at": "<generate:RFC3339 timestamp>",
         }
@@ -1208,10 +1235,11 @@ class GameExpClient:
             "status": "PASS",
             "repo": self.transport.repo,
             "manifest_contract": {
-                "current_schema_version": 2,
-                "supported_schema_versions": [1, 2],
-                "recommended_schema_version": 2,
+                "current_schema_version": 3,
+                "supported_schema_versions": [1, 2, 3],
+                "recommended_schema_version": manifest_schema_version,
                 "schema_v1_status": "legacy-compatible",
+                "schema_v2_status": "legacy-compatible",
                 "required_fields": [
                     "schema_version",
                     "experiment",
@@ -1226,7 +1254,7 @@ class GameExpClient:
                     "review",
                     "created_at",
                 ],
-                "optional_fields": ["subject", "relationships"],
+                "optional_fields": ["subject", "relationships", "evaluation_profile"],
                 "subject": {
                     "game_prototype_required_keys": [
                         "type",
@@ -1243,6 +1271,18 @@ class GameExpClient:
                 "relationships": {
                     "allowed_types": ["depends_on", "blocks", "supersedes"],
                     "target_format": "EXP-<number>",
+                },
+                "evaluation_profile_v1": {
+                    "schema_version": 3,
+                    "required_keys": ["path", "digest", "version"],
+                    "path_prefix": ".game-exp/evaluation-profiles/",
+                    "digest": "sha256:<64 lowercase hex>",
+                    "version": 1,
+                    "freeze_authority": "human_manifest_bind",
+                    "note_zh": (
+                        "评测定义按内容摘要绑定；修改后必须重建相关 Candidate，"
+                        "不能为了让某个原型过关而改判定标准。"
+                    ),
                 },
                 "runtime_v2": {
                     "required_keys": ["adapter", "policy_path"],
@@ -1261,7 +1301,7 @@ class GameExpClient:
                 "path": POLICY_PATH,
                 "digest": policy_digest(policy),
                 "schema_version": policy.get("schema_version"),
-                "recommended_schema_version": 2,
+                "recommended_schema_version": 3 if evaluation_enabled else 2,
                 "adapter": adapter,
                 "toolchain": policy.get("toolchain", {}),
                 "builtin_runner_setup": (
@@ -1274,6 +1314,7 @@ class GameExpClient:
                 "test": policy.get("test"),
                 "build": policy.get("build"),
                 "candidate": policy.get("candidate"),
+                "evaluation": policy.get("evaluation"),
                 "raw": policy,
                 "note_zh": (
                     "Node/npm 项目使用受信任的 Node 工具链设置；其他第二版适配器 "
@@ -1284,6 +1325,7 @@ class GameExpClient:
             "defaults": {
                 "runtime": runtime,
                 "review": review,
+                "evaluation_enabled": evaluation_enabled,
             },
             "required_user_input_zh": required_user_input,
             "agent_resolved_fields_zh": agent_resolved_fields,
@@ -1612,6 +1654,8 @@ class GameExpClient:
         notes: str,
         request_id: str,
         candidate_id: str | None = None,
+        comparison: dict[str, Any] | None = None,
+        actor_claim: str | None = None,
     ) -> dict[str, Any]:
         if candidate_id is None:
             projection = self.experiment_get(experiment_id)
@@ -1626,14 +1670,18 @@ class GameExpClient:
                     "request_id": request_id,
                     "error": "experiment has no current Candidate",
                 }
+        input_value: dict[str, Any] = {
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "outcome": outcome,
+            "notes": notes,
+        }
+        if comparison is not None:
+            input_value["comparison"] = comparison
         return self.submit(
             operation="review.record",
-            input_value={
-                "experiment_id": experiment_id,
-                "candidate_id": candidate_id,
-                "outcome": outcome,
-                "notes": notes,
-            },
+            input_value=input_value,
+            actor_claim=actor_claim,
             request_id=request_id,
         )
 
@@ -2944,6 +2992,14 @@ class GameExpClient:
                 binding=binding if isinstance(binding, dict) else None,
             )
 
+            candidate_id = state.get("current_candidate_id")
+            candidate = None
+            if isinstance(candidate_id, str) and candidate_id:
+                candidate = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                    ref=snapshot_head,
+                )
+
             review_id = state.get("current_review_id")
             review = None
             if isinstance(review_id, str) and review_id:
@@ -3028,6 +3084,44 @@ class GameExpClient:
                             }
                         )
 
+            candidate_evaluation = (
+                candidate.get("evaluation")
+                if isinstance(candidate, dict)
+                and isinstance(candidate.get("evaluation"), dict)
+                else None
+            )
+            evaluation_screening = (
+                candidate_evaluation.get("screening")
+                if isinstance(candidate_evaluation, dict)
+                else None
+            )
+            human_comparison_eligibility = (
+                evaluation_screening
+                if evaluation_screening
+                in {"ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"}
+                else "UNKNOWN"
+            )
+            evaluation_summary_zh = {
+                "ELIGIBLE": "可信筛查通过，可进入人工比较",
+                "INELIGIBLE": "可信筛查发现必要条件缺陷，不建议进入人工比较",
+                "INCONCLUSIVE": "筛查证据不足，暂不能判断是否适合人工比较",
+                "UNKNOWN": "尚无可用的可信筛查结果",
+            }[human_comparison_eligibility]
+            review_comparison = (
+                review.get("comparison")
+                if isinstance(review, dict)
+                and isinstance(review.get("comparison"), dict)
+                else None
+            )
+            incumbent_experiment_id = next(
+                (
+                    relation.get("experiment_id")
+                    for relation in relationships_outgoing
+                    if relation.get("type") == "supersedes"
+                ),
+                None,
+            )
+
             item = {
                 "repository": self.transport.repo,
                 "repository_name": self.transport.repo.split("/", 1)[-1],
@@ -3056,8 +3150,18 @@ class GameExpClient:
                 "latest_activity": activity[-1] if activity else None,
                 "lifecycle": lifecycle,
                 "display": display,
-                "candidate_id": state.get("current_candidate_id"),
+                "candidate_id": candidate_id,
+                "candidate_evaluation": candidate_evaluation,
+                "evaluation_profile_digest": (
+                    candidate_evaluation.get("profile_digest")
+                    if isinstance(candidate_evaluation, dict)
+                    else None
+                ),
+                "eligible_for_human_comparison": human_comparison_eligibility,
+                "evaluation_summary_zh": evaluation_summary_zh,
+                "incumbent_experiment_id": incumbent_experiment_id,
                 "review_id": review_id,
+                "review_comparison": review_comparison,
                 "review_outcome": (
                     review.get("outcome") if isinstance(review, dict) else None
                 ),
@@ -3096,6 +3200,25 @@ class GameExpClient:
             )
 
         by_id = {item["experiment_id"]: item for item in items}
+        for item in items:
+            incumbent_id = item.get("incumbent_experiment_id")
+            incumbent = by_id.get(incumbent_id) if isinstance(incumbent_id, str) else None
+            if incumbent is not None:
+                item["incumbent_comparison"] = {
+                    "incumbent_experiment_id": incumbent_id,
+                    "incumbent_candidate_id": incumbent.get("candidate_id"),
+                    "challenger_experiment_id": item.get("experiment_id"),
+                    "challenger_candidate_id": item.get("candidate_id"),
+                    "profile_digest": item.get("evaluation_profile_digest"),
+                    "challenger_eligibility": item.get(
+                        "eligible_for_human_comparison"
+                    ),
+                    "human_comparison": item.get("review_comparison"),
+                    "source": "derived_from_relationship_candidate_and_review",
+                }
+            else:
+                item["incumbent_comparison"] = None
+
         relationship_edges: list[dict[str, Any]] = []
         for item in items:
             source_id = item["experiment_id"]
@@ -4346,7 +4469,14 @@ class GameExpClient:
                 "base_tag_ref": row.get("base_tag_ref"),
                 "final_tag_ref": row.get("final_tag_ref"),
                 "candidate_id": row.get("candidate_id"),
+                "candidate_evaluation": row.get("candidate_evaluation"),
+                "eligible_for_human_comparison": row.get(
+                    "eligible_for_human_comparison"
+                ),
+                "evaluation_summary_zh": row.get("evaluation_summary_zh"),
+                "incumbent_comparison": row.get("incumbent_comparison"),
                 "review_id": row.get("review_id"),
+                "review_comparison": row.get("review_comparison"),
                 "review_outcome": row.get("review_outcome"),
                 "rehearsal_id": row.get("rehearsal_id"),
                 "integration_id": row.get("integration_id"),
@@ -4356,6 +4486,25 @@ class GameExpClient:
                 "title_zh": "代码与记录",
                 "rows_zh": [
                     {"key": "candidate_id", "label": "候选版本", "value": row.get("candidate_id")},
+                    {
+                        "key": "evaluation",
+                        "label": "可信筛查",
+                        "value": row.get("evaluation_summary_zh"),
+                    },
+                    {
+                        "key": "comparison",
+                        "label": "现任 / 挑战者比较",
+                        "value": (
+                            "已记录人工盲测"
+                            if isinstance(row.get("review_comparison"), dict)
+                            else (
+                                "待人工比较"
+                                if row.get("incumbent_comparison") is not None
+                                and row.get("eligible_for_human_comparison") == "ELIGIBLE"
+                                else None
+                            )
+                        ),
+                    },
                     {
                         "key": "review_id",
                         "label": "人工评审",

@@ -459,6 +459,7 @@ def game_exp_review_record(
     notes: str,
     request_id: str,
     candidate_id: str | None = None,
+    comparison: dict[str, Any] | None = None,
     actor_claim: str | None = None,
     repo: str | None = None,
 ) -> dict[str, Any]:
@@ -480,14 +481,12 @@ def game_exp_review_record(
                 "request_id": request_id,
                 "error": "experiment has no current Candidate",
             }
-    return client.submit(
-        operation="review.record",
-        input_value={
-            "experiment_id": experiment_id,
-            "candidate_id": candidate_id,
-            "outcome": outcome,
-            "notes": notes,
-        },
+    return client.review_record(
+        experiment_id,
+        candidate_id=candidate_id,
+        outcome=outcome,
+        notes=notes,
+        comparison=comparison,
         actor_claim=actor_claim,
         request_id=request_id,
     )

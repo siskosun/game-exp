@@ -33,9 +33,12 @@ Use `game_exp_experiment_template` or CLI `experiment-template` to read:
 - the recommended Manifest schema version;
 - the runtime shape derived from that project policy;
 - the default human review protocol;
+- Evaluation Profile requirements when project policy v3 enables them;
 - which fields are user-owned versus resolved by the Agent.
 
-Manifest schema v2 is recommended. Its runtime block is generic and repository-policy based:
+Manifest schema v2 remains the recommended generic runtime contract for project-policy schema v1/v2 repositories. Manifest schema v3 is recommended when project-policy schema v3 enables Evaluation Evidence v1.
+
+Both v2 and v3 use the generic repository-policy runtime shape:
 
 ```json
 {
@@ -46,41 +49,57 @@ Manifest schema v2 is recommended. Its runtime block is generic and repository-p
 }
 ```
 
-The adapter value comes from the current repository project policy. Future project-policy adapters can reuse the same Manifest v2 runtime shape.
+Schema v3 additionally requires one content-addressed Evaluation Profile reference:
 
-Manifest schema v1 remains accepted for existing experiments and uses the legacy Godot-specific runtime object. New experiments should not emit Godot placeholder fields for non-Godot repositories.
+```json
+{
+  "evaluation_profile": {
+    "path": ".game-exp/evaluation-profiles/profile-id.json",
+    "digest": "sha256:<64 lowercase hex>",
+    "version": 1
+  }
+}
+```
 
-The example Manifest returned by `experiment-template` contains unresolved placeholders and is explicitly non-bindable. The Agent must resolve the real Issue identity, parent SHA, stable operation id, scope, subject and timestamp before Bind.
+The adapter value comes from the current repository project policy. Manifest schema v1 remains accepted for existing experiments and uses the legacy Godot-specific runtime object. New experiments should not emit Godot placeholder fields for non-Godot repositories.
+
+The example Manifest returned by `experiment-template` contains unresolved placeholders and is explicitly non-bindable. The Agent must resolve the real Issue identity, parent SHA, stable operation id, scope, subject, timestamp and, for schema v3, the exact Profile digest before Bind.
 
 ## Project policy schema
 
 Project validation policy is repository-local and independent from Manifest schema.
 
 - Project policy schema v1 remains compatible and is limited to the legacy `node-npm` shape.
-- Project policy schema v2 is recommended. It keeps install/test/build as argv arrays and makes the adapter generic.
-- For `node-npm`, schema v2 requires an exact `toolchain.node_version`. Trusted Candidate/Rehearsal workflows use that value with `actions/setup-node`; they no longer require a repository `.node-version` file.
-- For adapters other than `node-npm`, `toolchain` is currently empty and game-exp performs no implicit runtime installation. The declared install/test/build argv commands must therefore be self-contained on the trusted `ubuntu-latest` runner.
+- Project policy schema v2 keeps install/test/build as argv arrays and makes the adapter generic.
+- Project policy schema v3 adds one protected `evaluation` argv command plus the fixed `.game-exp/evaluation-output` directory. Use it only when the repository is ready to participate in Evaluation Evidence v1.
+- The evaluation argv must execute a runner from `control/.game-exp/evaluation/`, checked out from the protected workflow source rather than the experiment branch.
+- For `node-npm`, schema v2/v3 requires an exact `toolchain.node_version`. Trusted workflows use that value with `actions/setup-node`; they no longer require a repository `.node-version` file.
+- For adapters other than `node-npm`, `toolchain` is currently empty and game-exp performs no implicit runtime installation. Declared argv commands must be self-contained on the trusted `ubuntu-latest` runner.
 
-Example Node/npm policy:
+Bootstrap must not guess Node/npm for an unknown repository type. Existing v1/v2 repositories remain valid and are not automatically upgraded to evaluation-enabled v3.
 
-```json
-{
-  "schema_version": 2,
-  "adapter": "node-npm",
-  "toolchain": {"node_version": "22.21.1"},
-  "install": {"argv": ["npm", "ci"]},
-  "test": {"argv": ["npm", "test"]},
-  "build": {"argv": ["npm", "run", "build"]},
-  "candidate": {
-    "include": ["dist"],
-    "required_paths": ["dist/index.html"]
-  }
-}
-```
+## Evaluation Evidence v1
 
-Bootstrap must not guess Node/npm for an unknown repository type. It auto-generates a Node/npm policy only when a locked Node project is detected (`package.json` plus `package-lock.json` or `npm-shrinkwrap.json`). Otherwise an explicit valid `.game-exp/project-policy.json` is required before installation can continue.
+Evaluation Evidence v1 is opt-in through project-policy schema v3 and Manifest schema v3.
 
-This fail-closed behavior prevents a clean Godot, Python, or other repository from silently receiving an incorrect Node/npm validation policy.
+The Profile is content-addressed and frozen by the human-authorized Manifest Bind. The Candidate workflow:
+
+1. fetches the Profile from the exact Candidate source commit;
+2. recomputes its digest;
+3. removes the fixed evaluation output directory;
+4. runs the repository-declared evaluation argv command;
+5. packages its fresh output;
+6. independently validates the output in a trusted job without experiment source checkout;
+7. recomputes referenced evidence digests;
+8. stores only compact trusted summaries/digests in Ledger while retaining larger bytes in the immutable Candidate release.
+
+Screening is exactly `ELIGIBLE | INELIGIBLE | INCONCLUSIVE`. It never mutates lifecycle.
+
+`PARTICIPANT_REPORTED` exploration cannot by itself create trusted PASS/FAIL. `HUMAN_REPORTED` A/B preference is recorded through the existing Review authority path and remains distinct from `TRUSTED_OBSERVED` machine evidence.
+
+v1 introduces no persistent Comparison Set. One challenger compares with the current Candidate of its `supersedes` incumbent. Structured blind A/B comparison is optional Review evidence only when the Manifest review protocol is `incumbent-challenger-blind-ab-v1`.
+
+See `evaluation.md`.
 
 ## Board presentation contract
 

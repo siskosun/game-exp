@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.20.0")
+        self.assertEqual(manifest["version"], "0.21.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -560,6 +560,35 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_plugin_contains_exactly_one_skill_entrypoint(self):
         entrypoints = list(PLUGIN.glob("skills/**/SKILL.md"))
         self.assertEqual(entrypoints, [SKILL])
+
+
+    def test_evaluation_evidence_contract_preserves_human_authority(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        evaluation = (
+            PLUGIN / "skills" / "game-exp" / "references" / "evaluation.md"
+        ).read_text(encoding="utf-8")
+        for phrase in (
+            "## Evaluation Evidence v1",
+            "project-policy schema v3",
+            "explicit confirmation before Bind",
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "INCONCLUSIVE",
+            "incumbent-challenger-blind-ab-v1",
+            "Do not add Elo",
+        ):
+            self.assertIn(phrase, skill)
+        for phrase in (
+            "content-addressed Evaluation Profile",
+            "clean evaluation boundary",
+            "TRUSTED_OBSERVED",
+            "PARTICIPANT_REPORTED",
+            "HUMAN_REPORTED",
+            "No authoritative Comparison Set object",
+            "Screening is evidence only",
+            "human FAIL Review / REJECTED",
+        ):
+            self.assertIn(phrase, evaluation)
 
 
 if __name__ == "__main__":

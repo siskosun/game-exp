@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "game-exp",
-  "version": "0.20.0",
-  "description": "Harness-neutral trusted game experiment workflow with complete repository trust setup, self-describing Manifest v2, project-policy v2, first-class abandonment semantics, Harness-isolated install/upgrade, rich cross-Harness Board status, cross-interface recovery, conformance simulation, resumable collaboration notifications, portable implementation handoffs, and protected human gates.",
+  "version": "0.21.0",
+  "description": "Harness-neutral trusted game experiment workflow with Evaluation Evidence v1, content-addressed Evaluation Profiles, trusted Candidate replay/check evidence, incumbent/challenger human comparison, resumable collaboration, Harness-isolated install/upgrade, protected Ledger authority, and human lifecycle gates.",
   "repository": "https://github.com/siskosun/game-exp",
   "keywords": [
     "game-development",
@@ -17,7 +17,7 @@
       "interface": {
         "displayName": "game-exp",
         "shortDescription": "独立仓库 + Harness隔离升级 + 可信实验控制",
-        "longDescription": "Create PROJECT_READY repositories without guessing the project runtime, expose repository-local Manifest v2 and project-policy v2 contracts, then provide consistent readiness, access, trust checks, statistics and onboarding across Harnesses before managing experiments through the versioned MCP/CLI/GitHub-Bridge contract.",
+        "longDescription": "Create PROJECT_READY repositories, expose Manifest v3 / project-policy v3 evaluation contracts when enabled, bind trusted Candidate evidence to frozen artifacts, surface tri-state human-comparison eligibility and incumbent/challenger human annotations, and preserve the same protected lifecycle authority across MCP, CLI and GitHub Bridge.",
         "developerName": "game-exp",
         "category": "Productivity",
         "capabilities": [

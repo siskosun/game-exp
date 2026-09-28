@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -417,9 +418,13 @@ def resolve_trusted_candidate(
         "retention",
         "attestation",
     }
-    if set(value) != required:
+    optional = {"evaluation"}
+    missing = required - set(value)
+    extra = set(value) - required - optional
+    if missing or extra:
         raise DomainError(
-            "trusted Candidate context keys mismatch",
+            "trusted Candidate context keys mismatch; "
+            f"missing={sorted(missing)} extra={sorted(extra)}",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
     if not isinstance(value["checks"], list):
@@ -430,6 +435,11 @@ def resolve_trusted_candidate(
     if not isinstance(value["retention"], dict) or not isinstance(value["attestation"], dict):
         raise DomainError(
             "trusted Candidate retention/attestation must be objects",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if "evaluation" in value and not isinstance(value["evaluation"], dict):
+        raise DomainError(
+            "trusted Candidate evaluation must be an object",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
     experiment_id = str(value["experiment_id"])
@@ -474,6 +484,11 @@ def resolve_trusted_candidate(
         checks=tuple(value["checks"]),
         retention=dict(value["retention"]),
         attestation=dict(value["attestation"]),
+        evaluation=(
+            dict(value["evaluation"])
+            if isinstance(value.get("evaluation"), dict)
+            else None
+        ),
     )
 
 
@@ -1226,6 +1241,50 @@ def resolve_trusted_binding(repo: str, payload: dict) -> TrustedBindingContext |
             f"trusted commit resolver returned {resolved_sha!r}, expected {parent_sha!r}",
             code="DOMAIN_PARENT_CONFLICT",
         )
+
+    evaluation_profile = manifest.get("evaluation_profile")
+    if isinstance(evaluation_profile, dict):
+        profile_path = str(evaluation_profile["path"])
+        encoded_path = "/".join(
+            urllib.parse.quote(part, safe="") for part in profile_path.split("/")
+        )
+        try:
+            profile_meta = github_json(
+                repo,
+                "/contents/"
+                + encoded_path
+                + "?ref="
+                + urllib.parse.quote(parent_sha, safe=""),
+            )
+            encoded_content = profile_meta.get("content")
+            if profile_meta.get("encoding") != "base64" or not isinstance(
+                encoded_content, str
+            ):
+                raise ValueError("GitHub content response is not base64")
+            profile_value = json.loads(
+                base64.b64decode(encoded_content).decode("utf-8")
+            )
+        except Exception as exc:
+            raise DomainError(
+                f"cannot resolve Evaluation Profile at bound parent: {exc}",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            ) from exc
+        if not isinstance(profile_value, dict):
+            raise DomainError(
+                "Evaluation Profile must be a JSON object",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
+        if profile_value.get("schema_version") != evaluation_profile.get("version"):
+            raise DomainError(
+                "Evaluation Profile schema_version differs from Manifest reference",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
+        actual_profile_digest = digest_object(profile_value)
+        if actual_profile_digest != evaluation_profile.get("digest"):
+            raise DomainError(
+                "Evaluation Profile digest differs from Manifest reference",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
 
     return TrustedBindingContext(
         host="github.com",
