@@ -6,7 +6,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from client import ClientError, GameExpClient, GitHubTransport
+from client import (
+    ClientError,
+    GameExpClient,
+    GitHubTransport,
+    TransportUncertainError,
+)
 from conformance_core import (
     ConformanceClient,
     aggregate as conformance_aggregate,
@@ -621,6 +626,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ap.error("unknown command")
             return 2
+    except TransportUncertainError as exc:
+        result = {
+            "status": "UNKNOWN",
+            "code": "TRANSPORT_UNCERTAIN",
+            "error": str(exc),
+            "retryable": True,
+        }
+        _print_result(result, as_json=args.json)
+        return 1
     except (ProtocolError, ClientError, OSError, ValueError, json.JSONDecodeError) as exc:
         result = {
             "status": "REJECTED",
