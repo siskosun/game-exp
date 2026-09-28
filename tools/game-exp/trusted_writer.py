@@ -371,7 +371,9 @@ def resolve_trusted_archive(
 
 
 def resolve_trusted_candidate(
+    repo: str,
     payload: dict,
+    repo_dir: Path,
     *,
     authority: str,
     context_path: str | None,
@@ -429,10 +431,39 @@ def resolve_trusted_candidate(
             "trusted Candidate retention/attestation must be objects",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
+    experiment_id = str(value["experiment_id"])
+    binding = _ledger_object(
+        repo_dir,
+        f"experiments/{experiment_id}/binding.json",
+        where=experiment_id,
+    )
+    initialization = binding.get("initialization")
+    branch_ref = initialization.get("branch_ref") if isinstance(initialization, dict) else None
+    if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+        raise DomainError(
+            "trusted Candidate canonical branch is unavailable",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+    branch_name = branch_ref.removeprefix("refs/heads/")
+    branch_data = github_json(
+        repo,
+        "/git/ref/heads/" + "/".join(
+            urllib.parse.quote(part, safe="") for part in branch_name.split("/")
+        ),
+    )
+    obj = branch_data.get("object") if isinstance(branch_data, dict) else None
+    current_branch_sha = obj.get("sha") if isinstance(obj, dict) else None
+    if not isinstance(current_branch_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", current_branch_sha):
+        raise DomainError(
+            "trusted Candidate canonical branch head is invalid",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+
     return TrustedCandidateContext(
         experiment_id=str(value["experiment_id"]),
         candidate_id=str(value["candidate_id"]),
         source_sha=str(value["source_sha"]),
+        current_branch_sha=current_branch_sha,
         manifest_digest=str(value["manifest_digest"]),
         artifact_digest=str(value["artifact_digest"]),
         policy_digest=str(value["policy_digest"]),
@@ -1310,7 +1341,9 @@ def main() -> int:
         trusted_work = resolve_trusted_work(args.repo, payload, repo_dir)
         trusted_execution = resolve_trusted_execution(args.repo, payload, repo_dir)
         trusted_candidate = resolve_trusted_candidate(
+            args.repo,
             payload,
+            repo_dir,
             authority=args.authority,
             context_path=args.trusted_context_json,
         )
