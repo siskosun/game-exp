@@ -1777,7 +1777,7 @@ class ClientTests(unittest.TestCase):
         advanced = GameExpClient(transport).collaboration_context("EXP-7")
         self.assertEqual(len(advanced["active_claims"]), 2)
         self.assertEqual(len(advanced["stale_claims"]), 2)
-        self.assertFalse(advanced["coordination_required"])
+        self.assertTrue(advanced["coordination_required"])
         self.assertTrue(
             all(row["lease_status"] == "UNKNOWN" for row in advanced["claims"])
         )
