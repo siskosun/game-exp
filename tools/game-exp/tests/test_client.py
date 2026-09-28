@@ -1579,6 +1579,8 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["self_describing_manifest"])
         self.assertTrue(result["features"]["manifest_schema_v2"])
         self.assertTrue(result["features"]["board_presentation_v3"])
+        self.assertTrue(result["features"]["board_presentation_v4"])
+        self.assertTrue(result["features"]["strict_chinese_board_copy"])
         self.assertTrue(result["features"]["natural_chinese_board"])
         self.assertIn("experiment_template", result["queries"])
         self.assertTrue(result["recovery"]["cross_interface"])
