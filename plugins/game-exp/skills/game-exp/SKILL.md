@@ -161,7 +161,7 @@ Before editing source for an existing experiment, read `game_exp_collaboration_c
 - If current claims overlap, tell the user/other executor what overlaps. The overlap is advisory, not a lock. Prefer an isolated workspace/worktree for concurrent work, then merge and verify.
 - Never spawn additional Agents merely because a claim overlaps. game-exp coordinates principals; it does not decide to create a swarm.
 - On cross-Harness continuation, treat the protected collaboration context and canonical branch SHA as current execution state. Do not treat a transferred chat transcript or local memory as authority.
-- After the implementation is represented by the canonical experiment branch, release the claim as `COMPLETED` with that current source SHA. If work is intentionally dropped, release it as `ABANDONED`.
+- After the implementation is represented by the canonical experiment branch, release the claim through `game_exp_work_release` as `COMPLETED` with that current source SHA. If work is intentionally dropped, use `game_exp_work_release` with `ABANDONED`.
 - Work claims do not authorize Review, PROMISING, SELECTED, merge, Archive, or any other human gate.
 
 ## Prototype implementation handoff
