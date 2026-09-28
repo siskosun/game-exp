@@ -1022,17 +1022,22 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(transport).board()
         display = result["display"]
 
+        self.assertEqual(result["presentation"]["contract_version"], 4)
+        self.assertEqual(result["presentation"]["primary"], "display")
         self.assertEqual(
-            result["presentation"],
-            {
-                "primary": "display",
-                "locale": "zh-CN",
-                "copy_is_ready_to_render": True,
-                "raw_fields_are_diagnostics": True,
-            },
+            result["presentation"]["primary_text_path"],
+            "display.summary_text_zh",
+        )
+        self.assertEqual(result["presentation"]["locale"], "zh-CN")
+        self.assertTrue(result["presentation"]["copy_is_ready_to_render"])
+        self.assertTrue(result["presentation"]["strict_primary_copy"])
+        self.assertTrue(result["presentation"]["raw_fields_are_diagnostics"])
+        self.assertEqual(
+            result["presentation"]["forbidden_primary_tokens"],
+            display["render_contract"]["forbidden_primary_tokens"],
         )
         self.assertEqual(display["locale"], "zh-CN")
-        self.assertEqual(display["presentation_version"], 3)
+        self.assertEqual(display["presentation_version"], 4)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
         self.assertEqual(
             [row["label"] for row in display["rows_zh"]],
@@ -1059,17 +1064,29 @@ class ClientTests(unittest.TestCase):
         self.assertIn("可信写入部署密钥：正常", display["trust_summary_zh"])
         self.assertIn("可信写入私钥：正常", display["trust_summary_zh"])
         self.assertIn("发布保护：正常", display["trust_summary_zh"])
+        render_contract = display["render_contract"]
+        self.assertEqual(render_contract["primary_copy"], "display")
         self.assertEqual(
-            display["render_contract"],
-            {
-                "primary_copy": "display",
-                "summary_rows": "display.rows_zh",
-                "trust_summary": "display.trust_summary_zh",
-                "raw_fields": "logic_only",
-                "machine_codes": "diagnostics_only",
-                "translate_machine_keys": False,
-            },
+            render_contract["primary_text"],
+            "display.summary_text_zh",
         )
+        self.assertEqual(
+            render_contract["summary_rows"],
+            "display.rows_zh",
+        )
+        self.assertEqual(
+            render_contract["trust_summary"],
+            "display.trust_summary_zh",
+        )
+        self.assertEqual(render_contract["raw_fields"], "logic_only")
+        self.assertEqual(render_contract["machine_codes"], "diagnostics_only")
+        self.assertFalse(render_contract["translate_machine_keys"])
+        self.assertTrue(render_contract["strict_primary_copy"])
+        self.assertIn("医生检查", render_contract["forbidden_primary_tokens"])
+        self.assertIn("PROJECT_READY", render_contract["forbidden_primary_tokens"])
+        self.assertIn("PASS", render_contract["forbidden_primary_tokens"])
+        self.assertEqual(display["terminology_zh"]["doctor"], "仓库检查")
+        self.assertEqual(display["terminology_zh"]["ledger"], "实验记录")
         self.assertEqual(
             display["trust_checks_zh"][0],
             {"label": "实验记录", "value": "正常"},
@@ -1086,17 +1103,7 @@ class ClientTests(unittest.TestCase):
                 display["summary_text_zh"],
             ]
         )
-        for forbidden in (
-            "Doctor",
-            "医生检查",
-            "PROJECT_READY",
-            "ADMIN",
-            "WRITE",
-            "PASS",
-            "Deploy Key",
-            "Secret",
-            "Ledger",
-        ):
+        for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
             self.assertNotIn(forbidden, visible)
 
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
@@ -1115,6 +1122,20 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["onboarding"]["active"])
         self.assertEqual(result["onboarding"]["progress"], "1/6")
         self.assertEqual(result["onboarding"]["title_zh"], "连接检查")
+        display = result["display"]
+        self.assertEqual(
+            display["rows_zh"][1]["value"],
+            "项目未就绪 · 仓库检查：异常",
+        )
+        visible = "\n".join(
+            [
+                display["summary_text_zh"],
+                display["trust_summary_zh"],
+                *(f"{row['label']}：{row['value']}" for row in display["rows_zh"]),
+            ]
+        )
+        for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
+            self.assertNotIn(forbidden, visible)
 
     def test_board_marks_archive_lock_as_recovery_gate(self):
         transport = FakeTransport()
