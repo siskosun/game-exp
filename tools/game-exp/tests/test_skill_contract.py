@@ -580,7 +580,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, skill)
         for phrase in (
             "content-addressed Evaluation Profile",
-            "trusted clean",
+            "clean evaluation boundary",
             "TRUSTED_OBSERVED",
             "PARTICIPANT_REPORTED",
             "HUMAN_REPORTED",
