@@ -279,6 +279,19 @@ def game_exp_subject_panel(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+def game_exp_collaboration_context(
+    experiment_id: str,
+    repo: str | None = None,
+    observed_source_sha: str | None = None,
+) -> dict[str, Any]:
+    """Return current branch, active work intents, sync state and overlap conflicts."""
+    return _client(repo).collaboration_context(
+        experiment_id,
+        observed_source_sha=observed_source_sha,
+    )
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_prototype_handoff(
     experiment_id: str,
     repo: str | None = None,
@@ -303,6 +316,62 @@ def game_exp_notifications(
         limit=limit,
         after=after,
         cursor=cursor,
+    )
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+def game_exp_work_claim(
+    experiment_id: str,
+    base_source_sha: str,
+    summary: str,
+    paths: list[str],
+    harness: str,
+    agent: str,
+    request_id: str,
+    session_id: str | None = None,
+    actor_claim: str | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
+    """Declare one protected source-editing intent before modifying an experiment."""
+    blocked = _write_identity_rejection(repo)
+    if blocked is not None:
+        return blocked
+    return _client(repo).work_claim(
+        experiment_id,
+        base_source_sha=base_source_sha,
+        summary=summary,
+        paths=paths,
+        harness=harness,
+        agent=agent,
+        session_id=session_id,
+        actor_claim=actor_claim,
+        request_id=request_id,
+    )
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+def game_exp_work_release(
+    experiment_id: str,
+    claim_id: str,
+    outcome: str,
+    notes: str,
+    request_id: str,
+    result_source_sha: str | None = None,
+    actor_claim: str | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
+    """Release one protected work intent after integration or abandonment."""
+    blocked = _write_identity_rejection(repo)
+    if blocked is not None:
+        return blocked
+    return _client(repo).work_release(
+        experiment_id,
+        claim_id=claim_id,
+        outcome=outcome,
+        notes=notes,
+        result_source_sha=result_source_sha,
+        actor_claim=actor_claim,
+        request_id=request_id,
     )
 
 
