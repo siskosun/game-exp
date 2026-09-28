@@ -94,6 +94,9 @@ class GameExpSkillContractTests(unittest.TestCase):
             "game_exp_experiment_template",
             "game_exp_notifications",
             "game_exp_prototype_handoff",
+            "game_exp_collaboration_context",
+            "game_exp_work_claim",
+            "game_exp_work_release",
             "game_exp_board",
             "game_exp_experiment_panel",
             "game_exp_subject_panel",
@@ -431,6 +434,57 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Lifecycle alone is insufficient",
         ):
             self.assertIn(phrase, board)
+
+    def test_collaboration_coordination_is_explicit_state_not_agent_chat(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        workflow = (
+            PLUGIN / "skills" / "game-exp" / "references" / "workflow.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+        collaboration = (
+            PLUGIN / "skills" / "game-exp" / "references" / "collaboration.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "## Collaboration preflight for source work",
+            "game_exp_collaboration_context",
+            "game_exp_work_claim",
+            "game_exp_work_release",
+            "does not require an extra user confirmation",
+            "Never spawn additional Agents merely because a claim overlaps",
+            "protected collaboration context and canonical branch SHA as current execution state",
+        ):
+            self.assertIn(phrase, skill)
+
+        for phrase in (
+            "## Collaboration coordination",
+            "\`STALE\`: synchronize before source edits",
+            "Scope overlap is surfaced but not hard-locked",
+        ):
+            self.assertIn(phrase, workflow)
+
+        for phrase in (
+            "Collaboration coordination contract v1",
+            "features.collaboration_coordination_v1=true",
+            "WORK_SCOPE_OVERLAP",
+            "blocking=false",
+            "Chat transcripts",
+        ):
+            self.assertIn(phrase, contract)
+
+        for phrase in (
+            "out-of-sync",
+            "not a hard lock",
+            "explicit execution-state handoff",
+            "CAID",
+            "SyncMind",
+            "CooperBench",
+            "Claim Plane",
+            "does **not** add CRDT editing",
+        ):
+            self.assertIn(phrase, collaboration)
 
     def test_iteration_routing_defaults_to_revision_without_silent_new_experiment(self):
         skill = SKILL.read_text(encoding="utf-8")
