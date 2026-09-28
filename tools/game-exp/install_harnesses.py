@@ -295,14 +295,17 @@ class HarnessInstaller:
                 dst = stage / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
+            source_digest = _managed_digest(self.source_root)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
             (stage / "INSTALL_SOURCE.json").write_text(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "source": CANONICAL_SOURCE,
                         "version": self.version,
                         "harness": self.harness,
+                        "source_digest": source_digest,
+                        "digest_algorithm": "sha256-managed-runtime-v1",
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -329,13 +332,19 @@ class HarnessInstaller:
         provenance = json.loads(
             (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
         )
+        expected_digest = _managed_digest(self.source_root)
+        actual_digest = _managed_digest(root)
         if provenance != {
-            "schema_version": 1,
+            "schema_version": 2,
             "source": CANONICAL_SOURCE,
             "version": self.version,
             "harness": self.harness,
+            "source_digest": expected_digest,
+            "digest_algorithm": "sha256-managed-runtime-v1",
         }:
             raise HarnessInstallError("staged install provenance mismatch")
+        if actual_digest != expected_digest:
+            raise HarnessInstallError("staged managed-runtime digest mismatch")
         icon = root / "plugins" / "game-exp" / "skills" / "game-exp" / "assets" / "icon.svg"
         raw = icon.read_bytes()
         if len(raw) < 64 or b"<svg" not in raw[:512].lower():
