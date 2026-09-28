@@ -282,11 +282,40 @@ jobs:
           sparse-checkout: |
             tools/game-exp/project_policy.py
             tools/game-exp/protocol_core.py
+            tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v5
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/download-artifact@v5
+        if: needs.resolve.outputs.evaluation_enabled == 'true'
+        with:
+          name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Verify trusted evaluation evidence without source checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVALUATION_ENABLED: ${{ needs.resolve.outputs.evaluation_enabled }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          PROFILE_PATH: ${{ needs.resolve.outputs.evaluation_profile_path }}
+          PROFILE_DIGEST: ${{ needs.resolve.outputs.evaluation_profile_digest }}
+        run: |
+          set -euo pipefail
+          if [ "$EVALUATION_ENABLED" = "true" ]; then
+            mkdir -p "$RUNNER_TEMP/evaluation-observe"
+            gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/$PROFILE_PATH?ref=$SOURCE_SHA" \
+              > "$RUNNER_TEMP/evaluation-observe/profile.json"
+            PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py observe \
+              "$RUNNER_TEMP/evaluation-observe/profile.json" \
+              evaluation-output.tgz \
+              --source-sha "$SOURCE_SHA" \
+              --expected-profile-digest "$PROFILE_DIGEST" \
+              --work-dir "$RUNNER_TEMP/evaluation-verify" \
+              --summary-out trusted-evaluation-summary.json
+          else
+            printf '{"enabled":false}\n' > trusted-evaluation-summary.json
+          fi
       - name: Observe artifact without source checkout
         shell: bash
         run: |
@@ -300,6 +329,7 @@ jobs:
           path: |
             artifact-files.txt
             observer.json
+            trusted-evaluation-summary.json
           retention-days: 30
 
   attest-retain-register:
