@@ -73,6 +73,7 @@ jobs:
           path: control
           sparse-checkout: |
             tools/game-exp/integration_control.py
+            tools/game-exp/execution_guard.py
             tools/game-exp/protocol_core.py
           sparse-checkout-cone-mode: false
 
@@ -80,6 +81,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Validate protected execution claim
+        id: claim
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python control/tools/game-exp/execution_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --action "integrate" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --request-id "${{ inputs.request_id }}" \
+            --github-output "$GITHUB_OUTPUT"
       - name: Resolve selected Rehearsal and current main
         id: prepare
         shell: bash
@@ -88,7 +100,7 @@ jobs:
           EXPERIMENT_ID: ${{ inputs.experiment_id }}
         run: |
           set -euo pipefail
-          python control/tools/game-exp/integration_control.py prepare             --repo "$GITHUB_REPOSITORY"             --experiment-id "$EXPERIMENT_ID"             | tee "$RUNNER_TEMP/integration-prepare.json"
+          python control/tools/game-exp/integration_control.py prepare             --repo "$GITHUB_REPOSITORY"             --experiment-id "$EXPERIMENT_ID"             --expected-candidate-id "${{ steps.claim.outputs.candidate_id }}"             --expected-rehearsal-id "${{ steps.claim.outputs.rehearsal_id }}"             --expected-main-sha "${{ steps.claim.outputs.main_sha }}"             | tee "$RUNNER_TEMP/integration-prepare.json"
           python - "$RUNNER_TEMP/integration-prepare.json" "$GITHUB_OUTPUT" <<'PY'
           import json, pathlib, sys
           x=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()[-1])
