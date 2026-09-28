@@ -12,6 +12,11 @@ import uuid
 from typing import Any
 
 from bootstrap import _managed_paths
+from companion_skills import (
+    CompanionSkillSyncError,
+    CompanionSkillSynchronizer,
+    companion_targets,
+)
 
 
 class HarnessInstallError(RuntimeError):
@@ -353,6 +358,8 @@ class HarnessInstaller:
             "install_state": state,
             "runtime_dir": str(self.runtime_dir),
             "would_update_other_harnesses": False,
+            "would_sync_companion_skills": True,
+            "companion_skills": companion_targets(),
             "legacy_shared": self.legacy_shared_state(),
         }
 
@@ -463,7 +470,10 @@ class HarnessInstaller:
             return self._install_codex()
         return self._install_json_mcp()
 
-    def _install_after_preflight(self) -> dict[str, Any]:
+    def _install_after_preflight(
+        self,
+        companion_skills: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         runtime_update_mode = self._install_runtime()
         skill_update_mode = self._install_skill()
         config = self._install_config()
@@ -478,17 +488,23 @@ class HarnessInstaller:
             "skill": str(self.skill_target),
             "skill_update_mode": skill_update_mode,
             "config": str(config),
+            "companion_skills": companion_skills,
             "repo_binding": "dynamic",
             "shared_runtime": False,
             "next_zh": (
-                f"仅已更新 {self.harness} 的 game-exp runtime、Skill 与 MCP 配置；"
+                f"仅已更新 {self.harness} 的 game-exp runtime、Skill 与 MCP 配置，"
+                "并同步该 Harness 的 Godot Prototype Studio 与 H5 Game Prototype Agent 最新版本；"
                 "其他 Harness 未被修改。新会话应显式把当前 owner/repo 传给 game_exp_* 工具。"
             ),
         }
 
     def install(self) -> dict[str, Any]:
         self.preflight()
-        return self._install_after_preflight()
+        companions = CompanionSkillSynchronizer(
+            self.home,
+            harness=self.harness,
+        ).sync()
+        return self._install_after_preflight(companions)
 
 
 def install_many(
@@ -510,8 +526,17 @@ def install_many(
     ]
     for installer in installers:
         installer.preflight()
+    companion_results = {
+        installer.harness: CompanionSkillSynchronizer(
+            home,
+            harness=installer.harness,
+        ).sync()
+        for installer in installers
+    }
     results = {
-        installer.harness: installer._install_after_preflight()
+        installer.harness: installer._install_after_preflight(
+            companion_results[installer.harness]
+        )
         for installer in installers
     }
     versions = {row["version"] for row in results.values()}
@@ -544,7 +569,7 @@ def install_many(
         "shared_runtime": False,
         "legacy_cleanup": legacy_cleanup,
         "next_zh": (
-            "已按显式 all 请求分别更新 Codex/Qoder/Cursor；"
+            "已按显式 all 请求分别更新 Codex/Qoder/Cursor，并为每个 Harness 同步 GPS/H5 最新技能；"
             "三个 Harness 使用彼此独立的 runtime，不再因单 Harness 升级而联动。"
         ),
     }
@@ -623,6 +648,8 @@ def main() -> int:
                         for installer in installers
                     },
                     "would_update_other_harnesses": False,
+                    "would_sync_companion_skills": True,
+                    "companion_skills": companion_targets(),
                 }
             else:
                 result = install_many(
@@ -645,7 +672,13 @@ def main() -> int:
                 allow_downgrade=args.allow_downgrade,
             )
             result = installer.plan() if args.check else installer.install()
-    except (HarnessInstallError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        HarnessInstallError,
+        CompanionSkillSyncError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         result = {"status": "FAIL", "error": str(exc)}
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
