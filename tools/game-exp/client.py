@@ -993,6 +993,7 @@ class GameExpClient:
                 "board_presentation_v3": True,
                 "board_presentation_v4": True,
                 "board_presentation_v5": True,
+                "board_presentation_v6": True,
                 "strict_chinese_board_copy": True,
                 "natural_chinese_board": True,
                 "request_recovery": True,
@@ -1759,9 +1760,9 @@ class GameExpClient:
             "HUMAN_REVIEW": "人工评审",
             "HUMAN_PROMOTION": "决定是否晋级",
             "HUMAN_DECISION": "人工决策",
-            "TRUSTED_REHEARSAL": "可信彩排",
-            "HUMAN_SELECTION_OR_REFRESH_REHEARSAL": "人工选择 / 必要时刷新彩排",
-            "TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL": "集成 / 必要时刷新彩排",
+            "TRUSTED_REHEARSAL": "基于最新主干进行集成验证",
+            "HUMAN_SELECTION_OR_REFRESH_REHEARSAL": "人工选择 / 主干变化后重新验证",
+            "TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL": "集成 / 主干变化后重新验证",
             "ARCHIVE_OR_RETAIN": "选择归档方式",
             "ARCHIVE_RECOVERY": "恢复归档",
             "ARCHIVE": "归档",
@@ -2137,7 +2138,7 @@ class GameExpClient:
             add_event(
                 order=70,
                 code="REHEARSAL_READY",
-                label_zh="可信彩排完成",
+                label_zh="主干集成验证完成",
                 detail_zh=rehearsal_id,
                 source_kind="rehearsal",
                 source_id=rehearsal_id,
@@ -2933,7 +2934,7 @@ class GameExpClient:
         ]
         display = {
             "locale": "zh-CN",
-            "presentation_version": 5,
+            "presentation_version": 6,
             "title_zh": title_zh,
             "rows_zh": rows_zh,
             "project_status_zh": project_status_zh,
@@ -2958,6 +2959,7 @@ class GameExpClient:
                 "secret": "私钥",
                 "trusted_writer_secret": "可信写入私钥",
                 "immutable_releases": "发布保护",
+                "rehearsal": "主干集成验证",
                 "project_ready": "项目已就绪",
                 "admin": "管理员",
                 "pass": "正常",
@@ -2989,7 +2991,7 @@ class GameExpClient:
             "status": "PASS",
             "display": display,
             "presentation": {
-                "contract_version": 5,
+                "contract_version": 6,
                 "primary": "display",
                 "primary_text_path": "display.summary_text_zh",
                 "locale": "zh-CN",
@@ -3692,6 +3694,26 @@ class GameExpClient:
                 "rehearsal_id": row.get("rehearsal_id"),
                 "integration_id": row.get("integration_id"),
                 "archive_id": row.get("archive_id"),
+            },
+            "evidence_zh": {
+                "title_zh": "代码与记录",
+                "rows_zh": [
+                    {"key": "candidate_id", "label": "候选版本", "value": row.get("candidate_id")},
+                    {
+                        "key": "review_id",
+                        "label": "人工评审",
+                        "value": row.get("review_id"),
+                        "outcome": row.get("review_outcome"),
+                    },
+                    {
+                        "key": "rehearsal_id",
+                        "label": "主干集成验证",
+                        "value": row.get("rehearsal_id"),
+                    },
+                    {"key": "integration_id", "label": "集成", "value": row.get("integration_id")},
+                    {"key": "archive_id", "label": "归档", "value": row.get("archive_id")},
+                ],
+                "raw_protocol_fields_are_diagnostics": True,
             },
         }
 

@@ -132,4 +132,12 @@ For a zero-experiment repository, prefer the Board response's `onboarding` block
 If the host cannot render an interactive inline app, fall back to the text Board rules in `board.md` without changing data semantics.
 
 The interactive UI is a presentation layer, not a new protocol or authority layer.
-\n\n## Experiment card copy\n\nRender each experiment card from experiments[].card_zh. This precomposed Chinese projection includes experiment, prototype, initiator, contributors, branch, progress, health, and next action. Harnesses must not translate raw enum fields for the primary card surface.\n
+
+
+## Experiment card copy
+
+Render each experiment card from `experiments[].card_zh`. This precomposed Chinese projection includes experiment, prototype, initiator, contributors, branch, progress, health, and next action.
+
+## Rehearsal terminology
+
+`Rehearsal` is the protocol name for validating the candidate's integration result against the latest main branch. Chinese primary UI copy should express that meaning as `主干集成验证`; keep raw `rehearsal_id` only as a protocol/diagnostic identifier.
