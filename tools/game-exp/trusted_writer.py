@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -1240,6 +1241,55 @@ def resolve_trusted_binding(repo: str, payload: dict) -> TrustedBindingContext |
             f"trusted commit resolver returned {resolved_sha!r}, expected {parent_sha!r}",
             code="DOMAIN_PARENT_CONFLICT",
         )
+
+    evaluation_profile = manifest.get("evaluation_profile")
+    if isinstance(evaluation_profile, dict):
+        profile_path = str(evaluation_profile["path"])
+        encoded_path = "/".join(
+            urllib.parse.quote(part, safe="") for part in profile_path.split("/")
+        )
+        try:
+            profile_meta = github_json(
+                repo,
+                "/contents/"
+                + encoded_path
+                + "?ref="
+                + urllib.parse.quote(parent_sha, safe=""),
+            )
+            encoded_content = profile_meta.get("content")
+            if profile_meta.get("encoding") != "base64" or not isinstance(
+                encoded_content, str
+            ):
+                raise ValueError("GitHub content response is not base64")
+            profile_value = json.loads(
+                base64.b64decode(encoded_content).decode("utf-8")
+            )
+        except Exception as exc:
+            raise DomainError(
+                f"cannot resolve Evaluation Profile at bound parent: {exc}",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            ) from exc
+        if not isinstance(profile_value, dict):
+            raise DomainError(
+                "Evaluation Profile must be a JSON object",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
+        if profile_value.get("schema_version") != 1:
+            raise DomainError(
+                "Evaluation Profile schema_version must equal 1",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
+        if profile_value.get("profile_id") != evaluation_profile.get("profile_id"):
+            raise DomainError(
+                "Evaluation Profile profile_id differs from Manifest reference",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
+        actual_profile_digest = digest_object(profile_value)
+        if actual_profile_digest != evaluation_profile.get("digest"):
+            raise DomainError(
+                "Evaluation Profile digest differs from Manifest reference",
+                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
+            )
 
     return TrustedBindingContext(
         host="github.com",
