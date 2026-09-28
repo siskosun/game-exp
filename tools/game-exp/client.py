@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_policy import POLICY_PATH, ProjectPolicyError, policy_digest, validate_policy
+from ledger_snapshot import LedgerSnapshotLoader, SnapshotError
 from protocol_core import (
     ASYNC_EXECUTION_ACTIONS,
     build_operation_payload,
@@ -91,6 +92,37 @@ def _run(
     return proc
 
 
+def _run_read(
+    args: list[str],
+    *,
+    check: bool = True,
+    timeout: float = 30.0,
+    attempts: int = 3,
+) -> subprocess.CompletedProcess[str]:
+    delays = (0.35, 0.9)
+    last: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(attempts):
+        try:
+            proc = _run(args, check=False, timeout=timeout)
+        except TransportUncertainError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(delays[min(attempt, len(delays) - 1)])
+            continue
+        last = proc
+        if proc.returncode == 0:
+            return proc
+        if attempt + 1 < attempts:
+            time.sleep(delays[min(attempt, len(delays) - 1)])
+    assert last is not None
+    if check:
+        raise TransportUncertainError(
+            f"idempotent read failed after {attempts} attempts "
+            f"({last.returncode}): {' '.join(args[:3])}\n{last.stderr[-1200:]}"
+        )
+    return last
+
+
 def _json_output(proc: subprocess.CompletedProcess[str]) -> Any:
     try:
         return json.loads(proc.stdout)
@@ -114,6 +146,7 @@ def _journal_root() -> Path:
 class GitHubTransport:
     def __init__(self, repo: str | None = None):
         self.repo = repo or self._resolve_repo()
+        self._ledger_snapshots = LedgerSnapshotLoader(self.repo)
 
     def _resolve_repo(self) -> str:
         proc = _run(
@@ -125,7 +158,7 @@ class GitHubTransport:
         return repo
 
     def ledger_head(self) -> str:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -142,30 +175,10 @@ class GitHubTransport:
     def ledger_paths(self, ref: str) -> list[str]:
         if not re.fullmatch(r"[0-9a-f]{40}", ref):
             raise ClientError("Ledger tree ref must be a 40-character commit SHA")
-        proc = _run(
-            [
-                "gh",
-                "api",
-                f"repos/{self.repo}/git/trees/{ref}?recursive=1",
-            ]
-        )
-        value = _json_output(proc)
-        if not isinstance(value, dict):
-            raise ClientError("Ledger tree response must be an object")
-        if value.get("truncated") is True:
-            raise ClientError("Ledger recursive tree response is truncated")
-        tree = value.get("tree")
-        if not isinstance(tree, list):
-            raise ClientError("Ledger tree response is missing tree entries")
-        paths: list[str] = []
-        for row in tree:
-            if (
-                isinstance(row, dict)
-                and row.get("type") == "blob"
-                and isinstance(row.get("path"), str)
-            ):
-                paths.append(row["path"])
-        return sorted(paths)
+        try:
+            return self._ledger_snapshots.load(ref).paths
+        except SnapshotError as exc:
+            raise TransportUncertainError(str(exc)) from exc
 
     def dispatch_writer(
         self,
@@ -452,11 +465,21 @@ class GitHubTransport:
         *,
         ref: str | None = None,
     ) -> dict[str, Any] | None:
-        ref_value = ref or "game-exp%2Fledger"
         if ref is not None and not re.fullmatch(r"[0-9a-f]{40}", ref):
             raise ClientError("Ledger JSON ref must be a 40-character commit SHA")
+        if ref is not None:
+            snapshot = self._ledger_snapshots.cached(ref)
+            if snapshot is not None:
+                if path not in snapshot.objects:
+                    return None
+                value = snapshot.objects[path]
+                if not isinstance(value, dict):
+                    raise ClientError(f"Ledger JSON must be an object at {path}")
+                return value
+
+        ref_value = ref or "game-exp%2Fledger"
         endpoint = f"repos/{self.repo}/contents/{path}?ref={ref_value}"
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -470,7 +493,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Ledger JSON {path} ({proc.returncode}): {proc.stderr}"
             )
         try:
