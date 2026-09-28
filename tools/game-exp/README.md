@@ -88,6 +88,8 @@ Schema v1 remains compatible for legacy `node-npm` repositories. Schema v2 is re
 
 For `node-npm`, schema v2 requires an exact `toolchain.node_version`. Candidate and Rehearsal use that value with `actions/setup-node`, so the build no longer depends on a separate `.node-version` file. Other schema-v2 adapters receive no implicit runtime installation; their argv commands must be self-contained on the trusted Ubuntu runner.
 
+Schema v3 adds a protected `evaluation` command and fixed `.game-exp/evaluation-output` directory. The evaluator executable must come from `control/.game-exp/evaluation/`, i.e. the protected workflow source rather than the experiment branch. When Manifest schema v3 references a content-addressed Evaluation Profile, the Candidate workflow freezes `candidate.tgz`, evaluates that archive in a separate clean job, validates the Profile/result/evidence digests, and retains the compact trusted summary plus evidence bundle. Screening is only `ELIGIBLE / INELIGIBLE / INCONCLUSIVE`; it never writes Review or lifecycle decisions.
+
 The trusted workflows load this policy from the immutable `github.workflow_sha`. Experiment branches cannot alter the policy used to validate themselves. The Candidate receipt records the policy digest, so changing project validation rules changes Candidate identity evidence.
 
 Bootstrap auto-generates a Node/npm policy only for a locked Node project (`package.json` plus `package-lock.json` or `npm-shrinkwrap.json`). For an unknown clean repository type, bootstrap fails and requires an explicit valid policy instead of guessing Node/npm.
