@@ -166,6 +166,43 @@ def build_parser() -> argparse.ArgumentParser:
     handoff = sub.add_parser("handoff", help="build Godot Prototype Studio handoff package")
     handoff.add_argument("experiment_id")
 
+    collaboration = sub.add_parser(
+        "collaboration",
+        help="show current branch/sync state and active work intents",
+    )
+    collaboration.add_argument("experiment_id")
+    collaboration.add_argument("--observed-source-sha")
+
+    work_claim = sub.add_parser(
+        "work-claim",
+        help="declare source-editing intent before modifying an experiment",
+    )
+    work_claim.add_argument("experiment_id")
+    work_claim.add_argument("--base-source-sha", required=True)
+    work_claim.add_argument("--summary", required=True)
+    work_claim.add_argument("--path", action="append", default=[], dest="paths")
+    work_claim.add_argument("--harness", required=True)
+    work_claim.add_argument("--agent", required=True)
+    work_claim.add_argument("--session-id")
+    work_claim.add_argument("--request-id", required=True)
+    work_claim.add_argument("--actor-claim")
+
+    work_release = sub.add_parser(
+        "work-release",
+        help="release source-editing intent after completion or abandonment",
+    )
+    work_release.add_argument("experiment_id")
+    work_release.add_argument("--claim-id", required=True)
+    work_release.add_argument(
+        "--outcome",
+        choices=("COMPLETED", "ABANDONED"),
+        required=True,
+    )
+    work_release.add_argument("--notes", required=True)
+    work_release.add_argument("--result-source-sha")
+    work_release.add_argument("--request-id", required=True)
+    work_release.add_argument("--actor-claim")
+
     notifications = sub.add_parser("notifications", help="read resumable collaboration events")
     notifications.add_argument("--viewer")
     notifications.add_argument("--subject-id")
@@ -417,6 +454,33 @@ def main(argv: list[str] | None = None) -> int:
             result = client.subject_panel(args.subject_id)
         elif args.command == "handoff":
             result = client.prototype_handoff(args.experiment_id)
+        elif args.command == "collaboration":
+            result = client.collaboration_context(
+                args.experiment_id,
+                observed_source_sha=args.observed_source_sha,
+            )
+        elif args.command == "work-claim":
+            result = client.work_claim(
+                args.experiment_id,
+                base_source_sha=args.base_source_sha,
+                summary=args.summary,
+                paths=args.paths,
+                harness=args.harness,
+                agent=args.agent,
+                session_id=args.session_id,
+                actor_claim=args.actor_claim,
+                request_id=args.request_id,
+            )
+        elif args.command == "work-release":
+            result = client.work_release(
+                args.experiment_id,
+                claim_id=args.claim_id,
+                outcome=args.outcome,
+                notes=args.notes,
+                result_source_sha=args.result_source_sha,
+                actor_claim=args.actor_claim,
+                request_id=args.request_id,
+            )
         elif args.command == "notifications":
             result = client.notification_feed(
                 viewer_login=args.viewer,
