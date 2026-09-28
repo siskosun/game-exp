@@ -36,7 +36,7 @@ The trusted writer re-reads the canonical experiment branch and rejects a stale 
 
 ## Overlap policy
 
-Overlapping claims are first-class coordination signals, not mutex locks.
+Overlapping claims are first-class coordination signals, not a hard lock or mutex.
 
 Why:
 
