@@ -552,6 +552,46 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["version_state"], "MATCH")
         self.assertEqual(result["access"]["status"], "WRITE")
 
+    def test_write_is_blocked_when_runtime_and_repository_versions_differ(self):
+        transport = FakeTransport()
+        original = transport.repository_json
+
+        def repository_json(path, ref=None):
+            if path == "plugins/game-exp/plugin.json":
+                return {"version": "9.0.0"}
+            return original(path, ref=ref)
+
+        transport.repository_json = repository_json
+        result = GameExpClient(transport).submit(
+            operation="experiment.bind",
+            input_value={"manifest": {"operation_id": "req_version_guard"}},
+            request_id="req_version_guard",
+        )
+        self.assertEqual(result["status"], "REJECTED")
+        self.assertEqual(result["code"], "VERSION_MISMATCH")
+        self.assertEqual(result["required_action"], "UPGRADE_CURRENT_HARNESS")
+        self.assertEqual(transport.dispatched, [])
+
+    def test_write_is_unknown_when_version_cannot_be_verified(self):
+        transport = FakeTransport()
+        original = transport.repository_json
+
+        def repository_json(path, ref=None):
+            if path == "plugins/game-exp/plugin.json":
+                raise TransportUncertainError("temporary API failure")
+            return original(path, ref=ref)
+
+        transport.repository_json = repository_json
+        result = GameExpClient(transport).submit(
+            operation="experiment.bind",
+            input_value={"manifest": {"operation_id": "req_version_unknown"}},
+            request_id="req_version_unknown",
+        )
+        self.assertEqual(result["status"], "UNKNOWN")
+        self.assertEqual(result["code"], "VERSION_UNVERIFIED")
+        self.assertTrue(result["retryable"])
+        self.assertEqual(transport.dispatched, [])
+
     def test_access_check_reports_write_and_read_only(self):
         transport = FakeTransport()
         result = GameExpClient(transport).access_check()
