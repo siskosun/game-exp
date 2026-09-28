@@ -158,6 +158,7 @@ class TrustedCandidateContext:
     experiment_id: str
     candidate_id: str
     source_sha: str
+    current_branch_sha: str | None = None
     manifest_digest: str
     artifact_digest: str
     policy_digest: str
@@ -1541,6 +1542,14 @@ def _plan_candidate(
 
     if not re.fullmatch(r"[0-9a-f]{40}", trusted_candidate.source_sha):
         raise DomainError("Candidate source_sha must be a 40-character commit SHA")
+    if (
+        trusted_candidate.current_branch_sha is not None
+        and trusted_candidate.source_sha != trusted_candidate.current_branch_sha
+    ):
+        raise DomainError(
+            "Candidate source is no longer the canonical experiment branch head",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
     init = binding.get("initialization")
     if not isinstance(init, dict):
         raise DomainError("binding initialization missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
