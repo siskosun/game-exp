@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.parse
@@ -1485,6 +1486,51 @@ def main() -> int:
                 domain_paths=remote.get("domain_paths", []),
             )
             return 0
+
+        retry_count_raw = os.environ.get("GAME_EXP_WRITER_INTERNAL_RETRY", "0")
+        try:
+            retry_count = int(retry_count_raw)
+        except ValueError:
+            retry_count = 0
+        if retry_count < 2:
+            retry_env = env.copy()
+            retry_env["GAME_EXP_WRITER_INTERNAL_RETRY"] = str(retry_count + 1)
+            retry_command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--repo",
+                args.repo,
+                "--request-id",
+                args.request_id,
+                "--expected-head",
+                args.expected_head,
+                "--payload-b64",
+                args.payload_b64,
+                "--ssh-key",
+                args.ssh_key,
+                "--run-id",
+                args.run_id,
+                "--run-attempt",
+                args.run_attempt,
+                "--workflow-source-sha",
+                args.workflow_source_sha,
+                "--authority",
+                args.authority,
+            ]
+            if args.trusted_context_json:
+                retry_command.extend(
+                    ["--trusted-context-json", args.trusted_context_json]
+                )
+            retry = run(
+                retry_command,
+                env=retry_env,
+                check=False,
+            )
+            if retry.stdout:
+                print(retry.stdout.rstrip())
+            if retry.stderr:
+                print(retry.stderr.rstrip(), file=sys.stderr)
+            return retry.returncode
 
         emit(
             "CONFLICT",
