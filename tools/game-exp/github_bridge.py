@@ -110,6 +110,10 @@ ACTION_KEYS = {
     },
 }
 
+ACTION_OPTIONAL_KEYS = {
+    "work_release": {"handoff"},
+}
+
 
 def _token() -> str:
     token = os.environ.get("GAME_EXP_GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -174,9 +178,11 @@ def parse_command(body: str) -> dict[str, Any]:
     action = command.get("action")
     if action not in ACTION_KEYS:
         raise BridgeError(f"unsupported action: {action!r}")
-    if set(command) != ACTION_KEYS[action]:
-        missing = ACTION_KEYS[action] - set(command)
-        extra = set(command) - ACTION_KEYS[action]
+    required = ACTION_KEYS[action]
+    optional = ACTION_OPTIONAL_KEYS.get(action, set())
+    missing = required - set(command)
+    extra = set(command) - required - optional
+    if missing or extra:
         raise BridgeError(f"command keys mismatch; missing={sorted(missing)} extra={sorted(extra)}")
     request_id = command.get("request_id")
     if not isinstance(request_id, str):
@@ -430,6 +436,16 @@ def _claim_async_execution(
         for key in ("pr_number", "mode")
         if key in command
     }
+    client = GameExpClient(transport)
+    try:
+        preconditions = client.execution_preconditions(
+            action,
+            experiment_id,
+            state=state,
+            snapshot_head=head,
+        )
+    except Exception as exc:
+        raise BridgeError(f"execution preconditions are unavailable: {exc}") from exc
     payload = build_operation_payload(
         "execution.claim",
         {
@@ -438,6 +454,7 @@ def _claim_async_execution(
             "arguments": arguments,
             "state_digest": digest_object(state),
         },
+        preconditions=preconditions,
     )
     result = submit_writer(
         repo,
@@ -543,6 +560,8 @@ def execute_action(
         }
         if command["result_source_sha"] is not None:
             input_value["result_source_sha"] = command["result_source_sha"]
+        if command.get("handoff") is not None:
+            input_value["handoff"] = command["handoff"]
         payload = build_operation_payload(
             "work.release",
             input_value,
