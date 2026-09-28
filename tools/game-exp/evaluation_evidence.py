@@ -365,7 +365,21 @@ def _safe_extract(bundle: pathlib.Path, destination: pathlib.Path) -> None:
 def package_output(output_dir: pathlib.Path, bundle: pathlib.Path) -> None:
     if not output_dir.is_dir():
         raise EvaluationEvidenceError("evaluation output directory is missing")
-    files = sorted(path for path in output_dir.rglob("*") if path.is_file())
+    root = output_dir.resolve()
+    files: list[pathlib.Path] = []
+    for path in sorted(output_dir.rglob("*")):
+        if path.is_symlink():
+            raise EvaluationEvidenceError(
+                f"evaluation output symlink is forbidden: {path}"
+            )
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if root not in resolved.parents:
+            raise EvaluationEvidenceError(
+                f"evaluation output file escapes output directory: {path}"
+            )
+        files.append(path)
     if not files:
         raise EvaluationEvidenceError("evaluation output directory is empty")
     raw = io.BytesIO()
