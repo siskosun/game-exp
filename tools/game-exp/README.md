@@ -175,16 +175,18 @@ all isolated installs succeed.
 
 For each Harness the installer:
 
-- stages and validates an independent runtime under
+- stages and validates an independent game-exp runtime under
   `~/.game-exp/runtimes/<harness>`;
-- installs an independent Skill copy under the Harness-specific Skill directory;
+- installs an independent game-exp Skill copy under the Harness-specific Skill directory;
+- fetches the latest semantic-version tags of `godot-prototype-studio` and `h5-game-prototype-agent`, validates tag/VERSION agreement, filters to runtime Skill content, and installs both into the same Harness's Skill directory;
 - edits only that Harness's MCP configuration;
 - preserves unrelated MCP servers/settings and leaves other Harness configs,
   runtimes, and Skills untouched;
 - validates `icon.svg`, `SKILL.md`, MCP server presence, and plugin version
   before activating the new runtime;
 - preflights only the selected Harness's existing TOML/JSON;
-- never writes a global `GAME_EXP_REPO`; repository binding remains dynamic.
+- never writes a global `GAME_EXP_REPO`; repository binding remains dynamic;
+- refuses unversioned companion sources instead of silently following a development branch.
 
 On Windows, if a live process keeps the selected runtime or Skill directory
 open, the installer falls back from directory swap to per-file atomic
@@ -529,4 +531,4 @@ Use `notifications --after <checkpoint>` for incremental polling. If a response 
 
 ## Portable prototype handoff
 
-Handoff schema v2 binds implementation work to a Ledger snapshot and source identity. Returned Godot evidence must identify build identity, source SHA, check environment, evidence scope, artifact location/digest and whether that location is portable across Harnesses.
+Handoff schema v2 binds implementation work to a Ledger snapshot and source identity. Godot work prefers Godot Prototype Studio; `runtime.adapter=node-npm` H5/browser work prefers H5 Game Prototype Agent. Returned executor evidence must identify build identity, source SHA, check environment, evidence scope, artifact location/digest and whether that location is portable across Harnesses. H5 PROBE verdicts remain implementation evidence and never replace human Review or selection.
