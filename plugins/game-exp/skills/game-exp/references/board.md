@@ -14,6 +14,8 @@ Show five logical views:
 
 Use one pinned protected experiment-record snapshot for every view in the same response.
 
+In the 1.0 default MCP surface, `game_exp_board` is always available; advanced focused-panel tools are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. If those tools are not registered, use Board focus plus `game_exp_experiment_get` rather than treating the missing tool as a capability failure.
+
 ## Shared header
 
 Prefer the ready-to-render `display` block returned by `game_exp_board`. It is the cross-Harness Chinese presentation contract and must be rendered before a host invents its own summary.
