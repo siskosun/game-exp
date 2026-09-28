@@ -202,6 +202,115 @@ def ruleset_semantics(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _rule_map(value: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for raw in value.get("rules") or []:
+        if isinstance(raw, dict) and isinstance(raw.get("type"), str):
+            result[raw["type"]] = raw
+    return result
+
+
+def ruleset_satisfies(actual: dict[str, Any], minimum: dict[str, Any]) -> bool:
+    actual_semantics = ruleset_semantics(actual)
+    minimum_semantics = ruleset_semantics(minimum)
+    for key in ("name", "target", "enforcement", "conditions"):
+        if actual_semantics.get(key) != minimum_semantics.get(key):
+            return False
+
+    # Bypass authority must match exactly. Extra bypass actors weaken trust.
+    if actual_semantics.get("bypass_actors") != minimum_semantics.get("bypass_actors"):
+        return False
+
+    actual_rules = _rule_map(actual_semantics)
+    minimum_rules = _rule_map(minimum_semantics)
+    for rule_type, expected in minimum_rules.items():
+        current = actual_rules.get(rule_type)
+        if not isinstance(current, dict):
+            return False
+        expected_parameters = expected.get("parameters")
+        if rule_type == "update":
+            current_parameters = current.get("parameters") or {}
+            if current_parameters.get("update_allows_fetch_and_merge", False) is not False:
+                return False
+            continue
+        if rule_type == "pull_request":
+            current_parameters = current.get("parameters") or {}
+            expected_parameters = expected_parameters or {}
+            current_count = current_parameters.get("required_approving_review_count", 0)
+            expected_count = expected_parameters.get("required_approving_review_count", 0)
+            if not isinstance(current_count, int) or current_count < expected_count:
+                return False
+            for key, expected_value in expected_parameters.items():
+                if key in {"required_approving_review_count", "required_reviewers", "allowed_merge_methods"}:
+                    continue
+                if expected_value is True and current_parameters.get(key) is not True:
+                    return False
+            expected_methods = set(expected_parameters.get("allowed_merge_methods") or [])
+            current_methods = set(current_parameters.get("allowed_merge_methods") or [])
+            if not current_methods or not current_methods.issubset(expected_methods):
+                return False
+            continue
+        if expected_parameters is not None and current.get("parameters") != expected_parameters:
+            return False
+    return True
+
+
+def strengthen_ruleset(actual: dict[str, Any], minimum: dict[str, Any]) -> dict[str, Any]:
+    # Preserve additional restrictive rules and stronger review settings while
+    # correcting any weak minimum required by game-exp.
+    value = dict(actual)
+    for key in ("name", "target", "enforcement", "conditions", "bypass_actors"):
+        value[key] = minimum[key]
+
+    current_rules = [
+        dict(row)
+        for row in (actual.get("rules") or [])
+        if isinstance(row, dict) and isinstance(row.get("type"), str)
+    ]
+    by_type = {row["type"]: row for row in current_rules}
+    for expected in minimum.get("rules") or []:
+        if not isinstance(expected, dict) or not isinstance(expected.get("type"), str):
+            continue
+        rule_type = expected["type"]
+        current = by_type.get(rule_type)
+        if current is None:
+            current_rules.append(dict(expected))
+            by_type[rule_type] = current_rules[-1]
+            continue
+        if rule_type == "update":
+            parameters = dict(current.get("parameters") or {})
+            parameters["update_allows_fetch_and_merge"] = False
+            current["parameters"] = parameters
+        elif rule_type == "pull_request":
+            current_parameters = dict(current.get("parameters") or {})
+            expected_parameters = dict(expected.get("parameters") or {})
+            current_parameters["required_approving_review_count"] = max(
+                int(current_parameters.get("required_approving_review_count") or 0),
+                int(expected_parameters.get("required_approving_review_count") or 0),
+            )
+            for key, expected_value in expected_parameters.items():
+                if key in {"required_approving_review_count", "required_reviewers", "allowed_merge_methods"}:
+                    continue
+                if expected_value is True:
+                    current_parameters[key] = True
+                else:
+                    current_parameters.setdefault(key, expected_value)
+            expected_methods = list(expected_parameters.get("allowed_merge_methods") or [])
+            current_methods = list(current_parameters.get("allowed_merge_methods") or [])
+            if current_methods:
+                allowed = [method for method in current_methods if method in expected_methods]
+                current_parameters["allowed_merge_methods"] = allowed or expected_methods
+            else:
+                current_parameters["allowed_merge_methods"] = expected_methods
+            current_parameters.setdefault(
+                "required_reviewers",
+                expected_parameters.get("required_reviewers", []),
+            )
+            current["parameters"] = current_parameters
+    value["rules"] = current_rules
+    return value
+
+
 def infer_trust_mode_from_rulesets(full_rulesets: dict[str, dict[str, Any]]) -> str | None:
     row = full_rulesets.get("game-exp protected main")
     if not isinstance(row, dict):
@@ -220,9 +329,11 @@ def infer_trust_mode_from_rulesets(full_rulesets: dict[str, dict[str, Any]]) -> 
 
 def validate_rulesets(
     full_rulesets: dict[str, dict[str, Any]],
+    *,
+    expected_mode: str | None = None,
 ) -> dict[str, Any]:
-    mode = infer_trust_mode_from_rulesets(full_rulesets)
-    if mode is None:
+    mode = expected_mode or infer_trust_mode_from_rulesets(full_rulesets)
+    if mode not in TRUST_MODES:
         return {
             "status": "FAIL",
             "code": "TRUST_MODE_UNRESOLVED",
@@ -234,14 +345,15 @@ def validate_rulesets(
     missing = sorted(set(expected) - set(full_rulesets))
     mismatched = sorted(
         name
-        for name, template in expected.items()
+        for name, minimum in expected.items()
         if name in full_rulesets
-        and ruleset_semantics(full_rulesets[name]) != ruleset_semantics(template)
+        and not ruleset_satisfies(full_rulesets[name], minimum)
     )
     return {
         "status": "PASS" if not missing and not mismatched else "FAIL",
         "code": "RULESETS_MATCH" if not missing and not mismatched else "RULESETS_MISMATCH",
         "trust_mode": mode,
+        "expected_mode_source": "independent" if expected_mode is not None else "ruleset",
         "missing": missing,
         "mismatched": mismatched,
     }
