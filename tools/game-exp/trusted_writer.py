@@ -417,9 +417,13 @@ def resolve_trusted_candidate(
         "retention",
         "attestation",
     }
-    if set(value) != required:
+    optional = {"evaluation"}
+    missing = required - set(value)
+    extra = set(value) - required - optional
+    if missing or extra:
         raise DomainError(
-            "trusted Candidate context keys mismatch",
+            "trusted Candidate context keys mismatch; "
+            f"missing={sorted(missing)} extra={sorted(extra)}",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
     if not isinstance(value["checks"], list):
@@ -430,6 +434,11 @@ def resolve_trusted_candidate(
     if not isinstance(value["retention"], dict) or not isinstance(value["attestation"], dict):
         raise DomainError(
             "trusted Candidate retention/attestation must be objects",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if "evaluation" in value and not isinstance(value["evaluation"], dict):
+        raise DomainError(
+            "trusted Candidate evaluation must be an object",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
     experiment_id = str(value["experiment_id"])
@@ -474,6 +483,11 @@ def resolve_trusted_candidate(
         checks=tuple(value["checks"]),
         retention=dict(value["retention"]),
         attestation=dict(value["attestation"]),
+        evaluation=(
+            dict(value["evaluation"])
+            if isinstance(value.get("evaluation"), dict)
+            else None
+        ),
     )
 
 
