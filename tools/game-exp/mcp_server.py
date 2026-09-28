@@ -63,6 +63,7 @@ CONFORMANCE_TOOLS_ENABLED = (
     or _env_flag("GAME_EXP_ENABLE_CONFORMANCE_TOOLS")
 )
 LEGACY_MCP_TOOLS_ENABLED = _env_flag("GAME_EXP_ENABLE_LEGACY_TOOLS")
+ADVANCED_MCP_TOOLS_ENABLED = _env_flag("GAME_EXP_ENABLE_ADVANCED_TOOLS")
 
 
 def _http_single_principal_write_enabled() -> bool:
@@ -154,7 +155,7 @@ def game_exp_conformance_result() -> dict[str, Any]:
     return result
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_project_preflight(repo: str | None = None) -> dict[str, Any]:
     """Check whether a repository can support a complete trusted game-exp setup."""
     if _conformance_session_path() is not None:
@@ -293,7 +294,7 @@ def game_exp_board(
         attention_only=attention_only,
     )
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_experiment_panel(
     experiment_id: str,
     repo: str | None = None,
@@ -301,7 +302,7 @@ def game_exp_experiment_panel(
     """Return one Chinese-ready single-experiment panel from one pinned Ledger snapshot."""
     return _client(repo).experiment_panel(experiment_id)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_subject_panel(
     subject_id: str,
     repo: str | None = None,
@@ -332,7 +333,7 @@ def game_exp_prototype_handoff(
     return _client(repo).prototype_handoff(experiment_id)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_notifications(
     repo: str | None = None,
     viewer_login: str | None = None,
@@ -685,7 +686,7 @@ def game_exp_request_get(
     return _client(repo).operation_get(request_id)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_operation_resume(
     request_id: str,
     repo: str | None = None,
@@ -697,7 +698,7 @@ def game_exp_operation_resume(
     return _client(repo).resume_execution(request_id)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_request_submit(
     operation: str,
     input: dict[str, Any],
