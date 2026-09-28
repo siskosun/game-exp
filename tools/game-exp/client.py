@@ -1228,6 +1228,11 @@ class GameExpClient:
                 else {}
             ),
             "review": review,
+            "evaluation_profile": {
+                "profile_id": "<confirm:stable profile id>",
+                "path": ".game-exp/evaluation-profiles/<profile-id>.json",
+                "digest": "<confirm:sha256 profile digest>",
+            },
             "created_at": "<generate:RFC3339 timestamp>",
         }
 
@@ -1270,6 +1275,15 @@ class GameExpClient:
                 "relationships": {
                     "allowed_types": ["depends_on", "blocks", "supersedes"],
                     "target_format": "EXP-<number>",
+                },
+                "evaluation_profile": {
+                    "required_keys": ["profile_id", "path", "digest"],
+                    "path_prefix": ".game-exp/evaluation-profiles/",
+                    "digest_format": "sha256:<64 lowercase hex>",
+                    "human_confirmation_required_before_bind": True,
+                    "description_zh": (
+                        "评测定义独立保存并按内容摘要冻结；Manifest 只引用身份、路径和摘要。"
+                    ),
                 },
                 "evaluation_profile_v1": {
                     "schema_version": 3,
