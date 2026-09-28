@@ -227,6 +227,7 @@ class FakeClient:
             "comparison": comparison,
             "request_id": request_id,
             "actor_claim": actor_claim,
+            "operation": "review.record",
         }
 
     def rehearse(self, experiment_id, *, request_id=None, actor_claim=None):
@@ -582,7 +583,7 @@ class MCPServerTests(unittest.TestCase):
     def test_experiment_template_delegates_to_current_repository(self, _):
         result = mcp_server.game_exp_experiment_template("owner/repo")
         self.assertEqual(result["status"], "PASS")
-        self.assertEqual(result["manifest_contract"]["current_schema_version"], 2)
+        self.assertEqual(result["manifest_contract"]["current_schema_version"], 3)
         self.assertEqual(result["project_policy"]["adapter"], "node-npm")
 
     @patch("mcp_server._client", return_value=FakeClient())
