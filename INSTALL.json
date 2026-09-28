@@ -89,6 +89,8 @@
     "安装与升级使用同一命令。",
     "默认只更新当前 Harness；不要顺带更新其他 Harness。",
     "安装或升级当前 Harness 的 game-exp 时，会从两个独立 GitHub 仓库读取最新语义版本标签，并同步当前 Harness 下的 Godot Prototype Studio 与 H5 Game Prototype Agent；不会联动修改其他 Harness。",
+    "安装/升级对 game-exp runtime、Skill、MCP 配置以及 GPS/H5 两个伴随 Skill 使用事务回滚；任一步失败时恢复受管目标到安装前状态。",
+    "同版本 CURRENT 不再只比较版本号；还会核对托管运行时摘要、必需入口、game-exp Skill 和当前 Harness MCP 配置。",
     "不要在普通升级中同步 toy2game、game-exp-sandbox 或其他消费仓库。",
     "全局 MCP 保持动态仓库绑定，运行时显式传入当前 owner/repo。",
     "可先使用 --check 只读判断 NOT_INSTALLED / CURRENT / UPGRADE_AVAILABLE；不会写文件。",
