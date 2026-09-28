@@ -63,3 +63,16 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
 Current version: `1.0.0`.
+
+Release history: see `CHANGELOG.md`.
+
+
+## 1.0 pre-merge gate
+
+Before merging a release change, run:
+
+```bash
+python tools/game-exp/premerge.py --json
+```
+
+This runs the full unit suite with the pinned MCP SDK, distribution integrity checks, and Python compile validation.
