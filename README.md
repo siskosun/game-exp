@@ -60,4 +60,4 @@ Develop and release from this repository only. Do not automatically synchronize 
 
 Before merging a release change, run core tests, MCP tests, and the standing Conformance suite. Human gates, protected Ledger authority, and Trusted Writer boundaries remain unchanged.
 
-Current version: `0.18.4`.
+Current version: `0.18.5`.
