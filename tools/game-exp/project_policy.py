@@ -16,8 +16,10 @@ from protocol_core import digest_object
 POLICY_PATH = ".game-exp/project-policy.json"
 _ALLOWED_TOP_V1 = {"schema_version", "adapter", "install", "test", "build", "candidate"}
 _ALLOWED_TOP_V2 = _ALLOWED_TOP_V1 | {"toolchain"}
+_ALLOWED_TOP_V3 = _ALLOWED_TOP_V2 | {"evaluation"}
 _ALLOWED_STEP = {"argv"}
 _ALLOWED_CANDIDATE = {"include", "required_paths"}
+_ALLOWED_EVALUATION = {"argv", "output_dir"}
 _ALLOWED_NODE_TOOLCHAIN = {"node_version"}
 _ADAPTER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _NODE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
@@ -68,8 +70,12 @@ def validate_policy(policy: Any) -> dict[str, Any]:
             raise ProjectPolicyError(
                 "policy.adapter must equal 'node-npm' in schema v1"
             )
-    elif schema_version == 2:
-        _strict_keys(policy, _ALLOWED_TOP_V2, "policy")
+    elif schema_version in {2, 3}:
+        _strict_keys(
+            policy,
+            _ALLOWED_TOP_V3 if schema_version == 3 else _ALLOWED_TOP_V2,
+            "policy",
+        )
         adapter = policy.get("adapter")
         if (
             not isinstance(adapter, str)
@@ -97,10 +103,26 @@ def validate_policy(policy: Any) -> dict[str, Any]:
                 "policy.toolchain must be empty for adapters without built-in setup"
             )
     else:
-        raise ProjectPolicyError("policy.schema_version must equal 1 or 2")
+        raise ProjectPolicyError("policy.schema_version must equal 1, 2, or 3")
 
     for name in ("install", "test", "build"):
         _argv(policy[name], f"policy.{name}")
+
+    if schema_version == 3:
+        evaluation = policy.get("evaluation")
+        if not isinstance(evaluation, dict):
+            raise ProjectPolicyError("policy.evaluation: expected object")
+        _strict_keys(evaluation, _ALLOWED_EVALUATION, "policy.evaluation")
+        _argv({"argv": evaluation["argv"]}, "policy.evaluation")
+        output_dir = _safe_rel_path(
+            evaluation["output_dir"],
+            "policy.evaluation.output_dir",
+        )
+        if output_dir != ".game-exp/evaluation-output":
+            raise ProjectPolicyError(
+                "policy.evaluation.output_dir must equal .game-exp/evaluation-output"
+            )
+        evaluation["output_dir"] = output_dir
 
     candidate = policy["candidate"]
     if not isinstance(candidate, dict):
@@ -124,8 +146,10 @@ def policy_digest(policy: dict[str, Any]) -> str:
 
 
 def run_phase(policy: dict[str, Any], phase: str, cwd: str | os.PathLike[str]) -> None:
-    if phase not in {"install", "test", "build"}:
+    if phase not in {"install", "test", "build", "evaluation"}:
         raise ProjectPolicyError(f"unknown phase: {phase}")
+    if phase == "evaluation" and policy.get("schema_version") != 3:
+        raise ProjectPolicyError("evaluation phase requires policy schema v3")
     argv = _argv(policy[phase], f"policy.{phase}")
     subprocess.run(argv, cwd=cwd, check=True, shell=False)
 
@@ -213,7 +237,7 @@ def _main() -> int:
 
     sub.add_parser("digest")
     run = sub.add_parser("run")
-    run.add_argument("phase", choices=("install", "test", "build"))
+    run.add_argument("phase", choices=("install", "test", "build", "evaluation"))
     run.add_argument("--cwd", default=".")
 
     package = sub.add_parser("package")
