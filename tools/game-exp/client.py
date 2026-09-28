@@ -1707,7 +1707,15 @@ class GameExpClient:
             f"experiments/{experiment_id}/binding.json",
             ref=snapshot_head,
         )
-        if not isinstance(state, dict) or not isinstance(binding, dict):
+        manifest = self.transport.ledger_json(
+            f"experiments/{experiment_id}/manifest.json",
+            ref=snapshot_head,
+        )
+        if (
+            not isinstance(state, dict)
+            or not isinstance(binding, dict)
+            or not isinstance(manifest, dict)
+        ):
             return {
                 "status": "UNKNOWN",
                 "repo": self.transport.repo,
@@ -1931,19 +1939,90 @@ class GameExpClient:
             attention_level = 1
 
         latest_handoff = None
-        last_release_id = state.get("last_work_release_id")
-        if isinstance(last_release_id, str) and last_release_id:
+        handoff_release_id = state.get("last_work_handoff_release_id")
+        if isinstance(handoff_release_id, str) and handoff_release_id:
             release = self.transport.ledger_json(
-                f"experiments/{experiment_id}/work-releases/{last_release_id}.json",
+                f"experiments/{experiment_id}/work-releases/{handoff_release_id}.json",
                 ref=snapshot_head,
             )
             if isinstance(release, dict) and isinstance(release.get("handoff"), dict):
                 latest_handoff = {
-                    "release_id": last_release_id,
+                    "release_id": handoff_release_id,
                     "claim_id": release.get("claim_id"),
                     "handoff": release.get("handoff"),
                     "trust": "participant_reported",
                 }
+
+        current_review = None
+        if isinstance(review_id, str) and review_id:
+            current_review = self.transport.ledger_json(
+                f"experiments/{experiment_id}/reviews/{review_id}.json",
+                ref=snapshot_head,
+            )
+        latest_human_feedback = None
+        if isinstance(current_review, dict):
+            latest_human_feedback = {
+                "kind": "review",
+                "review_id": review_id,
+                "candidate_id": current_review.get("candidate_id"),
+                "outcome": current_review.get("outcome"),
+                "notes": current_review.get("notes"),
+                "actor": current_review.get("actor"),
+                "trust": "trusted_actor_recorded_human_report",
+            }
+
+        human_gate = None
+        if state.get("lifecycle") == "REVIEW":
+            if not isinstance(candidate_id, str) or not candidate_id:
+                human_gate = {
+                    "code": "AWAIT_CANDIDATE",
+                    "requires_human_action": False,
+                }
+            elif not isinstance(review_id, str) or not review_id:
+                human_gate = {
+                    "code": "AWAIT_HUMAN_REVIEW",
+                    "requires_human_action": True,
+                }
+            elif isinstance(current_review, dict) and current_review.get("outcome") == "PASS":
+                human_gate = {
+                    "code": "AWAIT_PROMISING_DECISION",
+                    "requires_human_action": True,
+                }
+
+        trusted_evidence: dict[str, Any] = {}
+        if isinstance(candidate, dict):
+            trusted_evidence["candidate"] = {
+                "candidate_id": candidate_id,
+                "source_sha": candidate.get("source_sha"),
+                "artifact_digest": candidate.get("artifact_digest"),
+                "checks": candidate.get("checks") or [],
+                "freshness": candidate_freshness,
+            }
+        if isinstance(rehearsal_id, str) and rehearsal_id:
+            rehearsal_record = self.transport.ledger_json(
+                f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+                ref=snapshot_head,
+            )
+            if isinstance(rehearsal_record, dict):
+                trusted_evidence["rehearsal"] = {
+                    "rehearsal_id": rehearsal_id,
+                    "candidate_id": rehearsal_record.get("candidate_id"),
+                    "source_sha": rehearsal_record.get("source_sha"),
+                    "main_sha": rehearsal_record.get("main_sha"),
+                    "integration_tree_sha": rehearsal_record.get("integration_tree_sha"),
+                    "checks": rehearsal_record.get("checks") or [],
+                    "freshness": rehearsal_freshness,
+                }
+
+        spec = {
+            "path": f"experiments/{experiment_id}/manifest.json",
+            "digest": digest_object(manifest),
+            "title": manifest.get("title"),
+            "hypothesis": manifest.get("hypothesis"),
+            "success_criteria": manifest.get("success_criteria") or [],
+            "kill_criteria": manifest.get("kill_criteria") or [],
+            "trust": "protected_ledger",
+        }
 
         return {
             "status": "PASS",
@@ -1951,6 +2030,10 @@ class GameExpClient:
             "snapshot_head": snapshot_head,
             "experiment_id": experiment_id,
             "lifecycle": state.get("lifecycle"),
+            "spec": spec,
+            "human_gate": human_gate,
+            "latest_human_feedback": latest_human_feedback,
+            "trusted_evidence": trusted_evidence,
             "branch_ref": branch_ref,
             "branch_head_sha": branch_head_sha,
             "observed_source_sha": observed_source_sha,
