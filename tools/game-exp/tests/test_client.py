@@ -1213,6 +1213,18 @@ class ClientTests(unittest.TestCase):
         for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
             self.assertNotIn(forbidden, visible)
 
+    def test_board_doctor_cache_reuses_recent_repo_health(self):
+        client = GameExpClient(FakeTransport())
+        with patch.object(
+            client,
+            "doctor",
+            return_value={"status": "PASS", "checks": []},
+        ) as doctor:
+            first = client._repo_doctor_cached()
+            second = client._repo_doctor_cached()
+        self.assertIs(first, second)
+        doctor.assert_called_once_with()
+
     def test_surface_hint_is_compact_for_normal_progress(self):
         hint = GameExpClient._board_surface_hint(
             {"required": False, "reason": None, "action_zh": None},
