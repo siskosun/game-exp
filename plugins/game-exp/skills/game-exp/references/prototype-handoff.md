@@ -6,12 +6,12 @@ game-exp owns experiment identity, scope, lifecycle, evidence references, human 
 
 Specialized prototype Skills own implementation and implementation evidence:
 
-- **Godot** -> `godot-prototype-studio`
-- **H5/browser** -> `h5-game-prototype-agent`
+- **Godot** -> Godot Prototype Studio (`godot-prototype-studio`)
+- **H5/browser** -> H5 Game Prototype Agent (`h5-game-prototype-agent`)
 
 game-exp must not rebuild either executor's editing, runtime verification, browser/export, replay, or playtest-preparation workflow.
 
-Automated executor evidence never authorizes Review PASS/FAIL, PROMISING, SELECTED, REJECTED, merge, or Archive choices.
+Automated executor evidence never authorizes Review PASS/FAIL, PROMISING, SELECTED, REJECTED, merge, or Archive choices. Candidate/Review authority remains in game-exp.
 
 ## Companion Skill availability
 
@@ -76,9 +76,9 @@ Therefore, when an H5 workspace contains several nested probes:
 
 Do not claim that setting `subject.root_path` alone gives per-subdirectory Candidate builds.
 
-## Handoff schema
+## Handoff schema v2
 
-Use `game_exp_prototype_handoff(experiment_id)` when available.
+Handoff schema v2 remains the stable cross-interface contract. Use `game_exp_prototype_handoff(experiment_id)` when available.
 
 The package is bound to:
 
