@@ -434,7 +434,7 @@ class GitHubTransport:
             if not isinstance(ref, str) or not ref:
                 raise ClientError("repository JSON ref must be a non-empty string")
             endpoint += f"?ref={ref}"
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -448,7 +448,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading repository JSON {path} ({proc.returncode}): {proc.stderr}"
             )
         try:
@@ -505,7 +505,7 @@ class GitHubTransport:
         return value
 
     def git_ref(self, ref_path: str) -> dict[str, Any] | None:
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/git/ref/{ref_path}"],
             check=False,
         )
@@ -513,7 +513,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Git ref {ref_path} ({proc.returncode}): {proc.stderr}"
             )
         value = _json_output(proc)
@@ -525,12 +525,12 @@ class GitHubTransport:
         for name, value in (("base_sha", base_sha), ("head_sha", head_sha)):
             if not re.fullmatch(r"[0-9a-f]{40}", value):
                 raise ClientError(f"{name} must be a 40-character commit SHA")
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/compare/{base_sha}...{head_sha}"],
             check=False,
         )
         if proc.returncode != 0:
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed comparing Git commits ({proc.returncode}): {proc.stderr}"
             )
         value = _json_output(proc)
@@ -541,7 +541,7 @@ class GitHubTransport:
     def annotated_tag(self, tag_object_sha: str) -> dict[str, Any]:
         if not re.fullmatch(r"[0-9a-f]{40}", tag_object_sha):
             raise ClientError("annotated tag object SHA must be 40 lowercase hex")
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/git/tags/{tag_object_sha}"],
         )
         value = _json_output(proc)
@@ -555,7 +555,7 @@ class GitHubTransport:
             f"repos/{self.repo}/contents/operations/{request_id}.json"
             "?ref=game-exp%2Fledger"
         )
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -569,7 +569,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Ledger request record ({proc.returncode}): {proc.stderr}"
             )
         try:
@@ -581,7 +581,7 @@ class GitHubTransport:
         match = RUN_URL_RE.search(workflow_url)
         if not match:
             return None
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "run",
@@ -617,7 +617,7 @@ class GitHubTransport:
         return proc.stdout + "\n" + proc.stderr
 
     def rulesets(self) -> list[dict[str, Any]]:
-        proc = _run(["gh", "api", f"repos/{self.repo}/rulesets"])
+        proc = _run_read(["gh", "api", f"repos/{self.repo}/rulesets"])
         data = _json_output(proc)
         if not isinstance(data, list):
             raise ClientError("GitHub rulesets response is not a list")
@@ -632,7 +632,7 @@ class GitHubTransport:
             rule_id = row.get("id")
             if not isinstance(name, str) or not isinstance(rule_id, int):
                 continue
-            proc = _run(
+            proc = _run_read(
                 ["gh", "api", f"repos/{self.repo}/rulesets/{rule_id}"],
                 check=False,
             )
@@ -646,7 +646,7 @@ class GitHubTransport:
         return result
 
     def environment_branch_policies(self, environment: str) -> list[dict[str, Any]] | None:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -661,7 +661,7 @@ class GitHubTransport:
         return rows if isinstance(rows, list) else None
 
     def environment_secret_names(self, environment: str) -> set[str] | None:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "secret",
@@ -685,14 +685,14 @@ class GitHubTransport:
         }
 
     def deploy_keys(self) -> list[dict[str, Any]] | None:
-        proc = _run(["gh", "api", f"repos/{self.repo}/keys"], check=False)
+        proc = _run_read(["gh", "api", f"repos/{self.repo}/keys"], check=False)
         if proc.returncode != 0:
             return None
         data = _json_output(proc)
         return data if isinstance(data, list) else None
 
     def secret_names(self) -> set[str] | None:
-        proc = _run(
+        proc = _run_read(
             ["gh", "secret", "list", "--repo", self.repo, "--json", "name"],
             check=False,
         )
@@ -702,7 +702,7 @@ class GitHubTransport:
         return {row["name"] for row in data if isinstance(row, dict) and "name" in row}
 
     def immutable_releases(self) -> dict[str, Any] | None:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -718,7 +718,7 @@ class GitHubTransport:
         return data if isinstance(data, dict) else None
 
     def repository_access(self) -> dict[str, Any]:
-        proc = _run(["gh", "api", f"repos/{self.repo}"], check=False)
+        proc = _run_read(["gh", "api", f"repos/{self.repo}"], check=False)
         if proc.returncode != 0:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             reason = "repository_not_accessible"
