@@ -1020,6 +1020,7 @@ class GameExpClient:
                 "manifest_schema_v2": True,
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
+                "collaboration_coordination_v1": True,
             },
             "iteration_routing": {
                 "default_existing_experiment_change": "REVISION",
@@ -1042,6 +1043,15 @@ class GameExpClient:
                 },
                 "selected_or_terminal_work_reopens_automatically": False,
             },
+            "collaboration_coordination": {
+                "protocol_version": 1,
+                "intent_before_source_edit": True,
+                "stale_base_rejected": True,
+                "overlap_policy": "SURFACE_NOT_LOCK",
+                "isolated_workspace_for_overlap": True,
+                "history_policy": "EXPLICIT_CURRENT_STATE",
+                "lifecycle_authority": False,
+            },
             "recommended_capabilities": {
                 "godot_prototype_studio": dict(GODOT_PROTOTYPE_STUDIO),
             },
@@ -1057,6 +1067,7 @@ class GameExpClient:
                 "operation_get",
                 "notifications",
                 "prototype_handoff",
+                "collaboration_context",
                 "project_preflight",
             ],
             "commands": [
@@ -1064,6 +1075,8 @@ class GameExpClient:
                 "execution.claim",
                 "review.record",
                 "experiment.decision",
+                "work.claim",
+                "work.release",
                 "archive.abort",
                 *list(ASYNC_EXECUTION_ACTIONS),
                 "project_init_local_only",
@@ -1592,6 +1605,254 @@ class GameExpClient:
                 "outcome": outcome,
                 "notes": notes,
             },
+            request_id=request_id,
+        )
+
+    @staticmethod
+    def _coordination_paths_overlap(left: list[str], right: list[str]) -> bool:
+        if not left or not right:
+            return True
+        for a in left:
+            for b in right:
+                if a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+                    return True
+        return False
+
+    def collaboration_context(
+        self,
+        experiment_id: str,
+        *,
+        observed_source_sha: str | None = None,
+    ) -> dict[str, Any]:
+        if not EXPERIMENT_ID_RE.fullmatch(experiment_id):
+            return {
+                "status": "REJECTED",
+                "repo": self.transport.repo,
+                "experiment_id": experiment_id,
+                "reason": "invalid_experiment_id",
+            }
+        if observed_source_sha is not None and not re.fullmatch(
+            r"[0-9a-f]{40}",
+            observed_source_sha,
+        ):
+            return {
+                "status": "REJECTED",
+                "repo": self.transport.repo,
+                "experiment_id": experiment_id,
+                "reason": "invalid_observed_source_sha",
+            }
+
+        snapshot_head = self.transport.ledger_head()
+        state = self.transport.ledger_json(
+            f"experiments/{experiment_id}/state.json",
+            ref=snapshot_head,
+        )
+        binding = self.transport.ledger_json(
+            f"experiments/{experiment_id}/binding.json",
+            ref=snapshot_head,
+        )
+        if not isinstance(state, dict) or not isinstance(binding, dict):
+            return {
+                "status": "UNKNOWN",
+                "repo": self.transport.repo,
+                "snapshot_head": snapshot_head,
+                "experiment_id": experiment_id,
+                "reason": "experiment_not_found_in_ledger",
+            }
+
+        initialization = binding.get("initialization")
+        branch_ref = (
+            initialization.get("branch_ref")
+            if isinstance(initialization, dict)
+            else None
+        )
+        if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+            return {
+                "status": "FAIL",
+                "repo": self.transport.repo,
+                "snapshot_head": snapshot_head,
+                "experiment_id": experiment_id,
+                "reason": "canonical_branch_missing",
+            }
+        try:
+            ref = self.transport.git_ref(branch_ref.removeprefix("refs/"))
+        except Exception as exc:
+            return {
+                "status": "UNKNOWN",
+                "repo": self.transport.repo,
+                "snapshot_head": snapshot_head,
+                "experiment_id": experiment_id,
+                "branch_ref": branch_ref,
+                "reason": "canonical_branch_unavailable",
+                "error": str(exc),
+            }
+        obj = ref.get("object") if isinstance(ref, dict) else None
+        branch_head_sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(branch_head_sha, str) or not re.fullmatch(
+            r"[0-9a-f]{40}",
+            branch_head_sha,
+        ):
+            return {
+                "status": "UNKNOWN",
+                "repo": self.transport.repo,
+                "snapshot_head": snapshot_head,
+                "experiment_id": experiment_id,
+                "branch_ref": branch_ref,
+                "reason": "canonical_branch_head_invalid",
+            }
+
+        active_ids = state.get("active_work_claim_ids") or []
+        if not isinstance(active_ids, list):
+            return {
+                "status": "FAIL",
+                "repo": self.transport.repo,
+                "snapshot_head": snapshot_head,
+                "experiment_id": experiment_id,
+                "reason": "active_work_claim_ids_invalid",
+            }
+        current_claims: list[dict[str, Any]] = []
+        stale_claims: list[dict[str, Any]] = []
+        for claim_id in active_ids:
+            if not isinstance(claim_id, str) or not claim_id:
+                continue
+            claim = self.transport.ledger_json(
+                f"experiments/{experiment_id}/work-claims/{claim_id}.json",
+                ref=snapshot_head,
+            )
+            if not isinstance(claim, dict):
+                continue
+            row = {
+                "claim_id": claim.get("claim_id"),
+                "summary": claim.get("summary"),
+                "paths": claim.get("paths") or [],
+                "actor": claim.get("actor"),
+                "executor": claim.get("executor"),
+                "base_source_sha": claim.get("base_source_sha"),
+            }
+            if claim.get("base_source_sha") == branch_head_sha:
+                current_claims.append(row)
+            else:
+                stale_claims.append(row)
+
+        conflicts: list[dict[str, Any]] = []
+        for index, left in enumerate(current_claims):
+            left_paths = [
+                str(item) for item in left.get("paths") or [] if isinstance(item, str)
+            ]
+            for right in current_claims[index + 1 :]:
+                right_paths = [
+                    str(item) for item in right.get("paths") or [] if isinstance(item, str)
+                ]
+                if self._coordination_paths_overlap(left_paths, right_paths):
+                    conflicts.append(
+                        {
+                            "type": "WORK_SCOPE_OVERLAP",
+                            "claim_ids": [left.get("claim_id"), right.get("claim_id")],
+                            "paths_left": left_paths,
+                            "paths_right": right_paths,
+                            "blocking": False,
+                            "guidance_zh": (
+                                "工作范围可能重叠。先协调修改边界；如需并行，使用隔离工作区，"
+                                "完成后再合并并运行验证。"
+                            ),
+                        }
+                    )
+
+        if observed_source_sha is None:
+            sync_status = "UNKNOWN"
+        elif observed_source_sha == branch_head_sha:
+            sync_status = "CURRENT"
+        else:
+            sync_status = "STALE"
+
+        if sync_status == "STALE":
+            next_action = "SYNC_SOURCE"
+            next_action_zh = "当前工作区已落后于实验分支；先同步到最新实验分支，再声明工作意图。"
+        elif conflicts:
+            next_action = "COORDINATE_WORK"
+            next_action_zh = (
+                "存在并发工作范围重叠；先协调范围，或使用隔离工作区后合并并验证。"
+            )
+        else:
+            next_action = "CLAIM_WORK"
+            next_action_zh = "当前状态可继续；在修改源码前声明本次工作意图。"
+
+        return {
+            "status": "PASS",
+            "repo": self.transport.repo,
+            "snapshot_head": snapshot_head,
+            "experiment_id": experiment_id,
+            "lifecycle": state.get("lifecycle"),
+            "branch_ref": branch_ref,
+            "branch_head_sha": branch_head_sha,
+            "observed_source_sha": observed_source_sha,
+            "sync_status": sync_status,
+            "active_claims": current_claims,
+            "stale_claims": stale_claims,
+            "conflicts": conflicts,
+            "coordination_required": bool(conflicts),
+            "next_action": next_action,
+            "next_action_zh": next_action_zh,
+            "policy": {
+                "overlap_blocks_work": False,
+                "prefer_isolated_workspace_on_overlap": True,
+                "work_claim_is_lifecycle_authority": False,
+                "history_source": "protected_ledger_current_state",
+            },
+        }
+
+    def work_claim(
+        self,
+        experiment_id: str,
+        *,
+        base_source_sha: str,
+        summary: str,
+        paths: list[str],
+        harness: str,
+        agent: str,
+        request_id: str,
+        session_id: str | None = None,
+        actor_claim: str | None = None,
+    ) -> dict[str, Any]:
+        executor: dict[str, Any] = {"harness": harness, "agent": agent}
+        if session_id is not None:
+            executor["session_id"] = session_id
+        return self.submit(
+            operation="work.claim",
+            input_value={
+                "experiment_id": experiment_id,
+                "base_source_sha": base_source_sha,
+                "summary": summary,
+                "paths": paths,
+                "executor": executor,
+            },
+            actor_claim=actor_claim,
+            request_id=request_id,
+        )
+
+    def work_release(
+        self,
+        experiment_id: str,
+        *,
+        claim_id: str,
+        outcome: str,
+        notes: str,
+        request_id: str,
+        result_source_sha: str | None = None,
+        actor_claim: str | None = None,
+    ) -> dict[str, Any]:
+        input_value: dict[str, Any] = {
+            "experiment_id": experiment_id,
+            "claim_id": claim_id,
+            "outcome": outcome,
+            "notes": notes,
+        }
+        if result_source_sha is not None:
+            input_value["result_source_sha"] = result_source_sha
+        return self.submit(
+            operation="work.release",
+            input_value=input_value,
+            actor_claim=actor_claim,
             request_id=request_id,
         )
 
