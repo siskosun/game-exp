@@ -69,6 +69,7 @@ jobs:
     needs: dedupe
     if: needs.dedupe.outputs.primary == 'true'
     runs-on: ubuntu-latest
+    environment: game-exp-trusted-writer
     timeout-minutes: 10
     steps:
       - name: Checkout trusted integration control
