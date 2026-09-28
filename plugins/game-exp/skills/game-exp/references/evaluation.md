@@ -63,6 +63,8 @@ Project policy schema v3 adds one protected command:
 }
 ```
 
+The evaluation argv must execute a runner from `control/.game-exp/evaluation/`. That directory is checked out from the same protected workflow source commit as the project policy, not from the challenger experiment branch. The runner may invoke the Candidate build and project QA hooks, but the experiment cannot rewrite the evaluator itself.
+
 The fixed output directory is deliberate.
 
 Before invoking the evaluation command the trusted Candidate workflow removes that directory. The project command then creates fresh output for the exact Candidate source. This prevents a committed prewritten result file from being accepted merely because it exists.
