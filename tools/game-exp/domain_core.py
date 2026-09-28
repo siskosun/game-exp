@@ -2468,7 +2468,7 @@ def _require_execution_preconditions(
         "candidate_build": {"manifest_digest", "source_sha"},
         "rehearse": {"candidate_id", "candidate_source_sha", "main_sha"},
         "integrate": {"candidate_id", "rehearsal_id", "main_sha"},
-        "integrate_finalize": {"candidate_id", "rehearsal_id", "main_sha"},
+        "integrate_finalize": {"candidate_id", "rehearsal_id"},
         "archive": {"source_sha"},
     }
     allowed = expected_common | expected_by_action[action]
