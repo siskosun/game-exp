@@ -391,8 +391,10 @@ class GameExpSkillContractTests(unittest.TestCase):
         for phrase in (
             "Current public contract: `1.0`",
             "## Board presentation contract",
-            "display.presentation_version >= 3",
+            "display.presentation_version >= 4",
             "presentation.primary=display",
+            "strict_primary_copy=true",
+            "forbidden_primary_tokens",
             "医生检查",
             "Same id + same request",
             "Same id + different request",
