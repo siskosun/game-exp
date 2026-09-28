@@ -1475,6 +1475,7 @@ def _plan_review(
         input_value,
         {"experiment_id", "candidate_id", "outcome", "notes"},
         where="operation.input",
+        optional={"comparison"},
     )
     experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
     candidate_id = _string(input_value["candidate_id"], "operation.input.candidate_id")
@@ -1520,6 +1521,177 @@ def _plan_review(
     if not isinstance(protocol, str) or not protocol:
         raise DomainError("manifest review protocol missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
 
+    comparison = input_value.get("comparison")
+    normalized_comparison = None
+    if comparison is not None:
+        if protocol != "incumbent-challenger-blind-ab-v1":
+            raise DomainError(
+                "structured comparison requires review protocol incumbent-challenger-blind-ab-v1",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        comparison = _mapping(comparison, "operation.input.comparison")
+        _expect_keys(
+            comparison,
+            {
+                "incumbent_experiment_id",
+                "incumbent_candidate_id",
+                "incumbent_artifact_digest",
+                "profile_digest",
+                "blind",
+                "presentation_order",
+                "dimensions",
+                "overall",
+            },
+            where="operation.input.comparison",
+        )
+        incumbent_experiment_id = _string(
+            comparison["incumbent_experiment_id"],
+            "operation.input.comparison.incumbent_experiment_id",
+        )
+        if not EXP_RE.fullmatch(incumbent_experiment_id):
+            raise DomainError(
+                "comparison incumbent_experiment_id must be EXP-<number>",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        relationships = manifest.get("relationships") or []
+        if not any(
+            isinstance(row, dict)
+            and row.get("type") == "supersedes"
+            and row.get("experiment_id") == incumbent_experiment_id
+            for row in relationships
+        ):
+            raise DomainError(
+                "comparison incumbent must be the experiment superseded by the challenger",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        incumbent_candidate_id = _string(
+            comparison["incumbent_candidate_id"],
+            "operation.input.comparison.incumbent_candidate_id",
+        )
+        _incumbent_binding, _incumbent_manifest, incumbent_state, _ = _load_bound_experiment(
+            repo_dir,
+            incumbent_experiment_id,
+        )
+        if incumbent_state.get("current_candidate_id") != incumbent_candidate_id:
+            raise DomainError(
+                "comparison must bind the incumbent current Candidate",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        incumbent_candidate = _load_candidate(
+            repo_dir,
+            incumbent_experiment_id,
+            incumbent_candidate_id,
+        )
+        if comparison["incumbent_artifact_digest"] != incumbent_candidate.get("artifact_digest"):
+            raise DomainError(
+                "comparison incumbent artifact digest mismatch",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        profile_digest = comparison["profile_digest"]
+        if not isinstance(profile_digest, str) or not SHA256_RE.fullmatch(profile_digest):
+            raise DomainError(
+                "comparison profile_digest must be sha256:<64 lowercase hex>",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        challenger_evaluation = candidate.get("evaluation")
+        incumbent_evaluation = incumbent_candidate.get("evaluation")
+        if (
+            not isinstance(challenger_evaluation, dict)
+            or not isinstance(incumbent_evaluation, dict)
+            or challenger_evaluation.get("profile_digest") != profile_digest
+            or incumbent_evaluation.get("profile_digest") != profile_digest
+        ):
+            raise DomainError(
+                "comparison requires both Candidates evaluated against the same profile digest",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        if comparison["blind"] is not True:
+            raise DomainError(
+                "blind A/B review protocol requires blind=true",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        presentation_order = comparison["presentation_order"]
+        if presentation_order not in {
+            "INCUMBENT_CHALLENGER",
+            "CHALLENGER_INCUMBENT",
+        }:
+            raise DomainError(
+                "comparison presentation_order is invalid",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        dimensions = comparison["dimensions"]
+        if not isinstance(dimensions, list) or not dimensions:
+            raise DomainError(
+                "comparison dimensions must be a non-empty list",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        allowed_choices = {
+            "INCUMBENT",
+            "CHALLENGER",
+            "NO_CLEAR_DIFFERENCE",
+            "INCONCLUSIVE",
+        }
+        seen_dimensions: set[str] = set()
+        normalized_dimensions: list[dict[str, str]] = []
+        for index, row in enumerate(dimensions):
+            if not isinstance(row, dict):
+                raise DomainError(
+                    f"comparison dimension {index} must be an object",
+                    code="DOMAIN_REVIEW_CONFLICT",
+                )
+            _expect_keys(
+                row,
+                {"id", "choice", "notes"},
+                where=f"operation.input.comparison.dimensions[{index}]",
+            )
+            dimension_id = _string(
+                row["id"],
+                f"operation.input.comparison.dimensions[{index}].id",
+            )
+            if dimension_id in seen_dimensions:
+                raise DomainError(
+                    "comparison dimension ids must be unique",
+                    code="DOMAIN_REVIEW_CONFLICT",
+                )
+            seen_dimensions.add(dimension_id)
+            choice = row["choice"]
+            if choice not in allowed_choices:
+                raise DomainError(
+                    "comparison dimension choice is invalid",
+                    code="DOMAIN_REVIEW_CONFLICT",
+                )
+            dimension_notes = _string(
+                row["notes"],
+                f"operation.input.comparison.dimensions[{index}].notes",
+            )
+            normalized_dimensions.append(
+                {
+                    "id": dimension_id,
+                    "choice": choice,
+                    "notes": dimension_notes,
+                }
+            )
+        overall = comparison["overall"]
+        if overall not in allowed_choices:
+            raise DomainError(
+                "comparison overall choice is invalid",
+                code="DOMAIN_REVIEW_CONFLICT",
+            )
+        normalized_comparison = {
+            "incumbent_experiment_id": incumbent_experiment_id,
+            "incumbent_candidate_id": incumbent_candidate_id,
+            "incumbent_artifact_digest": incumbent_candidate["artifact_digest"],
+            "challenger_experiment_id": experiment_id,
+            "challenger_candidate_id": candidate_id,
+            "challenger_artifact_digest": candidate["artifact_digest"],
+            "profile_digest": profile_digest,
+            "blind": True,
+            "presentation_order": presentation_order,
+            "dimensions": normalized_dimensions,
+            "overall": overall,
+            "evidence_source": "HUMAN_REPORTED",
+        }
+
     review_path = f"experiments/{experiment_id}/reviews/{request_id}.json"
     if (repo_dir / review_path).exists():
         raise DomainError("review_id already exists", code="DOMAIN_REVIEW_CONFLICT")
@@ -1533,6 +1705,7 @@ def _plan_review(
         "protocol": protocol,
         "outcome": outcome,
         "notes": notes,
+        **({"comparison": normalized_comparison} if normalized_comparison is not None else {}),
         "actor": {
             "login": trusted_actor.login,
             "user_id": trusted_actor.user_id,
