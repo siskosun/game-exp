@@ -97,7 +97,7 @@ The Trusted Writer Deploy Key may bypass only the narrow rules required to opera
 - canonical experiment branch creation/deletion;
 - immutable experiment/Candidate/Rehearsal tag creation.
 
-Doctor validates complete Ruleset semantics, not only Ruleset names. Weakening a rule, adding a bypass, or changing the main approval policy makes Doctor fail.
+Doctor validates the required minimum Ruleset semantics, not only Ruleset names. Weakening a required rule or adding writer authority where it is forbidden makes Doctor fail. Stricter user protection—such as extra reviewers, CODEOWNERS, resolved-review requirements, signatures, or narrower merge methods—is preserved and remains valid.
 
 ## New-project sequence
 
@@ -176,7 +176,7 @@ Fail closed when:
 - the writer Environment is not main-only;
 - the Environment secret is missing;
 - the legacy repository secret still exists and cannot be removed;
-- any required Ruleset differs semantically from the verified template;
+- any required Ruleset falls below the verified minimum security semantics;
 - repository administration permission is absent;
 - plan support is insufficient;
 - the Trusted Writer self-test fails;
