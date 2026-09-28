@@ -272,3 +272,8 @@ def companion_targets() -> list[dict[str, str]]:
         }
         for spec in COMPANION_SKILLS
     ]
+
+
+def companion_target_paths(home: pathlib.Path, harness: str) -> list[pathlib.Path]:
+    skill_root = _skill_root(home.resolve(), harness)
+    return [skill_root / spec.name for spec in COMPANION_SKILLS]
