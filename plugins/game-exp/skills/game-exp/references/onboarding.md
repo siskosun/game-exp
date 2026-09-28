@@ -58,6 +58,9 @@ Do not repeatedly force onboarding after the repository already has experiments.
 
 5. `开发与试玩`
    - source work happens on the canonical `exp/<issue>` branch;
+   - resolve the selected stack before implementation: prefer Godot Prototype Studio for Godot and H5 Game Prototype Agent for H5/browser work when those Skills are available;
+   - the canonical Harness installer normally synchronizes both companion Skills, but host availability still must be checked at runtime;
+   - H5 PROBE outcomes are implementation evidence only; `READY_FOR_PLAYTEST` never equals Review PASS or PROMISING;
    - when implementation is ready, move to REVIEW and build Candidate;
    - explain that automated checks mean “ready to review,” not “experiment passed.”
 

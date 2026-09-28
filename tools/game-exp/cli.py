@@ -174,7 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
     subject = sub.add_parser("subject", help="show one subject/prototype panel")
     subject.add_argument("subject_id")
 
-    handoff = sub.add_parser("handoff", help="build Godot Prototype Studio handoff package")
+    handoff = sub.add_parser("handoff", help="build specialized prototype executor handoff package")
     handoff.add_argument("experiment_id")
 
     collaboration = sub.add_parser(

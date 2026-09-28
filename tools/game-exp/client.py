@@ -43,6 +43,26 @@ GODOT_PROTOTYPE_STUDIO = {
     "fallback": "host_native_source_editing",
 }
 
+H5_GAME_PROTOTYPE_AGENT = {
+    "id": "h5-game-prototype-agent",
+    "name": "H5 Game Prototype Agent",
+    "source_url": "https://github.com/siskosun/h5-game-prototype-agent",
+    "recommended": True,
+    "required": False,
+    "host_presence_check": "skill_catalog",
+    "missing_is_blocking": False,
+    "affects_experiment_health": False,
+    "fallback": "host_native_source_editing",
+}
+
+def _recommended_prototype_executor(runtime: dict[str, Any]) -> dict[str, Any]:
+    return (
+        H5_GAME_PROTOTYPE_AGENT
+        if str(runtime.get("adapter") or "") == "node-npm"
+        else GODOT_PROTOTYPE_STUDIO
+    )
+
+
 WORKFLOW_EXECUTION_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
     "initialize": ("game-exp-source-initializer.yml", ()),
     "candidate_build": ("game-exp-candidate.yml", ()),
@@ -1178,6 +1198,7 @@ class GameExpClient:
                 "notification_cursors": True,
                 "dependency_review_hints": True,
                 "godot_handoff": True,
+                "h5_handoff": True,
                 "archive_recovery": True,
                 "complete_project_setup": True,
                 "self_describing_manifest": True,
@@ -1244,6 +1265,7 @@ class GameExpClient:
             },
             "recommended_capabilities": {
                 "godot_prototype_studio": dict(GODOT_PROTOTYPE_STUDIO),
+                "h5_game_prototype_agent": dict(H5_GAME_PROTOTYPE_AGENT),
             },
             "queries": [
                 "status",
@@ -4052,6 +4074,10 @@ class GameExpClient:
             if isinstance(obj, dict) and isinstance(obj.get("sha"), str):
                 branch_head_sha = obj["sha"]
         handoff_id = f"IMPLEMENT_EXPERIMENT:{experiment_id}:{snapshot_head}"
+        adapter = str(runtime.get("adapter") or "")
+        selected_executor = _recommended_prototype_executor(runtime)
+        selected_name = selected_executor["name"]
+        selected_url = selected_executor["source_url"]
         return {
             "status": "PASS",
             "repo": self.transport.repo,
@@ -4059,20 +4085,28 @@ class GameExpClient:
             "experiment_id": experiment_id,
             "handoff_schema_version": 2,
             "handoff_id": handoff_id,
-            "handoff_target": "godot-prototype-studio",
+            "handoff_target": selected_executor["id"],
             "handoff_kind": "IMPLEMENT_EXPERIMENT",
+            "recommended_executors": [
+                dict(GODOT_PROTOTYPE_STUDIO),
+                dict(H5_GAME_PROTOTYPE_AGENT),
+            ],
             "recommended_executor": {
-                **dict(GODOT_PROTOTYPE_STUDIO),
+                **dict(selected_executor),
                 "availability_resolved_by": "host",
                 "check_before_implementation": True,
+                "selection_basis": (
+                    "runtime.adapter=node-npm"
+                    if adapter == "node-npm"
+                    else "default_non-node-game-runtime"
+                ),
                 "missing_prompt_zh": (
-                    "当前环境未检测到 Godot Prototype Studio。建议安装："
-                    "https://github.com/siskosun/godot-prototype-studio。"
+                    f"当前环境未检测到 {selected_name}。建议安装：{selected_url}。"
                     "它不是必需依赖；不安装也可以使用当前 Agent/Harness 的代码能力继续开发。"
                 ),
                 "fallback_evidence_rule_zh": (
-                    "使用当前 Agent/Harness 继续开发时，只记录实际完成的运行验证、导出和试玩证据；"
-                    "未执行的 Godot 专用验证不得标记为已完成。"
+                    "使用当前 Agent/Harness 继续开发时，只记录实际完成的实现、运行、浏览器/导出和试玩证据；"
+                    "未执行的专用验证不得标记为已完成。"
                 ),
             },
             "source": {
@@ -4138,7 +4172,7 @@ class GameExpClient:
                         "build_id",
                     ]
                 },
-                "note_zh": "Godot Prototype Studio 负责实现、运行验证与所需试玩发布；返回证据必须绑定源码、构建身份和可访问产物，game-exp 再继续候选版本与人工评审流程。",
+                "note_zh": "专用原型执行器负责实现、运行/浏览器验证与所需试玩发布；返回证据必须绑定源码、构建身份和可访问产物，game-exp 再继续候选版本与人工评审流程。",
             },
         }
 

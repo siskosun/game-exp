@@ -30,6 +30,7 @@ PRODUCTION_TOOLS = (
     "bootstrap.py",
     "cli.py",
     "client.py",
+    "companion_skills.py",
     "conformance_core.py",
     "domain_core.py",
     "integration_control.py",

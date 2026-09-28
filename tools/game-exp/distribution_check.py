@@ -117,6 +117,30 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         policy,
     )
 
+    companion = install.get("companion_skill_sync")
+    companion = companion if isinstance(companion, dict) else {}
+    companion_skills = companion.get("skills")
+    companion_skills = companion_skills if isinstance(companion_skills, list) else []
+    expected_companions = {
+        ("godot-prototype-studio", "https://github.com/siskosun/godot-prototype-studio"),
+        ("h5-game-prototype-agent", "https://github.com/siskosun/h5-game-prototype-agent"),
+    }
+    actual_companions = {
+        (row.get("name"), row.get("source"))
+        for row in companion_skills
+        if isinstance(row, dict)
+    }
+    add(
+        "companion_skill_sync_policy",
+        companion.get("mode") == "latest_semver_tag"
+        and companion.get("same_harness_only") is True
+        and companion.get("runtime_filter") == "skill-runtime-allowlist"
+        and companion.get("unversioned_source_policy") == "reject"
+        and companion.get("failure_policy") == "fail_install_command_with_explicit_error"
+        and actual_companions == expected_companions,
+        companion,
+    )
+
     harnesses = install.get("harnesses")
     harnesses = harnesses if isinstance(harnesses, dict) else {}
     add(
@@ -187,6 +211,9 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         CANONICAL_SOURCE in skill_text
         and "INSTALL.json" in skill_text
         and "Do not synchronize application repositories" in skill_text
+        and "godot-prototype-studio" in skill_text
+        and "h5-game-prototype-agent" in skill_text
+        and "semantic-version-tagged" in skill_text
         and "--cleanup-legacy-shared" in skill_text,
     )
 

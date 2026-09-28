@@ -26,6 +26,11 @@ class DistributionIntegrityTests(unittest.TestCase):
             result["source"],
             "https://github.com/siskosun/game-exp",
         )
+        companion = next(
+            row for row in result["checks"]
+            if row["name"] == "companion_skill_sync_policy"
+        )
+        self.assertEqual(companion["status"], "PASS")
 
     def test_harness_command_contract_is_exact(self):
         self.assertTrue(

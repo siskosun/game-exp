@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0 maintenance fix - 2026-09-28
+
+- Keep the game-exp version at `1.0.0`.
+- When installing or upgrading one Harness, also fetch the latest semantic-version tags of `godot-prototype-studio` and `h5-game-prototype-agent` from their canonical GitHub repositories and install their runtime Skill files into the same Harness only.
+- Preserve Harness isolation: a Codex upgrade does not modify Cursor/Qoder; `--harness all` remains explicit.
+- Reject unversioned companion sources and tag/VERSION mismatches.
+- Filter companion installs to runtime Skill content so tests, CI, audit/dev files, `node_modules`, evidence folders, and temporary outputs do not leak into Skill directories.
+- Extend prototype handoff guidance to route Godot work to GPS and H5/browser work to H5 Game Prototype Agent without changing game-exp lifecycle authority.
+
+
 ## 1.0.0 - 2026-09-28
 
 ### Trust boundary

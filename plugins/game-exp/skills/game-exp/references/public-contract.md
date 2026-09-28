@@ -309,7 +309,7 @@ A later contract version may introduce explicit dependency predicates such as â€
 
 ## Prototype handoff
 
-`game_exp_prototype_handoff` emits Handoff schema v2 for Godot Prototype Studio.
+`game_exp_prototype_handoff` emits Handoff schema v2 for a specialized prototype executor. It preserves the schema version and adds executor metadata without changing lifecycle authority.
 
 The return evidence must bind:
 
@@ -323,7 +323,7 @@ The return evidence must bind:
 
 A local filesystem path alone is not sufficient cross-Harness evidence unless it is explicitly marked `portable=false`.
 
-A2A may later transport the same task/artifact semantics if Godot Prototype Studio becomes an independent Agent. A2A transport must not redefine game-exp human approvals, idempotency or evidence validity.
+A2A may later transport the same task/artifact semantics if a specialized prototype Skill becomes an independent Agent. A2A transport must not redefine game-exp human approvals, idempotency or evidence validity.
 
 
 ### Board presentation v5
@@ -346,11 +346,15 @@ This policy does not mutate lifecycle state, loosen human gates, or authorize re
 
 ## Optional implementation capability contract v1
 
-`game_exp_capabilities` exposes `features.optional_implementation_capabilities_v1=true` and `recommended_capabilities.godot_prototype_studio`.
+`game_exp_capabilities` exposes `features.optional_implementation_capabilities_v1=true`, `recommended_capabilities.godot_prototype_studio`, and `recommended_capabilities.h5_game_prototype_agent`.
 
-Godot Prototype Studio is recommended but optional. Its canonical source is `https://github.com/siskosun/godot-prototype-studio`. The host, not game-exp Ledger state, resolves whether the Skill/tool is currently available. Absence is non-blocking and must not affect project readiness, experiment health, or lifecycle.
+Godot Prototype Studio and H5 Game Prototype Agent are recommended but optional. Canonical sources are `https://github.com/siskosun/godot-prototype-studio` and `https://github.com/siskosun/h5-game-prototype-agent`. The host, not game-exp Ledger state, resolves whether each Skill/tool is currently available. Absence is non-blocking and must not affect project readiness, experiment health, or lifecycle.
 
-`game_exp_prototype_handoff` includes `recommended_executor` with the same canonical metadata, a Chinese non-blocking installation suggestion, and the fallback evidence rule. A host may continue with ordinary source-editing capability when the specialized Skill is unavailable, but may report only verification/export/playable evidence it actually produced.
+The canonical Harness installer synchronizes the latest semantic-version-tagged releases of both companion Skills into the selected Harness. This is install convenience, not protocol authority.
+
+`game_exp_prototype_handoff` includes both `recommended_executors` and one `recommended_executor`. For `runtime.adapter=node-npm`, H5 Game Prototype Agent is preferred; other game runtimes keep Godot Prototype Studio as the default specialized executor. The host may override that suggestion when the user/project has already selected another stack.
+
+A host may continue with ordinary source-editing capability when the specialized Skill is unavailable, but may report only implementation/runtime/browser/export/playable evidence it actually produced. H5 PROBE machine verdicts remain evidence and never authorize lifecycle transitions.
 
 This adds optional result fields only; Handoff schema v2 remains compatible.
 

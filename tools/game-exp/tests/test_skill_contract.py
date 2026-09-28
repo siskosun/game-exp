@@ -542,7 +542,7 @@ class GameExpSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, contract)
 
-    def test_godot_executor_is_optional_and_non_blocking(self):
+    def test_prototype_executors_are_optional_and_non_blocking(self):
         skill = SKILL.read_text(encoding="utf-8")
         handoff = (
             PLUGIN / "skills" / "game-exp" / "references" / "prototype-handoff.md"
@@ -554,17 +554,20 @@ class GameExpSkillContractTests(unittest.TestCase):
         for phrase in (
             "check the current host's available Skill/tool catalog",
             "https://github.com/siskosun/godot-prototype-studio",
+            "https://github.com/siskosun/h5-game-prototype-agent",
             "Missing capability must not make experiment health fail",
-            "not a mandatory dependency",
-            "Never claim Godot-specific validation that was not run",
+            "not mandatory dependencies",
+            "never claim specialized validation that was not run",
+            "READY_FOR_PLAYTEST",
         ):
             self.assertIn(phrase, skill)
 
         for phrase in (
-            "Godot Prototype Studio is the recommended specialized executor, not a game-exp dependency",
-            "show one non-blocking installation suggestion",
-            "Missing capability never changes experiment health",
-            "truthful-by-construction",
+            "Godot Prototype Studio (`godot-prototype-studio`)",
+            "H5 Game Prototype Agent (`h5-game-prototype-agent`)",
+            "missing executor capability does not change repository health",
+            "READY_FOR_PLAYTEST",
+            "repository root",
         ):
             self.assertIn(phrase, handoff)
 
@@ -572,6 +575,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Optional implementation capability contract v1",
             "features.optional_implementation_capabilities_v1=true",
             "recommended_capabilities.godot_prototype_studio",
+            "recommended_capabilities.h5_game_prototype_agent",
             "Handoff schema v2 remains compatible",
         ):
             self.assertIn(phrase, contract)

@@ -329,7 +329,7 @@ def game_exp_prototype_handoff(
     experiment_id: str,
     repo: str | None = None,
 ) -> dict[str, Any]:
-    """Return the exact implementation brief for handing one experiment to Godot Prototype Studio."""
+    """Return the exact implementation brief and recommended specialized prototype executor."""
     return _client(repo).prototype_handoff(experiment_id)
 
 

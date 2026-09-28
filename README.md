@@ -34,7 +34,14 @@ python tools/game-exp/install_harnesses.py --harness all --cleanup-legacy-shared
 
 The cleanup flag is intentionally invalid for a single-Harness install.
 
-Each Harness now gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
+Each Harness gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent game-exp Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
+
+As a maintenance fix to 1.0.0, the same install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
+
+- `godot-prototype-studio` from `https://github.com/siskosun/godot-prototype-studio`
+- `h5-game-prototype-agent` from `https://github.com/siskosun/h5-game-prototype-agent`
+
+The companion sync installs runtime Skill files only; it does not copy their tests, CI, audit/dev history, or application repositories. `--harness all` is still required to update all Harnesses. If a companion repository has no semantic-version tag or cannot be fetched, the install command reports an explicit failure instead of silently installing an unversioned snapshot.
 
 ## Verify the distribution
 
@@ -62,7 +69,7 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.0.0`.
+Current version: `1.0.0` (companion-sync maintenance fix; version number unchanged).
 
 Release history: see `CHANGELOG.md`.
 
