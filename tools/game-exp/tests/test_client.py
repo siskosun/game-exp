@@ -1712,6 +1712,12 @@ class ClientTests(unittest.TestCase):
         transport._ledger_json["experiments/EXP-7/binding.json"] = {
             "initialization": {"branch_ref": "refs/heads/exp/7"},
         }
+        transport._ledger_json["experiments/EXP-7/manifest.json"] = {
+            "title": "Movement tuning",
+            "hypothesis": "Movement feel improves retention in playtest.",
+            "success_criteria": ["Players describe movement as responsive."],
+            "kill_criteria": ["Players still describe movement as sluggish."],
+        }
         transport._ledger_json[
             "experiments/EXP-7/work-claims/req_work_1.json"
         ] = {
