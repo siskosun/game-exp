@@ -46,6 +46,26 @@ ACTION_KEYS = {
     "bind": {"schema_version", "request_id", "action", "manifest"},
     "initialize": {"schema_version", "request_id", "action", "experiment_id"},
     "candidate_build": {"schema_version", "request_id", "action", "experiment_id"},
+    "work_claim": {
+        "schema_version",
+        "request_id",
+        "action",
+        "experiment_id",
+        "base_source_sha",
+        "summary",
+        "paths",
+        "executor",
+    },
+    "work_release": {
+        "schema_version",
+        "request_id",
+        "action",
+        "experiment_id",
+        "claim_id",
+        "outcome",
+        "notes",
+        "result_source_sha",
+    },
     "review_record": {
         "schema_version",
         "request_id",
@@ -480,6 +500,52 @@ def execute_action(
         payload = build_operation_payload(
             "experiment.bind",
             {"manifest": command["manifest"]},
+            actor_claim=actor_claim,
+        )
+        return submit_writer(
+            repo,
+            command["request_id"],
+            payload,
+            ssh_key=ssh_key,
+            run_id=run_id,
+            run_attempt=run_attempt,
+            workflow_source_sha=workflow_source_sha,
+        )
+
+    if action == "work_claim":
+        payload = build_operation_payload(
+            "work.claim",
+            {
+                "experiment_id": command["experiment_id"],
+                "base_source_sha": command["base_source_sha"],
+                "summary": command["summary"],
+                "paths": command["paths"],
+                "executor": command["executor"],
+            },
+            actor_claim=actor_claim,
+        )
+        return submit_writer(
+            repo,
+            command["request_id"],
+            payload,
+            ssh_key=ssh_key,
+            run_id=run_id,
+            run_attempt=run_attempt,
+            workflow_source_sha=workflow_source_sha,
+        )
+
+    if action == "work_release":
+        input_value = {
+            "experiment_id": command["experiment_id"],
+            "claim_id": command["claim_id"],
+            "outcome": command["outcome"],
+            "notes": command["notes"],
+        }
+        if command["result_source_sha"] is not None:
+            input_value["result_source_sha"] = command["result_source_sha"]
+        payload = build_operation_payload(
+            "work.release",
+            input_value,
             actor_claim=actor_claim,
         )
         return submit_writer(

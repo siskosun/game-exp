@@ -137,6 +137,13 @@ class TrustedActorContext:
 
 
 @dataclass(frozen=True)
+class TrustedWorkContext:
+    experiment_id: str
+    branch_ref: str
+    branch_head_sha: str
+
+
+@dataclass(frozen=True)
 class TrustedCandidateContext:
     experiment_id: str
     candidate_id: str
@@ -611,6 +618,296 @@ def _load_bound_experiment(repo_dir: Path, experiment_id: str):
     if last_decision_id is not None and (not isinstance(last_decision_id, str) or not last_decision_id):
         raise DomainError("invalid last_decision_id", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
     return binding, manifest, state, operation
+
+
+def _normalize_work_paths(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        raise DomainError("work paths must be a list", code="DOMAIN_WORK_INVALID")
+    if len(value) > 64:
+        raise DomainError("work paths may contain at most 64 entries", code="DOMAIN_WORK_INVALID")
+    normalized: list[str] = []
+    for raw in value:
+        if not isinstance(raw, str) or not raw.strip():
+            raise DomainError("work path must be a non-empty string", code="DOMAIN_WORK_INVALID")
+        path = raw.strip().replace("\\", "/").strip("/")
+        if (
+            not path
+            or "//" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or any(ch in path for ch in "*?[]{}")
+            or unicodedata.normalize("NFC", path) != path
+        ):
+            raise DomainError(
+                f"work path is not a normalized repository path: {raw!r}",
+                code="DOMAIN_WORK_INVALID",
+            )
+        normalized.append(path)
+    return sorted(set(normalized))
+
+
+def _work_paths_overlap(left: list[str], right: list[str]) -> bool:
+    if not left or not right:
+        return True
+    for a in left:
+        for b in right:
+            if a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+                return True
+    return False
+
+
+def _active_work_claim_records(
+    repo_dir: Path,
+    experiment_id: str,
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    ids = state.get("active_work_claim_ids", [])
+    if ids is None:
+        return []
+    if not isinstance(ids, list) or any(not isinstance(item, str) or not item for item in ids):
+        raise DomainError(
+            "active_work_claim_ids is invalid",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    records: list[dict[str, Any]] = []
+    for claim_id in ids:
+        claim = _read_json_file(
+            repo_dir,
+            f"experiments/{experiment_id}/work-claims/{claim_id}.json",
+            where=experiment_id,
+        )
+        if (
+            claim.get("kind") != "work_claim"
+            or claim.get("claim_id") != claim_id
+            or claim.get("experiment_id") != experiment_id
+        ):
+            raise DomainError(
+                "work claim identity mismatch",
+                code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+            )
+        records.append(claim)
+    return records
+
+
+def _plan_work_claim(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+    trusted_work: TrustedWorkContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "base_source_sha", "summary", "paths", "executor"},
+        where="operation.input",
+    )
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    base_source_sha = _string(input_value["base_source_sha"], "operation.input.base_source_sha")
+    summary = _string(input_value["summary"], "operation.input.summary")
+    if not re.fullmatch(r"[0-9a-f]{40}", base_source_sha):
+        raise DomainError("base_source_sha must be a 40-character commit SHA", code="DOMAIN_WORK_INVALID")
+    paths = _normalize_work_paths(input_value["paths"])
+    executor = _mapping(input_value["executor"], "operation.input.executor")
+    _expect_keys(
+        executor,
+        {"harness", "agent"},
+        where="operation.input.executor",
+        optional={"session_id"},
+    )
+    normalized_executor = {
+        "harness": _string(executor["harness"], "operation.input.executor.harness"),
+        "agent": _string(executor["agent"], "operation.input.executor.agent"),
+    }
+    if "session_id" in executor:
+        normalized_executor["session_id"] = _string(
+            executor["session_id"],
+            "operation.input.executor.session_id",
+        )
+
+    if trusted_actor is None or trusted_actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            "work claim requires a trusted write-capable actor",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    binding, _manifest, state, _binding_operation = _load_bound_experiment(repo_dir, experiment_id)
+    if state.get("archive_lock") is not None:
+        raise DomainError("work claim rejected while archive lock is active", code="DOMAIN_WORK_CONFLICT")
+    if state.get("lifecycle") not in {"ACTIVE", "REVIEW"}:
+        raise DomainError(
+            f"work claim is not allowed in lifecycle {state.get('lifecycle')!r}",
+            code="DOMAIN_WORK_CONFLICT",
+        )
+    if trusted_work is None or trusted_work.experiment_id != experiment_id:
+        raise DomainError("trusted work context is required", code="DOMAIN_AUTHORIZATION_FAILED")
+    expected_branch = binding.get("initialization", {}).get("branch_ref")
+    if trusted_work.branch_ref != expected_branch:
+        raise DomainError("trusted work branch differs from canonical branch", code="DOMAIN_WORK_CONFLICT")
+    if base_source_sha != trusted_work.branch_head_sha:
+        raise DomainError(
+            "work claim base is stale; synchronize to the current experiment branch before editing",
+            code="DOMAIN_WORK_STALE",
+        )
+
+    claim_path = f"experiments/{experiment_id}/work-claims/{request_id}.json"
+    if (repo_dir / claim_path).exists():
+        raise DomainError("work claim id already exists", code="DOMAIN_WORK_CONFLICT")
+
+    active = _active_work_claim_records(repo_dir, experiment_id, state)
+    overlap_with = sorted(
+        claim["claim_id"]
+        for claim in active
+        if claim.get("base_source_sha") == trusted_work.branch_head_sha
+        and _work_paths_overlap(paths, list(claim.get("paths") or []))
+    )
+    claim = {
+        "kind": "work_claim",
+        "claim_id": request_id,
+        "experiment_id": experiment_id,
+        "base_source_sha": base_source_sha,
+        "branch_ref": trusted_work.branch_ref,
+        "summary": summary,
+        "paths": paths,
+        "scope_declared": bool(paths),
+        "actor": {
+            "login": trusted_actor.login,
+            "user_id": trusted_actor.user_id,
+            "permission": trusted_actor.permission,
+            "source": "github-collaborator-permission",
+        },
+        "executor": normalized_executor,
+        "overlap_with": overlap_with,
+        "coordination_required": bool(overlap_with),
+    }
+    actor_claim = payload.get("actor_claim")
+    if actor_claim is not None:
+        claim["actor_claim"] = actor_claim
+
+    next_state = dict(state)
+    sequence = next_state.get("work_sequence", 0)
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+        raise DomainError("invalid work_sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    ids = list(next_state.get("active_work_claim_ids") or [])
+    ids.append(request_id)
+    next_state["work_sequence"] = sequence + 1
+    next_state["active_work_claim_ids"] = ids
+    next_state["last_work_claim_id"] = request_id
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            claim_path: claim,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
+
+
+def _plan_work_release(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    request_id: str,
+    trusted_actor: TrustedActorContext | None,
+    trusted_work: TrustedWorkContext | None,
+) -> DomainPlan:
+    input_value = _mapping(payload.get("input"), "operation.input")
+    _expect_keys(
+        input_value,
+        {"experiment_id", "claim_id", "outcome", "notes"},
+        where="operation.input",
+        optional={"result_source_sha"},
+    )
+    experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
+    claim_id = _string(input_value["claim_id"], "operation.input.claim_id")
+    outcome = _string(input_value["outcome"], "operation.input.outcome")
+    notes = _string(input_value["notes"], "operation.input.notes")
+    if outcome not in {"COMPLETED", "ABANDONED"}:
+        raise DomainError("work release outcome must be COMPLETED or ABANDONED", code="DOMAIN_WORK_INVALID")
+
+    if trusted_actor is None or trusted_actor.permission not in {"admin", "maintain", "write"}:
+        raise DomainError(
+            "work release requires a trusted write-capable actor",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    _binding, _manifest, state, _binding_operation = _load_bound_experiment(repo_dir, experiment_id)
+    claim = _read_json_file(
+        repo_dir,
+        f"experiments/{experiment_id}/work-claims/{claim_id}.json",
+        where=experiment_id,
+    )
+    if claim.get("kind") != "work_claim" or claim.get("experiment_id") != experiment_id:
+        raise DomainError("work claim identity mismatch", code="DOMAIN_WORK_CONFLICT")
+    active_ids = list(state.get("active_work_claim_ids") or [])
+    if claim_id not in active_ids:
+        raise DomainError("work claim is not active", code="DOMAIN_WORK_CONFLICT")
+    claim_actor = claim.get("actor") if isinstance(claim.get("actor"), dict) else {}
+    if (
+        claim_actor.get("user_id") != trusted_actor.user_id
+        and trusted_actor.permission not in {"admin", "maintain"}
+    ):
+        raise DomainError(
+            "only the claim owner or repository admin/maintainer may release this work claim",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+    if trusted_work is None or trusted_work.experiment_id != experiment_id:
+        raise DomainError("trusted work context is required", code="DOMAIN_AUTHORIZATION_FAILED")
+
+    result_source_sha = input_value.get("result_source_sha")
+    if outcome == "COMPLETED":
+        result_source_sha = _string(result_source_sha, "operation.input.result_source_sha")
+        if not re.fullmatch(r"[0-9a-f]{40}", result_source_sha):
+            raise DomainError("result_source_sha must be a 40-character commit SHA", code="DOMAIN_WORK_INVALID")
+        if result_source_sha != trusted_work.branch_head_sha:
+            raise DomainError(
+                "completed work must reference the current canonical experiment branch head",
+                code="DOMAIN_WORK_STALE",
+            )
+    elif result_source_sha is not None:
+        raise DomainError(
+            "ABANDONED work release must not include result_source_sha",
+            code="DOMAIN_WORK_INVALID",
+        )
+
+    release_path = f"experiments/{experiment_id}/work-releases/{request_id}.json"
+    if (repo_dir / release_path).exists():
+        raise DomainError("work release id already exists", code="DOMAIN_WORK_CONFLICT")
+    release = {
+        "kind": "work_release",
+        "release_id": request_id,
+        "experiment_id": experiment_id,
+        "claim_id": claim_id,
+        "outcome": outcome,
+        "notes": notes,
+        "result_source_sha": result_source_sha,
+        "observed_branch_head_sha": trusted_work.branch_head_sha,
+        "actor": {
+            "login": trusted_actor.login,
+            "user_id": trusted_actor.user_id,
+            "permission": trusted_actor.permission,
+            "source": "github-collaborator-permission",
+        },
+    }
+    actor_claim = payload.get("actor_claim")
+    if actor_claim is not None:
+        release["actor_claim"] = actor_claim
+
+    next_state = dict(state)
+    sequence = next_state.get("work_sequence", 0)
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+        raise DomainError("invalid work_sequence", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
+    next_state["work_sequence"] = sequence + 1
+    next_state["active_work_claim_ids"] = [item for item in active_ids if item != claim_id]
+    next_state["last_work_release_id"] = request_id
+
+    return DomainPlan(
+        status="APPLIED",
+        experiment_id=experiment_id,
+        writes={
+            release_path: release,
+            f"experiments/{experiment_id}/state.json": next_state,
+        },
+    )
 
 
 def _plan_decision(
@@ -2187,6 +2484,7 @@ def plan_domain_mutation(
     repository_full_name: str,
     trusted_binding: TrustedBindingContext | None = None,
     trusted_actor: TrustedActorContext | None = None,
+    trusted_work: TrustedWorkContext | None = None,
     trusted_candidate: TrustedCandidateContext | None = None,
     trusted_retention: TrustedRetentionContext | None = None,
     trusted_rehearsal: TrustedRehearsalContext | None = None,
@@ -2196,6 +2494,22 @@ def plan_domain_mutation(
     if payload.get("kind") != "operation_request":
         return DomainPlan(status="REQUEST_ONLY", experiment_id=None, writes={})
     operation = payload.get("operation")
+    if operation == "work.claim":
+        return _plan_work_claim(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+            trusted_work=trusted_work,
+        )
+    if operation == "work.release":
+        return _plan_work_release(
+            repo_dir=repo_dir,
+            payload=payload,
+            request_id=request_id,
+            trusted_actor=trusted_actor,
+            trusted_work=trusted_work,
+        )
     if operation == "execution.claim":
         return _plan_execution_claim(
             repo_dir=repo_dir,

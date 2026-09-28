@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from domain_core import DomainError, TrustedActorContext, TrustedArchiveContext, TrustedBindingContext, TrustedCandidateContext, TrustedIntegrationContext, TrustedRehearsalContext, TrustedRetentionContext, plan_domain_mutation, validate_manifest
+from domain_core import DomainError, TrustedActorContext, TrustedArchiveContext, TrustedBindingContext, TrustedCandidateContext, TrustedIntegrationContext, TrustedRehearsalContext, TrustedRetentionContext, TrustedWorkContext, plan_domain_mutation, validate_manifest
 from protocol_core import (
     ProtocolError,
     canonical_json_bytes,
@@ -996,6 +996,65 @@ def resolve_trusted_integration(
     )
 
 
+def resolve_trusted_work(
+    repo: str,
+    payload: dict,
+    repo_dir: Path,
+) -> TrustedWorkContext | None:
+    if payload.get("kind") != "operation_request" or payload.get("operation") not in {
+        "work.claim",
+        "work.release",
+    }:
+        return None
+    input_value = payload.get("input")
+    if not isinstance(input_value, dict):
+        raise DomainError("work input must be an object", code="DOMAIN_WORK_INVALID")
+    experiment_id = input_value.get("experiment_id")
+    if not isinstance(experiment_id, str) or not re.fullmatch(r"EXP-[1-9][0-9]*", experiment_id):
+        raise DomainError("work experiment_id must be EXP-<number>", code="DOMAIN_WORK_INVALID")
+    binding = _ledger_object(
+        repo_dir,
+        f"experiments/{experiment_id}/binding.json",
+        where=experiment_id,
+    )
+    initialization = binding.get("initialization")
+    if not isinstance(initialization, dict):
+        raise DomainError(
+            "work binding initialization is missing",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    issue = experiment_id.removeprefix("EXP-")
+    branch_ref = initialization.get("branch_ref")
+    expected_branch_ref = f"refs/heads/exp/{issue}"
+    if branch_ref != expected_branch_ref:
+        raise DomainError(
+            "work canonical branch differs from binding",
+            code="DOMAIN_WORK_CONFLICT",
+        )
+    branch_name = branch_ref.removeprefix("refs/heads/")
+    suffix = "/git/ref/heads/" + "/".join(
+        urllib.parse.quote(part, safe="") for part in branch_name.split("/")
+    )
+    branch_data = github_json(repo, suffix)
+    obj = branch_data.get("object") if isinstance(branch_data, dict) else None
+    branch_head_sha = obj.get("sha") if isinstance(obj, dict) else None
+    if (
+        not isinstance(obj, dict)
+        or obj.get("type") != "commit"
+        or not isinstance(branch_head_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", branch_head_sha)
+    ):
+        raise DomainError(
+            "work canonical branch head is not a commit SHA",
+            code="DOMAIN_WORK_CONFLICT",
+        )
+    return TrustedWorkContext(
+        experiment_id=experiment_id,
+        branch_ref=branch_ref,
+        branch_head_sha=branch_head_sha,
+    )
+
+
 def resolve_trusted_actor(repo: str, payload: dict) -> TrustedActorContext | None:
     if payload.get("kind") != "operation_request":
         return None
@@ -1006,6 +1065,8 @@ def resolve_trusted_actor(repo: str, payload: dict) -> TrustedActorContext | Non
         "review.record",
         "archive.prepare",
         "archive.abort",
+        "work.claim",
+        "work.release",
     }:
         return None
 
@@ -1196,6 +1257,7 @@ def main() -> int:
 
         trusted_binding = resolve_trusted_binding(args.repo, payload)
         trusted_actor = resolve_trusted_actor(args.repo, payload)
+        trusted_work = resolve_trusted_work(args.repo, payload, repo_dir)
         trusted_candidate = resolve_trusted_candidate(
             payload,
             authority=args.authority,
@@ -1237,6 +1299,7 @@ def main() -> int:
             repository_full_name=args.repo,
             trusted_binding=trusted_binding,
             trusted_actor=trusted_actor,
+            trusted_work=trusted_work,
             trusted_candidate=trusted_candidate,
             trusted_retention=trusted_retention,
             trusted_rehearsal=trusted_selection_rehearsal or trusted_rehearsal,

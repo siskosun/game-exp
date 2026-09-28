@@ -300,3 +300,17 @@ Godot Prototype Studio is recommended but optional. Its canonical source is `htt
 
 This adds optional result fields only; Handoff schema v2 remains compatible.
 
+## Collaboration coordination contract v1
+
+`game_exp_capabilities` exposes `features.collaboration_coordination_v1=true`, the `collaboration_coordination` descriptor, read query `collaboration_context`, and protected operations `work.claim` / `work.release`.
+
+A work claim is a coordination record, not lifecycle authority. It binds source-editing intent to the exact current canonical experiment branch SHA, trusted GitHub actor, executor identity, summary, and declared path scope.
+
+Before editing, a Harness should call `game_exp_collaboration_context` with its observed source SHA when available. A stale SHA must be synchronized before a trusted work claim can commit. This prevents silent continuation from stale source across Harness changes.
+
+Overlapping current work claims are returned as explicit `WORK_SCOPE_OVERLAP` conflicts with `blocking=false`. The protocol intentionally surfaces risk without implementing a static file lock. Hosts should coordinate or use isolated workspaces and merge/test. They must not report the overlap as resolved unless coordination actually occurred.
+
+`COMPLETED` work release binds to the current canonical experiment branch head. `ABANDONED` releases without a result SHA. Work claims and releases do not approve Review, lifecycle promotion, selection, integration merge, or archive.
+
+The protected collaboration projection is current execution state. Chat transcripts, local Harness memory, and Agent plans are non-authoritative context.
+

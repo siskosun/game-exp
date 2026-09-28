@@ -95,6 +95,21 @@ Each experiment entry should show:
 
 Use the Chinese values already emitted in `display` and `attention`. Do not expose raw enums such as `HUMAN_REVIEW` as the primary UI text.
 
+## 协作状态
+
+实验条目可携带 `unreleased_work_claims`、`unreleased_work_claim_count` 和 `work_awareness_zh`，用于回答“现在谁正在改什么”。
+
+这些字段来自同一个固定 Ledger 快照，只表示**尚未结束的工作意图**。它们不能证明执行者仍基于当前实验分支，也不能替代实时冲突判断。
+
+当用户准备继续开发、切换 Harness、或需要判断是否和别人撞车时，使用 `game_exp_collaboration_context`。该查询会额外读取当前 canonical experiment branch SHA，并区分：
+
+- 当前工作意图；
+- 已因分支推进而过期的工作意图；
+- 当前范围重叠冲突；
+- 当前 Harness 是否落后于实验分支。
+
+范围重叠是协调提示，不是锁，也不改变实验 health/lifecycle。
+
 ## 原型
 
 Use `views.prototypes.groups`.

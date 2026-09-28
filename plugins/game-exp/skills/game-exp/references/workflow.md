@@ -37,6 +37,20 @@ When classification is ambiguous, ask one question about the actual design inten
 
 Explicit user classification wins. Existing lifecycle rules remain authoritative; routing policy does not bypass human gates or reopen terminal/selected work.
 
+## Collaboration coordination
+
+Before editing an existing experiment, read `game_exp_collaboration_context`. When the Harness knows its current source SHA, pass it as `observed_source_sha`.
+
+- `CURRENT`: the Harness sees the canonical experiment branch head.
+- `STALE`: synchronize before source edits.
+- `UNKNOWN`: source identity was not supplied; do not claim that synchronization was verified.
+
+Use `game_exp_work_claim` before source edits and `game_exp_work_release` after integrated completion or abandonment. Claims are protected Ledger coordination records, not lifecycle states.
+
+Scope overlap is surfaced but not hard-locked. Prefer isolated workspaces plus merge/test when overlap is intentional. Do not silently assume another Agent's intent from chat history.
+
+See `collaboration.md` for the full cross-Harness contract.
+
 ## Tool map
 
 | User intent | Preferred MCP tool | Notes |
@@ -46,7 +60,7 @@ Explicit user classification wins. Existing lifecycle rules remain authoritative
 | Build repository-local Manifest blueprint | `game_exp_experiment_template` | Read-only; use before first Bind instead of copying another repository's Manifest |
 | Open experiment Board / panel | `game_exp_board` | Read-only consistent Ledger snapshot |
 | Collaboration notification feed | `game_exp_notifications` | Read-only, replayable, external delivery adapters dedupe by event_id |
-| Build implementation brief | `game_exp_prototype_handoff` | Read-only handoff to Godot Prototype Studio; no lifecycle mutation |
+| Build implementation brief | `game_exp_prototype_handoff` | Read-only implementation handoff; no lifecycle mutation |\n| Inspect collaboration state | `game_exp_collaboration_context` | Read-only current branch / active work intents / overlap projection |\n| Declare source work | `game_exp_work_claim` | Protected intent bound to current canonical experiment branch SHA |\n| Release source work | `game_exp_work_release` | Close completed or abandoned work intent |
 | Inspect experiment | `game_exp_experiment_get` | Read-only authoritative projection |
 | Diagnose trust/archive health | `game_exp_doctor` | Read-only |
 | Bind Manifest | `game_exp_experiment_bind` | Manifest operation id is idempotency key |
