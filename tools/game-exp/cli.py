@@ -114,6 +114,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="diagnostic only; a skipped self-test can never count as complete setup",
     )
+    project_init.add_argument(
+        "--trust-mode",
+        choices=("auto", "single-principal", "multi-principal"),
+        default="auto",
+        help="repository trust policy mode",
+    )
 
     sub.add_parser(
         "conformance-suite",
@@ -410,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
                     result = project_provision(
                         repo,
                         run_selftest=not args.skip_selftest,
+                        trust_mode=args.trust_mode,
                     )
                     if args.skip_selftest and result.get("status") == "PASS":
                         result["status"] = "INCOMPLETE"
