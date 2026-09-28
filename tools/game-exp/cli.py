@@ -255,7 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("experiment_id")
     review.add_argument("--outcome", choices=("PASS", "FAIL"), required=True)
     review.add_argument("--notes", required=True)
-    review.add_argument("--candidate-id")
+    review.add_argument("--candidate-id", required=True)
     review.add_argument("--comparison-json")
     review.add_argument("--request-id", required=True)
     review.add_argument("--actor-claim")
