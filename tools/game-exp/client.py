@@ -1244,6 +1244,7 @@ class GameExpClient:
                 "supported_schema_versions": [1, 2, 3],
                 "recommended_schema_version": manifest_schema_version,
                 "schema_v1_status": "legacy-compatible",
+                "schema_v2_status": "legacy-compatible",
                 "required_fields": [
                     "schema_version",
                     "experiment",
