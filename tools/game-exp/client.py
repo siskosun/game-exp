@@ -2748,6 +2748,27 @@ class GameExpClient:
             "action_zh": None,
         }
 
+    @staticmethod
+    def _board_surface_hint(
+        attention: dict[str, Any],
+        next_gate: str,
+    ) -> dict[str, Any]:
+        if attention.get("required") is True:
+            return {
+                "mode": "CONTEXTUAL_PANEL",
+                "surface_when_relevant": True,
+                "reason": attention.get("reason") or next_gate,
+                "message_zh": attention.get("action_zh"),
+                "authoritative": False,
+            }
+        return {
+            "mode": "COMPACT_RESULT",
+            "surface_when_relevant": False,
+            "reason": next_gate,
+            "message_zh": GameExpClient._board_next_gate_zh(next_gate),
+            "authoritative": False,
+        }
+
     def _board_activity(
         self,
         *,
