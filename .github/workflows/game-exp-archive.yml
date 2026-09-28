@@ -67,6 +67,7 @@ jobs:
   archive:
     needs: dedupe
     if: needs.dedupe.outputs.primary == 'true'
+    environment: game-exp-trusted-writer
     permissions:
       contents: read
       issues: read
