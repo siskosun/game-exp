@@ -105,7 +105,15 @@ Work claims/releases are coordination records, not lifecycle decisions or human 
 {"schema_version":1,"request_id":"req_review_42_1","action":"review_record","experiment_id":"EXP-42","candidate_id":"C-42-...","outcome":"PASS","notes":"Human review notes."}
 ~~~
 
-`outcome` is `PASS` or `FAIL`.
+\`outcome\` is \`PASS\` or \`FAIL\`.
+
+For Manifest review protocol \`incumbent-challenger-blind-ab-v1\`, the command may add one optional \`comparison\` object. It must bind the current incumbent Candidate of the challenger's \`supersedes\` relationship, both artifact identities, the shared Evaluation Profile digest, \`blind=true\`, presentation order, dimension choices, and optional overall choice.
+
+~~~json
+{"schema_version":1,"request_id":"req_review_42_2","action":"review_record","experiment_id":"EXP-42","candidate_id":"C-42-...","outcome":"PASS","notes":"Human explicitly approved continuing the challenger.","comparison":{"incumbent_experiment_id":"EXP-41","incumbent_candidate_id":"C-41-...","incumbent_artifact_digest":"sha256:<64hex>","profile_digest":"sha256:<64hex>","blind":true,"presentation_order":"CHALLENGER_INCUMBENT","dimensions":[{"id":"mechanic_clarity","choice":"CHALLENGER","notes":"The consequence was easier to understand."}],"overall":"NO_CLEAR_DIFFERENCE"}}
+~~~
+
+Comparison choices are \`INCUMBENT\`, \`CHALLENGER\`, \`NO_CLEAR_DIFFERENCE\`, or \`INCONCLUSIVE\`. The comparison is \`HUMAN_REPORTED\` evidence and does not replace the explicit Review outcome.
 
 ### decision_submit
 
