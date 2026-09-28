@@ -5,14 +5,16 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   client-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.GAME_EXP_E2E_TOKEN }}
+      CANARY_ISSUE_NUMBER: "20"
+      CANARY_PARENT_SHA: "2a640bb2a0fc48d6858fa17ccd63d5988ce22450"
+      CANARY_REQUEST_ID: "req-client-e2e-bind-v1"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -20,6 +22,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      - name: Require human E2E credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GAME_EXP_E2E_TOKEN is required. It must belong to a repository collaborator with write permission and Actions write access." >&2
+            exit 1
+          fi
+          login="$(gh api user --jq '.login')"
+          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq '.permission')"
+          case "$permission" in
+            admin|maintain|write) ;;
+            *)
+              echo "GAME_EXP_E2E_TOKEN actor $login lacks repository write permission: $permission" >&2
+              exit 1
+              ;;
+          esac
+          echo "E2E actor: $login ($permission)"
 
       - name: Doctor trusted repository
         shell: bash
@@ -40,23 +61,76 @@ jobs:
           assert x["status"] in {"PASS","UNKNOWN"}, x
           PY
 
-      - name: Submit real request
+      - name: Build stable supported bind request
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_id="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.id')"
+          issue_id="$(gh api "repos/$GITHUB_REPOSITORY/issues/$CANARY_ISSUE_NUMBER" --jq '.id')"
+          issue_number="$(gh api "repos/$GITHUB_REPOSITORY/issues/$CANARY_ISSUE_NUMBER" --jq '.number')"
+          gh api "repos/$GITHUB_REPOSITORY/commits/$CANARY_PARENT_SHA" --jq '.sha' | grep -Fx "$CANARY_PARENT_SHA"
+
+          REPO_ID="$repo_id" ISSUE_ID="$issue_id" ISSUE_NUMBER="$issue_number" python - <<'PY'
+          import json, os
+          rid=os.environ["CANARY_REQUEST_ID"]
+          manifest={
+              "schema_version": 2,
+              "experiment": {
+                  "host": "github.com",
+                  "repository_id": os.environ["REPO_ID"],
+                  "issue_id": os.environ["ISSUE_ID"],
+                  "issue_number": os.environ["ISSUE_NUMBER"],
+              },
+              "title": "Client trusted bind canary",
+              "subject": {
+                  "type": "repository",
+                  "id": "client-e2e-canary",
+                  "name": "Client E2E Canary",
+                  "root_path": ".",
+              },
+              "operation_id": rid,
+              "parent": {
+                  "experiment": None,
+                  "commit": os.environ["CANARY_PARENT_SHA"],
+              },
+              "hypothesis": "The current client can submit and replay a supported trusted bind operation.",
+              "success_criteria": [
+                  "experiment.bind commits through the Trusted Writer and exact replay is idempotent."
+              ],
+              "kill_criteria": [
+                  "The bind is rejected by current domain routing or exact replay advances the Ledger head."
+              ],
+              "scope": {
+                  "allowed": ["tools/game-exp/**"],
+                  "avoid": [".github/**"],
+              },
+              "runtime": {
+                  "adapter": "generic-command",
+                  "policy_path": ".game-exp/project-policy.json",
+              },
+              "review": {"protocol": "manual-playtest-v1"},
+              "created_at": "2026-09-29T00:00:00+08:00",
+          }
+          json.dump({"manifest": manifest}, open("input.json","w",encoding="utf-8"), ensure_ascii=False, indent=2)
+          PY
+
+      - name: Submit real supported bind
         id: submit
         shell: bash
         run: |
           set -euo pipefail
-          request_id="req-client-e2e-${GITHUB_RUN_ID}"
-          printf '{"hypothesis":"phase2 client e2e","source_run_id":"%s"}\n' "$GITHUB_RUN_ID" > input.json
-          python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json request experiment.create             --request-id "$request_id" --input-file input.json | tee submit.json
+          python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json request experiment.bind \
+            --request-id "$CANARY_REQUEST_ID" --input-file input.json | tee submit.json
           python - <<'PY'
           import json
           x=json.load(open("submit.json",encoding="utf-8"))
-          assert x["status"]=="ACCEPTED", x
-          assert x["workflow_url"], x
+          assert x["status"] in {"ACCEPTED","COMMITTED"}, x
+          if x["status"]=="ACCEPTED":
+              assert x["workflow_url"], x
           PY
-          echo "request_id=$request_id" >> "$GITHUB_OUTPUT"
+          echo "request_id=$CANARY_REQUEST_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Reconcile until committed
+      - name: Reconcile until applied
         id: reconcile
         shell: bash
         env:
@@ -71,6 +145,13 @@ jobs:
             status="$(python -c 'import json; print(json.load(open("reconcile.json"))["status"])')"
             cat reconcile.json
             if [ "$status" = COMMITTED ]; then
+              python - <<'PY'
+          import json, os
+          x=json.load(open("reconcile.json",encoding="utf-8"))
+          record=x.get("record") or {}
+          assert record.get("domain_status")=="APPLIED", x
+          assert record.get("domain_experiment_id")==f"EXP-{os.environ['CANARY_ISSUE_NUMBER']}", x
+          PY
               exit 0
             fi
             if [ "$status" = CONFLICT ] || [ "$status" = REJECTED ]; then
@@ -78,29 +159,25 @@ jobs:
             fi
             sleep 3
           done
-          echo "request did not converge to COMMITTED" >&2
+          echo "request did not converge to COMMITTED/APPLIED" >&2
           exit 1
 
-      - name: Prove idempotent client replay
+      - name: Prove exact client replay is idempotent
         shell: bash
-        env:
-          REQUEST_ID: ${{ steps.submit.outputs.request_id }}
         run: |
           set -euo pipefail
           before="$(python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json status | python -c 'import json,sys; print(json.load(sys.stdin)["ledger_head"])')"
-          python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json request experiment.create             --request-id "$REQUEST_ID" --input-file input.json | tee replay-submit.json
-          for i in $(seq 1 40); do
-            set +e
-            python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json reconcile "$REQUEST_ID" > replay.json
-            code=$?
-            set -e
-            status="$(python -c 'import json; print(json.load(open("replay.json"))["status"])')"
-            if [ "$status" = COMMITTED ]; then break; fi
-            if [ "$status" = CONFLICT ] || [ "$status" = REJECTED ]; then cat replay.json; exit 1; fi
-            sleep 3
-          done
+          python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json request experiment.bind \
+            --request-id "$CANARY_REQUEST_ID" --input-file input.json | tee replay-submit.json
+          python - <<'PY'
+          import json
+          x=json.load(open("replay-submit.json",encoding="utf-8"))
+          assert x["status"]=="COMMITTED", x
+          assert x.get("replayed") is True, x
+          record=x.get("record") or {}
+          assert record.get("domain_status")=="APPLIED", x
+          PY
           after="$(python tools/game-exp/cli.py --repo "$GITHUB_REPOSITORY" --json status | python -c 'import json,sys; print(json.load(sys.stdin)["ledger_head"])')"
-          cat replay.json
           test "$before" = "$after"
 
       - uses: actions/upload-artifact@v4
@@ -108,8 +185,8 @@ jobs:
           name: game-exp-client-e2e-${{ github.run_id }}
           path: |
             doctor.json
+            input.json
             submit.json
             reconcile.json
             replay-submit.json
-            replay.json
           retention-days: 30
