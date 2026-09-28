@@ -62,4 +62,4 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `0.21.0`.
+Current version: `1.0.0`.
