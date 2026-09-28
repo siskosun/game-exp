@@ -384,6 +384,50 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
                 "game-prototype subject must use a concrete prototype root_path"
             )
 
+    if "evaluation_profile" in manifest:
+        evaluation_profile = _mapping(
+            manifest["evaluation_profile"],
+            "manifest.evaluation_profile",
+        )
+        _expect_keys(
+            evaluation_profile,
+            {"profile_id", "path", "digest"},
+            where="manifest.evaluation_profile",
+        )
+        profile_id = _string(
+            evaluation_profile["profile_id"],
+            "manifest.evaluation_profile.profile_id",
+        )
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", profile_id):
+            raise DomainError(
+                "manifest.evaluation_profile.profile_id must be a stable lowercase slug"
+            )
+        profile_path = _string(
+            evaluation_profile["path"],
+            "manifest.evaluation_profile.path",
+        )
+        _require_nfc(profile_path, "manifest.evaluation_profile.path")
+        if (
+            "\\" in profile_path
+            or profile_path.startswith("/")
+            or "//" in profile_path
+            or any(part in {"", ".", ".."} for part in profile_path.split("/"))
+            or not profile_path.startswith(".game-exp/evaluation-profiles/")
+            or not profile_path.endswith(".json")
+        ):
+            raise DomainError(
+                "manifest.evaluation_profile.path must be a normalized JSON path under "
+                ".game-exp/evaluation-profiles/"
+            )
+        profile_digest = _string(
+            evaluation_profile["digest"],
+            "manifest.evaluation_profile.digest",
+        )
+        if not SHA256_RE.fullmatch(profile_digest):
+            raise DomainError(
+                "manifest.evaluation_profile.digest must be sha256:<64 lowercase hex>"
+            )
+
     if "relationships" in manifest:
         relationships = manifest["relationships"]
         if not isinstance(relationships, list):
