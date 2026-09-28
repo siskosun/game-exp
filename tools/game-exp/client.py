@@ -5786,7 +5786,7 @@ class GameExpClient:
             )
         else:
             normalized = sorted(
-                (row.get("name"), row.get("type"))
+                (row.get("name"), row.get("type") or "branch")
                 for row in policies
                 if isinstance(row, dict)
             )
