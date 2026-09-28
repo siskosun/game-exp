@@ -126,7 +126,7 @@ Render a lightweight text topology rather than a wide table. Example:
 ```text
 main
 ├─ exp/51  原型A  REVIEW  Candidate C-51-...
-├─ exp/52  原型B  PROMISING  Rehearsal R-52-...
+├─ exp/52  原型B  PROMISING  主干集成验证 R-52-...
 └─ exp/53  原型C  ARCHIVED  final tag exp-final/53
 ```
 
@@ -205,9 +205,9 @@ Next gate:
 - `HUMAN_REVIEW` -> `人工评审`
 - `HUMAN_PROMOTION` -> `决定是否晋级`
 - `HUMAN_DECISION` -> `人工决策`
-- `TRUSTED_REHEARSAL` -> `可信彩排`
-- `HUMAN_SELECTION_OR_REFRESH_REHEARSAL` -> `人工选择 / 必要时刷新彩排`
-- `TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL` -> `集成 / 必要时刷新彩排`
+- `TRUSTED_REHEARSAL` -> `主干集成验证`
+- `HUMAN_SELECTION_OR_REFRESH_REHEARSAL` -> `人工选择 / 主干变化后重新验证`
+- `TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL` -> `集成 / 主干变化后重新验证`
 - `ARCHIVE_OR_RETAIN` -> `选择归档方式`
 - `ARCHIVE_RECOVERY` -> `恢复归档`
 - `ARCHIVE` -> `归档`
@@ -265,4 +265,8 @@ When an active experiment depends on a REJECTED, ABANDONED, or ARCHIVED experime
 - keep `blocks_progress=false` until a more specific dependency predicate exists.
 
 An ABANDONED upstream means work stopped without asserting a failed Review; the downstream must be rechecked rather than auto-rejected. An ARCHIVED upstream may be perfectly valid if its integrated capability or immutable final snapshot satisfies the downstream dependency. Lifecycle alone is insufficient to decide.
-\n\n## Experiment card rendering\n\nEach experiment exposes card_zh as ready-to-render Chinese copy for the card surface. Render card_zh.rows_zh or card_zh.summary_text_zh directly for repository, prototype, and attention views. Do not rebuild labels from raw lifecycle, health, permission, or next-gate enums. Raw machine fields remain diagnostics only.\n
+
+
+## Experiment card rendering
+
+Each experiment exposes `card_zh` as ready-to-render Chinese copy for the card surface. Render `card_zh.rows_zh` or `card_zh.summary_text_zh` directly for repository, prototype, and attention views. Raw machine fields remain available for logic and diagnostics.
