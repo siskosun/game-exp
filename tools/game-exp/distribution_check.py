@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import sys
 from dataclasses import dataclass
 from typing import Any
@@ -187,6 +188,54 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         and "INSTALL.json" in skill_text
         and "Do not synchronize application repositories" in skill_text
         and "--cleanup-legacy-shared" in skill_text,
+    )
+
+    docs = {
+        "README.md": root / "README.md",
+        "tools/game-exp/README.md": root / "tools/game-exp/README.md",
+    }
+    doc_versions: dict[str, bool] = {}
+    for name, path in docs.items():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            doc_versions[name] = False
+        else:
+            doc_versions[name] = bool(version) and version in text
+    add("documentation_version_alignment", all(doc_versions.values()), doc_versions)
+
+    requirements_path = root / "tools/game-exp/requirements-mcp.txt"
+    try:
+        requirements = requirements_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        requirements = ""
+        add("mcp_sdk_pin", False, str(exc))
+    else:
+        add("mcp_sdk_pin", requirements == "mcp==2.2.0", requirements)
+
+    moving_actions: list[str] = []
+    workflow_root = root / ".github/workflows"
+    for name in getattr(__import__("bootstrap"), "PRODUCTION_WORKFLOWS"):
+        path = workflow_root / name
+        if not path.is_file():
+            moving_actions.append(f"{name}:missing")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+@v[0-9]+)\s*(?:#.*)?$", text):
+            moving_actions.append(f"{name}:{match.group(1)}")
+    add("production_actions_pinned", not moving_actions, moving_actions)
+
+    dependabot_path = root / ".github/dependabot.yml"
+    dependabot_text = (
+        dependabot_path.read_text(encoding="utf-8")
+        if dependabot_path.is_file()
+        else ""
+    )
+    add(
+        "github_actions_dependabot",
+        'package-ecosystem: "github-actions"' in dependabot_text
+        and 'interval: "weekly"' in dependabot_text,
+        None if dependabot_text else "missing .github/dependabot.yml",
     )
 
     status = "PASS" if all(row.status == "PASS" for row in checks) else "FAIL"
