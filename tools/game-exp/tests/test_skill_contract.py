@@ -80,48 +80,60 @@ class GameExpSkillContractTests(unittest.TestCase):
 
     def test_skill_frontmatter_and_domain_tools(self):
         content = SKILL.read_text(encoding="utf-8")
+        server = (ROOT / "tools" / "game-exp" / "mcp_server.py").read_text(
+            encoding="utf-8"
+        )
+        conformance = (
+            PLUGIN / "skills" / "game-exp" / "references" / "conformance.md"
+        ).read_text(encoding="utf-8")
+        workflow = (
+            PLUGIN / "skills" / "game-exp" / "references" / "workflow.md"
+        ).read_text(encoding="utf-8")
+
         self.assertRegex(content, r"(?s)^---\nname: game-exp\ndescription: .+?\n---")
-        required_tools = {
+        for phrase in (
+            "Detailed rules live in the references below",
+            "## Task routing",
+            "game_exp_status",
             "game_exp_project_preflight",
             "game_exp_project_init",
+            "game_exp_board",
+            "game_exp_experiment_panel",
+            "game_exp_subject_panel",
+            "game_exp_notifications",
+            "game_exp_collaboration_context",
+            "game_exp_work_claim",
+            "game_exp_work_release",
+            "game_exp_prototype_handoff",
+            "game_exp_operation_get",
+            "game_exp_operation_resume",
+        ):
+            self.assertIn(phrase, content)
+
+        # 1.0 keeps diagnostic/compatibility tools implemented but out of
+        # the default MCP registration and fixed Skill context.
+        for name in (
             "game_exp_conformance_suite",
             "game_exp_conformance_start",
             "game_exp_conformance_result",
             "game_exp_conformance_compare",
-            "game_exp_status",
             "game_exp_access_check",
             "game_exp_capabilities",
-            "game_exp_experiment_template",
-            "game_exp_notifications",
-            "game_exp_prototype_handoff",
-            "game_exp_collaboration_context",
-            "game_exp_work_claim",
-            "game_exp_work_release",
-            "game_exp_board",
-            "game_exp_experiment_panel",
-            "game_exp_subject_panel",
-            "game_exp_doctor",
-            "game_exp_experiment_get",
-            "game_exp_experiment_bind",
-            "game_exp_initialize",
-            "game_exp_candidate_build",
-            "game_exp_review_record",
-            "game_exp_decision_submit",
-            "game_exp_abandon",
-            "game_exp_rehearse",
-            "game_exp_integrate",
-            "game_exp_integrate_finalize",
-            "game_exp_archive",
-            "game_exp_archive_abort",
-            "game_exp_operation_get",
-            "game_exp_operation_resume",
             "game_exp_request_get",
-        }
-        for name in required_tools:
-            self.assertIn(name, content)
+        ):
+            self.assertIn(name, server)
+        self.assertIn("game_exp_conformance_suite", conformance)
+        self.assertIn("game_exp_archive_abort", workflow)
+        self.assertIn("game_exp_review_record", workflow)
 
     def test_skill_preserves_human_gates_and_async_semantics(self):
         content = SKILL.read_text(encoding="utf-8")
+        workflow = (
+            PLUGIN / "skills" / "game-exp" / "references" / "workflow.md"
+        ).read_text(encoding="utf-8")
+        setup = (
+            PLUGIN / "skills" / "game-exp" / "references" / "project-setup.md"
+        ).read_text(encoding="utf-8")
         for phrase in (
             "Never auto-approve a human gate",
             "Never report `ACCEPTED` as completion",
@@ -130,21 +142,26 @@ class GameExpSkillContractTests(unittest.TestCase):
             "ATOMIC_DELETE",
             "RETAIN_BRANCH",
             "Archive is a destructive/recovery-sensitive workflow",
+            "UNKNOWN",
+            "Keep game-exp orchestration self-contained",
+            ".ai/HANDOFF.md",
+            "global MCP registration must not hard-code one repository",
+            "Pass that `repo` explicitly",
+            "Do not fabricate a `FAIL` Review",
+            "game_exp_abandon",
+            "GitHub Bridge",
+            "claim-without-result",
+            "authorized GitHub connector",
         ):
             self.assertIn(phrase, content)
-        self.assertIn("UNKNOWN", content)
-        self.assertIn("CONFLICT", content)
-        self.assertIn("REJECTED", content)
-        self.assertIn("Keep game-exp orchestration self-contained", content)
-        self.assertIn(".ai/HANDOFF.md", content)
-        self.assertIn("without `experiment_id`", content)
-        self.assertIn("global MCP registration must not hard-code one repository", content)
-        self.assertIn("Pass that `repo` explicitly", content)
-        self.assertIn("Do not fabricate a `FAIL` Review", content)
-        self.assertIn("game_exp_abandon", content)
-        self.assertIn("GitHub Bridge", content)
-        self.assertIn("claim-without-result", content)
-        self.assertIn("authorized GitHub connector", content)
+        for phrase in (
+            "CONFLICT",
+            "REJECTED",
+            "game_exp_archive_abort",
+            "game_exp_review_record",
+        ):
+            self.assertIn(phrase, workflow)
+        self.assertIn("repo-level", setup)
 
     def test_skill_has_cross_host_board_entrypoint(self):
         content = SKILL.read_text(encoding="utf-8")
@@ -263,14 +280,15 @@ class GameExpSkillContractTests(unittest.TestCase):
         for phrase in (
             "## Harness conformance screening",
             "eligible_for_real_repo_test=true",
+            "same `suite_digest`",
+            "optional conformance tools",
+        ):
+            self.assertIn(phrase, skill)
+        for phrase in (
             "game_exp_conformance_suite",
             "game_exp_conformance_start",
             "game_exp_conformance_result",
             "game_exp_conformance_compare",
-            "same `suite_digest`",
-        ):
-            self.assertIn(phrase, skill)
-        for phrase in (
             "game-exp-standing-v1",
             "lost-response-recovery",
             "authorization-no-fallback",
@@ -387,9 +405,9 @@ class GameExpSkillContractTests(unittest.TestCase):
             "game_exp_operation_resume",
             "authorization failure",
             "recovery mode",
-            "game_exp_capabilities",
         ):
             self.assertIn(phrase, skill)
+        self.assertIn("game_exp_capabilities", contract)
 
         for phrase in (
             "Current public contract: `1.0`",
@@ -454,7 +472,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "game_exp_work_release",
             "does not require another user approval",
             "Never spawn additional Agents merely because a claim overlaps",
-            "unpublished local edits are not recoverable through game-exp",
+            "Unpublished local edits are not recoverable through game-exp",
             "HANDED_OFF",
         ):
             self.assertIn(phrase, skill)
@@ -535,7 +553,7 @@ class GameExpSkillContractTests(unittest.TestCase):
         for phrase in (
             "check the current host's available Skill/tool catalog",
             "https://github.com/siskosun/godot-prototype-studio",
-            "Missing Godot Prototype Studio is non-blocking",
+            "Missing capability must not make experiment health fail",
             "not a mandatory dependency",
             "Never claim Godot-specific validation that was not run",
         ):
