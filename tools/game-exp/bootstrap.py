@@ -35,6 +35,7 @@ PRODUCTION_TOOLS = (
     "integration_control.py",
     "github_bridge.py",
     "execution_guard.py",
+    "evaluation_evidence.py",
     "install_harnesses.py",
     "mcp_server.py",
     "project_policy.py",
@@ -64,6 +65,7 @@ PLUGIN_FILES = (
     "plugins/game-exp/skills/game-exp/references/public-contract.md",
     "plugins/game-exp/skills/game-exp/references/project-setup.md",
     "plugins/game-exp/skills/game-exp/references/conformance.md",
+    "plugins/game-exp/skills/game-exp/references/evaluation.md",
 )
 
 def node_npm_policy(node_version: str) -> dict[str, object]:
