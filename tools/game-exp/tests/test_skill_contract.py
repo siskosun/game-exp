@@ -446,7 +446,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Do not ask the user to choose between internal labels",
             "ask for confirmation before Bind/Initialize",
             "Revision classification may be automatic; new-experiment creation must not be silent",
-            "previous current Review binding",
+            "prior current Review binding",
         ):
             self.assertIn(phrase, skill)
 
