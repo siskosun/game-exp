@@ -134,7 +134,7 @@ def _managed_digest(root: pathlib.Path) -> str:
         if not path.is_file():
             raise HarnessInstallError(f"managed runtime file is missing: {rel}")
         rel_bytes = rel.encode("utf-8")
-        content = path.read_bytes()
+        content = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         digest.update(len(rel_bytes).to_bytes(4, "big"))
         digest.update(rel_bytes)
         digest.update(len(content).to_bytes(8, "big"))
