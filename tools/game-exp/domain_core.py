@@ -385,6 +385,10 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
             )
 
     if "evaluation_profile" in manifest:
+        if schema_version < 3:
+            raise DomainError(
+                "manifest.evaluation_profile requires manifest.schema_version 3"
+            )
         evaluation_profile = _mapping(
             manifest["evaluation_profile"],
             "manifest.evaluation_profile",
