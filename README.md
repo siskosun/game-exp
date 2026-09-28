@@ -24,7 +24,7 @@ Before writing anything, a Harness may check its state:
 python tools/game-exp/install_harnesses.py --harness codex --check --json
 ```
 
-The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
+The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. `CURRENT` now requires more than a matching version string: the managed-runtime digest, required runtime entrypoints, installed game-exp Skill metadata, and selected Harness MCP entry must match the current source. This lets maintenance fixes remain version `1.0.0` without making an older 1.0.0 install look current. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
 
 Legacy 0.17.x shared installs under `~/.agents/tools/game-exp` / `~/.agents/skills/game-exp` are detected but preserved during a single-Harness upgrade. After all three Harnesses have been explicitly migrated, the old shared copy can be removed with:
 
@@ -41,7 +41,7 @@ As a maintenance fix to 1.0.0, the same install/upgrade command also synchronize
 - `godot-prototype-studio` from `https://github.com/siskosun/godot-prototype-studio`
 - `h5-game-prototype-agent` from `https://github.com/siskosun/h5-game-prototype-agent`
 
-The companion sync installs runtime Skill files only; it does not copy their tests, CI, audit/dev history, or application repositories. `--harness all` is still required to update all Harnesses. If a companion repository has no semantic-version tag or cannot be fetched, the install command reports an explicit failure instead of silently installing an unversioned snapshot.
+The companion sync installs runtime Skill files only; it does not copy their tests, CI, audit/dev history, or application repositories. `--harness all` is still required to update all Harnesses. If a companion repository has no semantic-version tag or cannot be fetched, the install command reports an explicit failure instead of silently installing an unversioned snapshot. Harness installation is transactional across the managed game-exp runtime/Skill/config and both companion Skill targets: a failure restores the pre-install state instead of leaving a partially upgraded managed target.
 
 ## Verify the distribution
 
