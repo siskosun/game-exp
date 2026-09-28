@@ -132,6 +132,33 @@ For each prototype group, show `recent_activity` as `最近活动` and `relation
 
 When the user opens a prototype group, use `game_exp_subject_panel` when available. Render `summary` first, then `experiments`, `recent_activity`, and `relationship_edges`. This is a read-only drill-down between repository overview and single-experiment detail.
 
+## 可信筛查与现任 / 挑战者比较
+
+When Evaluation Evidence v1 is present, an experiment row may expose:
+
+- \`candidate_evaluation\`;
+- \`evaluation_profile_digest\`;
+- \`eligible_for_human_comparison\`;
+- \`evaluation_summary_zh\`;
+- \`incumbent_experiment_id\`;
+- \`incumbent_comparison\`;
+- \`review_comparison\`.
+
+\`eligible_for_human_comparison\` is a screening projection, not a lifecycle state:
+
+- \`ELIGIBLE\` -> \`可信筛查通过，可进入人工比较\`
+- \`INELIGIBLE\` -> \`可信筛查发现必要条件缺陷，不建议进入人工比较\`
+- \`INCONCLUSIVE\` -> \`筛查证据不足，暂不能判断是否适合人工比较\`
+- \`UNKNOWN\` -> \`尚无可用的可信筛查结果\`
+
+Do not render \`INELIGIBLE\` as \`已拒绝\`; only human lifecycle state may say that.
+
+For a challenger with a \`supersedes\` relationship, Board may derive a compact incumbent/challenger panel from the two experiment rows and the challenger's Review. This remains a projection, not an authoritative Comparison Set.
+
+When a human blind A/B comparison exists, display the per-dimension choices, presentation order and \`无明显差异\` / \`证据不足\` outcomes without converting them to a numeric score or Elo.
+
+In experiment detail, show \`可信筛查\` before the human Review row. If the challenger is \`ELIGIBLE\` and the review protocol calls for comparison, \`待人工比较\` is useful secondary evidence text; lifecycle next-gate remains governed by the existing Review rules.
+
 ## 分支图
 
 Use `views.branches.lanes`.
