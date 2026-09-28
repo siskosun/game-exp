@@ -113,6 +113,36 @@ class FakeClient:
             "brief": {"title": "test"},
         }
 
+    def collaboration_context(self, experiment_id, *, observed_source_sha=None):
+        return {
+            "status": "PASS",
+            "repo": "owner/repo",
+            "experiment_id": experiment_id,
+            "observed_source_sha": observed_source_sha,
+            "sync_status": "CURRENT",
+            "active_claims": [],
+            "conflicts": [],
+        }
+
+    def work_claim(self, experiment_id, **kwargs):
+        return {
+            "status": "ACCEPTED",
+            "repo": "owner/repo",
+            "experiment_id": experiment_id,
+            "request_id": kwargs["request_id"],
+            "base_source_sha": kwargs["base_source_sha"],
+        }
+
+    def work_release(self, experiment_id, **kwargs):
+        return {
+            "status": "ACCEPTED",
+            "repo": "owner/repo",
+            "experiment_id": experiment_id,
+            "request_id": kwargs["request_id"],
+            "claim_id": kwargs["claim_id"],
+            "outcome": kwargs["outcome"],
+        }
+
     def notification_feed(self, **kwargs):
         return {
             "status": "PASS",
@@ -266,7 +296,10 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_experiment_panel",
                 "game_exp_subject_panel",
                 "game_exp_prototype_handoff",
+                "game_exp_collaboration_context",
                 "game_exp_notifications",
+                "game_exp_work_claim",
+                "game_exp_work_release",
                 "game_exp_experiment_bind",
                 "game_exp_initialize",
                 "game_exp_candidate_build",
@@ -375,6 +408,7 @@ class MCPServerTests(unittest.TestCase):
             "game_exp_experiment_panel",
             "game_exp_subject_panel",
             "game_exp_prototype_handoff",
+            "game_exp_collaboration_context",
             "game_exp_notifications",
             "game_exp_operation_get",
             "game_exp_request_get",
@@ -486,6 +520,36 @@ class MCPServerTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "ACCEPTED")
         self.assertEqual(result["request_id"], "req_exec_21")
+
+    @patch("mcp_server._client", return_value=FakeClient())
+    def test_collaboration_tools_delegate_to_shared_client(self, _):
+        context = mcp_server.game_exp_collaboration_context(
+            "EXP-21",
+            repo="owner/repo",
+            observed_source_sha="b" * 40,
+        )
+        self.assertEqual(context["sync_status"], "CURRENT")
+        claim = mcp_server.game_exp_work_claim(
+            "EXP-21",
+            "b" * 40,
+            "Tune movement",
+            ["games/player"],
+            "codex",
+            "gpt",
+            "req_work_21",
+            repo="owner/repo",
+        )
+        self.assertEqual(claim["status"], "ACCEPTED")
+        release = mcp_server.game_exp_work_release(
+            "EXP-21",
+            "req_work_21",
+            "ABANDONED",
+            "No longer needed.",
+            "req_release_21",
+            repo="owner/repo",
+        )
+        self.assertEqual(release["claim_id"], "req_work_21")
+        self.assertEqual(release["outcome"], "ABANDONED")
 
     @patch("mcp_server._client", return_value=FakeClient())
     def test_experiment_projection_delegates_to_client(self, _):
