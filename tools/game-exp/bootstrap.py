@@ -57,6 +57,7 @@ PLUGIN_FILES = (
     "plugins/game-exp/skills/game-exp/references/chat-ui.md",
     "plugins/game-exp/skills/game-exp/references/onboarding.md",
     "plugins/game-exp/skills/game-exp/references/notifications.md",
+    "plugins/game-exp/skills/game-exp/references/collaboration.md",
     "plugins/game-exp/skills/game-exp/references/prototype-handoff.md",
     "plugins/game-exp/skills/game-exp/references/exploration-thread.md",
     "plugins/game-exp/skills/game-exp/references/public-contract.md",
