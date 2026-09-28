@@ -265,6 +265,10 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     source_sha = candidate.get("source_sha")
     if not isinstance(source_sha, str) or not SHA_RE.fullmatch(source_sha):
         raise RehearsalControlError("current Candidate source SHA is invalid")
+    if getattr(args, "expected_candidate_id", None) is not None and candidate_id != args.expected_candidate_id:
+        raise RehearsalControlError("execution claim Candidate no longer matches current Candidate")
+    if getattr(args, "expected_source_sha", None) is not None and source_sha != args.expected_source_sha:
+        raise RehearsalControlError("execution claim Candidate source no longer matches")
 
     binding = github_content_json(
         args.repo,
@@ -317,6 +321,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     main_sha = (main_ref.get("object") or {}).get("sha")
     if not isinstance(main_sha, str) or not SHA_RE.fullmatch(main_sha):
         raise RehearsalControlError("main ref did not resolve to a commit SHA")
+    if getattr(args, "expected_main_sha", None) is not None and main_sha != args.expected_main_sha:
+        raise RehearsalControlError("execution claim main SHA no longer matches")
 
     if not re.fullmatch(r"[0-9]+", args.run_id):
         raise RehearsalControlError("run_id must be decimal")
@@ -396,6 +402,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run-id", required=True)
     p.add_argument("--run-attempt", required=True)
     p.add_argument("--workflow-source-sha", required=True)
+    p.add_argument("--expected-candidate-id")
+    p.add_argument("--expected-source-sha")
+    p.add_argument("--expected-main-sha")
 
     q = sub.add_parser("payload")
     for name in (

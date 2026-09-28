@@ -81,6 +81,7 @@ jobs:
           sparse-checkout: |
             tools/game-exp/archive_control.py
             tools/game-exp/archive_runner.py
+            tools/game-exp/execution_guard.py
             tools/game-exp/trusted_writer.py
             tools/game-exp/domain_core.py
             tools/game-exp/protocol_core.py
@@ -89,6 +90,18 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      - name: Validate protected execution claim
+        id: claim
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python tools/game-exp/execution_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --action "archive" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --request-id "${{ inputs.request_id }}" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Require trusted writer key
         shell: bash
@@ -114,7 +127,7 @@ jobs:
           WORKFLOW_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          python tools/game-exp/archive_runner.py             --repo "$GITHUB_REPOSITORY"             --experiment-id "$EXPERIMENT_ID"             --mode "$MODE"             --ssh-key "$GAME_EXP_WRITER_KEY_PATH"             --run-id "$RUN_ID"             --run-attempt "$RUN_ATTEMPT"             --workflow-source-sha "$WORKFLOW_SOURCE_SHA"             --actor-login "$GAME_EXP_ACTOR_LOGIN"             | tee "$RUNNER_TEMP/archive-result.json"
+          python tools/game-exp/archive_runner.py             --repo "$GITHUB_REPOSITORY"             --experiment-id "$EXPERIMENT_ID"             --mode "$MODE"             --ssh-key "$GAME_EXP_WRITER_KEY_PATH"             --run-id "$RUN_ID"             --run-attempt "$RUN_ATTEMPT"             --workflow-source-sha "$WORKFLOW_SOURCE_SHA"             --actor-login "$GAME_EXP_ACTOR_LOGIN"             --expected-source-sha "${{ steps.claim.outputs.source_sha }}"             | tee "$RUNNER_TEMP/archive-result.json"
 
       - uses: actions/upload-artifact@v4
         if: always()

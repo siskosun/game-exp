@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -259,9 +260,26 @@ def main() -> int:
     ap.add_argument("--ssh-key", required=True)
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--run-attempt", required=True)
+    ap.add_argument("--expected-source-sha")
     ap.add_argument("--workflow-source-sha", required=True)
     ap.add_argument("--actor-login", required=True)
     args = ap.parse_args()
+
+    if args.expected_source_sha is not None:
+        if not re.fullmatch(r"[0-9a-f]{40}", args.expected_source_sha):
+            raise ArchiveRunnerError("expected_source_sha must be a 40-character SHA")
+        match = re.fullmatch(r"EXP-([1-9][0-9]*)", args.experiment_id)
+        if not match:
+            raise ArchiveRunnerError("experiment_id must be EXP-<number>")
+        current_ref = archive_control.github_json(
+            args.repo,
+            f"/git/ref/heads/exp/{match.group(1)}",
+        )
+        current_source = ((current_ref or {}).get("object") or {}).get("sha")
+        if current_source != args.expected_source_sha:
+            raise ArchiveRunnerError(
+                "archive execution claim is stale: canonical experiment branch advanced"
+            )
 
     writer_path = str(Path(__file__).with_name("trusted_writer.py"))
     actor_claim = f"github-workflow-dispatch:{args.actor_login}"

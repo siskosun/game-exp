@@ -357,6 +357,7 @@ def game_exp_work_release(
     notes: str,
     request_id: str,
     result_source_sha: str | None = None,
+    handoff: dict[str, Any] | None = None,
     actor_claim: str | None = None,
     repo: str | None = None,
 ) -> dict[str, Any]:
@@ -370,6 +371,7 @@ def game_exp_work_release(
         outcome=outcome,
         notes=notes,
         result_source_sha=result_source_sha,
+        handoff=handoff,
         actor_claim=actor_claim,
         request_id=request_id,
     )

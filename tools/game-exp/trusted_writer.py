@@ -5,13 +5,15 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from domain_core import DomainError, TrustedActorContext, TrustedArchiveContext, TrustedBindingContext, TrustedCandidateContext, TrustedIntegrationContext, TrustedRehearsalContext, TrustedRetentionContext, TrustedWorkContext, plan_domain_mutation, validate_manifest
+from domain_core import DomainError, TrustedActorContext, TrustedArchiveContext, TrustedBindingContext, TrustedCandidateContext, TrustedIntegrationContext, TrustedRehearsalContext, TrustedRetentionContext, TrustedWorkContext, TrustedExecutionContext, plan_domain_mutation, validate_manifest
 from protocol_core import (
     ProtocolError,
     canonical_json_bytes,
@@ -370,7 +372,9 @@ def resolve_trusted_archive(
 
 
 def resolve_trusted_candidate(
+    repo: str,
     payload: dict,
+    repo_dir: Path,
     *,
     authority: str,
     context_path: str | None,
@@ -428,10 +432,39 @@ def resolve_trusted_candidate(
             "trusted Candidate retention/attestation must be objects",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
+    experiment_id = str(value["experiment_id"])
+    binding = _ledger_object(
+        repo_dir,
+        f"experiments/{experiment_id}/binding.json",
+        where=experiment_id,
+    )
+    initialization = binding.get("initialization")
+    branch_ref = initialization.get("branch_ref") if isinstance(initialization, dict) else None
+    if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+        raise DomainError(
+            "trusted Candidate canonical branch is unavailable",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+    branch_name = branch_ref.removeprefix("refs/heads/")
+    branch_data = github_json(
+        repo,
+        "/git/ref/heads/" + "/".join(
+            urllib.parse.quote(part, safe="") for part in branch_name.split("/")
+        ),
+    )
+    obj = branch_data.get("object") if isinstance(branch_data, dict) else None
+    current_branch_sha = obj.get("sha") if isinstance(obj, dict) else None
+    if not isinstance(current_branch_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", current_branch_sha):
+        raise DomainError(
+            "trusted Candidate canonical branch head is invalid",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
+
     return TrustedCandidateContext(
         experiment_id=str(value["experiment_id"]),
         candidate_id=str(value["candidate_id"]),
         source_sha=str(value["source_sha"]),
+        current_branch_sha=current_branch_sha,
         manifest_digest=str(value["manifest_digest"]),
         artifact_digest=str(value["artifact_digest"]),
         policy_digest=str(value["policy_digest"]),
@@ -1048,10 +1081,71 @@ def resolve_trusted_work(
             "work canonical branch head is not a commit SHA",
             code="DOMAIN_WORK_CONFLICT",
         )
+    observed = datetime.now(timezone.utc)
     return TrustedWorkContext(
         experiment_id=experiment_id,
         branch_ref=branch_ref,
         branch_head_sha=branch_head_sha,
+        observed_at=observed.isoformat(),
+        lease_expires_at=(observed + timedelta(hours=24)).isoformat(),
+    )
+
+
+def resolve_trusted_execution(
+    repo: str,
+    payload: dict,
+    repo_dir: Path,
+) -> TrustedExecutionContext | None:
+    if payload.get("kind") != "operation_request" or payload.get("operation") != "execution.claim":
+        return None
+    input_value = payload.get("input")
+    if not isinstance(input_value, dict):
+        raise DomainError("execution input must be an object", code="DOMAIN_EXECUTION_INVALID")
+    experiment_id = input_value.get("experiment_id")
+    if not isinstance(experiment_id, str) or not re.fullmatch(r"EXP-[1-9][0-9]*", experiment_id):
+        raise DomainError("execution experiment_id must be EXP-<number>", code="DOMAIN_EXECUTION_INVALID")
+    preconditions = payload.get("preconditions")
+    if not isinstance(preconditions, dict):
+        raise DomainError("execution preconditions must be an object", code="DOMAIN_EXECUTION_INVALID")
+    binding = _ledger_object(
+        repo_dir,
+        f"experiments/{experiment_id}/binding.json",
+        where=experiment_id,
+    )
+    initialization = binding.get("initialization")
+    if not isinstance(initialization, dict):
+        raise DomainError(
+            "execution binding initialization is missing",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    branch_ref = initialization.get("branch_ref")
+    branch_head_sha = None
+    if "source_sha" in preconditions:
+        if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+            raise DomainError("execution canonical branch is unavailable", code="DOMAIN_EXECUTION_CONFLICT")
+        branch_name = branch_ref.removeprefix("refs/heads/")
+        suffix = "/git/ref/heads/" + "/".join(
+            urllib.parse.quote(part, safe="") for part in branch_name.split("/")
+        )
+        branch_data = github_json(repo, suffix)
+        obj = branch_data.get("object") if isinstance(branch_data, dict) else None
+        branch_head_sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(branch_head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", branch_head_sha):
+            raise DomainError("execution canonical branch head is invalid", code="DOMAIN_EXECUTION_CONFLICT")
+
+    main_sha = None
+    if "main_sha" in preconditions:
+        main_data = github_json(repo, "/git/ref/heads/main")
+        obj = main_data.get("object") if isinstance(main_data, dict) else None
+        main_sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(main_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", main_sha):
+            raise DomainError("execution main head is invalid", code="DOMAIN_EXECUTION_CONFLICT")
+
+    return TrustedExecutionContext(
+        experiment_id=experiment_id,
+        branch_ref=branch_ref if isinstance(branch_ref, str) else None,
+        branch_head_sha=branch_head_sha,
+        main_sha=main_sha,
     )
 
 
@@ -1243,23 +1337,14 @@ def main() -> int:
             )
             return 43
 
-        if current != args.expected_head:
-            emit(
-                "HEAD_CONFLICT",
-                request_id=args.request_id,
-                payload_digest=payload_digest,
-                ledger_head=current,
-                expected_head=args.expected_head,
-                record_path=target,
-                replayed=False,
-            )
-            return 42
-
         trusted_binding = resolve_trusted_binding(args.repo, payload)
         trusted_actor = resolve_trusted_actor(args.repo, payload)
         trusted_work = resolve_trusted_work(args.repo, payload, repo_dir)
+        trusted_execution = resolve_trusted_execution(args.repo, payload, repo_dir)
         trusted_candidate = resolve_trusted_candidate(
+            args.repo,
             payload,
+            repo_dir,
             authority=args.authority,
             context_path=args.trusted_context_json,
         )
@@ -1300,6 +1385,7 @@ def main() -> int:
             trusted_binding=trusted_binding,
             trusted_actor=trusted_actor,
             trusted_work=trusted_work,
+            trusted_execution=trusted_execution,
             trusted_candidate=trusted_candidate,
             trusted_retention=trusted_retention,
             trusted_rehearsal=trusted_selection_rehearsal or trusted_rehearsal,
@@ -1315,6 +1401,8 @@ def main() -> int:
 
         record = {
             "expected_head": args.expected_head,
+            "writer_base_head": current,
+            "writer_rebased_before_plan": current != args.expected_head,
             "github_run_attempt": str(args.run_attempt),
             "github_run_id": str(args.run_id),
             "issuer": "game-exp-trusted-writer",
@@ -1398,6 +1486,51 @@ def main() -> int:
                 domain_paths=remote.get("domain_paths", []),
             )
             return 0
+
+        retry_count_raw = os.environ.get("GAME_EXP_WRITER_INTERNAL_RETRY", "0")
+        try:
+            retry_count = int(retry_count_raw)
+        except ValueError:
+            retry_count = 0
+        if retry_count < 2:
+            retry_env = env.copy()
+            retry_env["GAME_EXP_WRITER_INTERNAL_RETRY"] = str(retry_count + 1)
+            retry_command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--repo",
+                args.repo,
+                "--request-id",
+                args.request_id,
+                "--expected-head",
+                args.expected_head,
+                "--payload-b64",
+                args.payload_b64,
+                "--ssh-key",
+                args.ssh_key,
+                "--run-id",
+                args.run_id,
+                "--run-attempt",
+                args.run_attempt,
+                "--workflow-source-sha",
+                args.workflow_source_sha,
+                "--authority",
+                args.authority,
+            ]
+            if args.trusted_context_json:
+                retry_command.extend(
+                    ["--trusted-context-json", args.trusted_context_json]
+                )
+            retry = run(
+                retry_command,
+                env=retry_env,
+                check=False,
+            )
+            if retry.stdout:
+                print(retry.stdout.rstrip())
+            if retry.stderr:
+                print(retry.stderr.rstrip(), file=sys.stderr)
+            return retry.returncode
 
         emit(
             "CONFLICT",

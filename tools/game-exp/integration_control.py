@@ -82,6 +82,10 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         )
     candidate_id = state.get("current_candidate_id")
     rehearsal_id = state.get("current_rehearsal_id")
+    if getattr(args, "expected_candidate_id", None) is not None and candidate_id != args.expected_candidate_id:
+        raise IntegrationControlError("execution claim Candidate no longer matches current Candidate")
+    if getattr(args, "expected_rehearsal_id", None) is not None and rehearsal_id != args.expected_rehearsal_id:
+        raise IntegrationControlError("execution claim Rehearsal no longer matches current Rehearsal")
     if not isinstance(candidate_id, str) or not isinstance(rehearsal_id, str):
         raise IntegrationControlError("SELECTED experiment lacks current Candidate/Rehearsal")
 
@@ -114,6 +118,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         raise IntegrationControlError(
             f"current Rehearsal is stale: main={current_main} rehearsal={main_sha}"
         )
+    if getattr(args, "expected_main_sha", None) is not None and current_main != args.expected_main_sha:
+        raise IntegrationControlError("execution claim main SHA no longer matches")
 
     branch = f"game-exp/integration/{issue}/{rehearsal_id}"
     return {
@@ -277,6 +283,9 @@ def main() -> int:
     p = sub.add_parser("prepare")
     p.add_argument("--repo", required=True)
     p.add_argument("--experiment-id", required=True)
+    p.add_argument("--expected-candidate-id")
+    p.add_argument("--expected-rehearsal-id")
+    p.add_argument("--expected-main-sha")
 
     f = sub.add_parser("finalize")
     f.add_argument("--repo", required=True)

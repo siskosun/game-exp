@@ -149,6 +149,16 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(state["candidate_sequence"], 1)
         self.assertEqual(state["lifecycle"], "ACTIVE")
 
+    def test_candidate_registration_rejects_source_that_is_no_longer_branch_head(self):
+        with self.assertRaises(DomainError) as ctx:
+            self.plan(
+                self.context(
+                    source_sha="b" * 40,
+                    current_branch_sha="c" * 40,
+                )
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_CANDIDATE_CONFLICT")
+
     def test_candidate_requires_trusted_context(self):
         payload = build_operation_payload(
             "candidate.register",

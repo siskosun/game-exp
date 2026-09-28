@@ -108,15 +108,16 @@ Every logical mutation has one stable `request_id` / operation id.
 - Never create a new id to escape uncertainty.
 - Authorization failure is terminal for that attempted authority context. Do not retry the same logical mutation through another interface to bypass it.
 
-For asynchronous lifecycle workers (Initialize, Candidate, Rehearsal, Integration, Integration Finalize, Archive), the stable id first commits an `execution.claim` in the protected Ledger. That claim binds:
+For asynchronous lifecycle workers (Initialize, Candidate, Rehearsal, Integration, Integration Finalize, Archive), the stable id first commits an `execution.claim` in the protected Ledger. A v2 claim binds:
 
 - experiment id;
 - action;
 - exact action arguments;
 - authoritative experiment-state digest;
+- action-specific version identities such as source SHA, Candidate/Rehearsal ids, manifest digest and main SHA;
 - Trusted Writer-verified GitHub actor.
 
-Only a workflow run whose action/arguments match that committed claim may perform effects. Duplicate runs with the same request id are remotely deduplicated.
+The Trusted Writer validates these identities at claim commit, and the worker validates the committed claim again before effects. Only a workflow run whose action/arguments match that committed claim may perform effects. Duplicate runs with the same request id are remotely deduplicated.
 
 ## Routing and recovery
 
@@ -313,4 +314,68 @@ Overlapping current work claims are returned as explicit `WORK_SCOPE_OVERLAP` co
 `COMPLETED` work release binds to the current canonical experiment branch head. `ABANDONED` releases without a result SHA. Work claims and releases do not approve Review, lifecycle promotion, selection, integration merge, or archive.
 
 The protected collaboration projection is current execution state. Chat transcripts, local Harness memory, and Agent plans are non-authoritative context.
+
+## Collaboration coordination contract v2
+
+v2 is an additive coordination contract over the existing Ledger/Git authority model. It intentionally removes persistent Conflict objects from the proposed design.
+
+`game_exp_capabilities` exposes `features.collaboration_coordination_v2=true` and `collaboration_coordination.protocol_version=2`.
+
+### Freshness
+
+`game_exp_collaboration_context` returns `as_of` plus action-relevant freshness dimensions.
+
+Allowed freshness states are exactly:
+
+- `CURRENT`
+- `STALE`
+- `UNKNOWN`
+- `NOT_APPLICABLE`
+
+Non-current results carry a reason code. `UNKNOWN` must never be collapsed into `CURRENT`. Lease/liveness is separate from freshness.
+
+Legacy Work Claims without v2 lease/session metadata remain readable and use `UNKNOWN / LEGACY_RECORD` where applicability cannot be proved.
+
+### Precise async execution preconditions
+
+New async `execution.claim` operations require `preconditions.protocol_version=2`. Preconditions are action-specific and bind the exact identities the action depends on, including the experiment-state digest and, where relevant, source SHA, manifest digest, Candidate identity/source, Rehearsal identity, and main SHA.
+
+The Trusted Writer re-resolves the live facts before committing the claim. Each asynchronous worker then reads the protected claim and rechecks the same facts before performing effects.
+
+A global Ledger-head mismatch is treated as an observation mismatch, not by itself as a domain conflict. The Writer plans against the current Ledger; domain-specific preconditions decide whether the logical operation is stale. The protected Ledger ref still relies on normal non-fast-forward Git protection.
+
+Candidate registration separately rejects a Candidate whose source SHA is no longer the canonical experiment branch head.
+
+A legacy client that omits the required v2 async preconditions must receive a client-upgrade-required domain failure for these protected async operations rather than bypass the new checks.
+
+### Work Claim v2 and leases
+
+A Work Claim with a `session_id` is recorded as schema v2 and receives a Writer-observed timestamp plus a 24-hour lease. The lease exists only to suppress abandoned coordination noise; it grants no authority and says nothing about source freshness.
+
+Expired claims remain historical records and are excluded from live overlap projection. v1 claims without lease/session remain readable with unknown lease state.
+
+### Handoff
+
+`game_exp_work_release` supports `HANDED_OFF`.
+
+A handoff must be bound to the current pushed canonical experiment branch SHA and contains bounded lists for `done`, `remaining`, `known_failures`, `user_constraints`, and `open_questions`.
+
+Handoff content is tagged `participant_reported`. It is not trusted evidence, may contain untrusted free text, and must never directly determine authority, validation PASS, lifecycle promotion, or protocol `next_actions`.
+
+Unpushed local work is outside game-exp's recoverability guarantee.
+
+### Derived overlap
+
+`WORK_SCOPE_OVERLAP` remains a read projection with `blocking=false`. v2 exposes no `conflict.create` or `conflict.resolve` operation.
+
+Hosts may enrich overlap/risk with Git-native facts such as actual changed paths, `git merge-tree`, hotspot files, and Git LFS locks for non-mergeable assets, but those remain derived coordination evidence rather than lifecycle authority.
+
+### Mixed-version behavior
+
+- New reader + old Ledger: missing v2 facts are returned as `UNKNOWN` / legacy reason codes.
+- Old reader + new Ledger: append-only new records/fields must not change the meaning of existing lifecycle records. Compatibility must be verified by tests.
+- Old client + new Writer: reads remain compatible; protected async mutations requiring v2 preconditions may fail with `DOMAIN_CLIENT_UPGRADE_REQUIRED`.
+- New and old interfaces may query the same stable operation id, but no interface may weaken the v2 preconditions when resuming or retrying.
+
+This contract does not add a lifecycle state, shared-memory service, CRDT layer, Agent swarm, second database, or general file lock.
 

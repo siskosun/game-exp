@@ -72,12 +72,23 @@ jobs:
           path: control
           sparse-checkout: |
             tools/game-exp/source_initializer.py
+            tools/game-exp/execution_guard.py
             tools/game-exp/protocol_core.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      - name: Validate protected execution claim
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python control/tools/game-exp/execution_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --action "initialize" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --request-id "${{ inputs.request_id }}"
 
       - name: Require trusted source-writer key
         shell: bash

@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -488,6 +489,23 @@ class GitHubTransport:
         value = _json_output(proc)
         if not isinstance(value, dict):
             raise ClientError(f"Git ref response must be an object: {ref_path}")
+        return value
+
+    def compare_commits(self, base_sha: str, head_sha: str) -> dict[str, Any]:
+        for name, value in (("base_sha", base_sha), ("head_sha", head_sha)):
+            if not re.fullmatch(r"[0-9a-f]{40}", value):
+                raise ClientError(f"{name} must be a 40-character commit SHA")
+        proc = _run(
+            ["gh", "api", f"repos/{self.repo}/compare/{base_sha}...{head_sha}"],
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise ClientError(
+                f"failed comparing Git commits ({proc.returncode}): {proc.stderr}"
+            )
+        value = _json_output(proc)
+        if not isinstance(value, dict):
+            raise ClientError("Git compare response must be an object")
         return value
 
     def annotated_tag(self, tag_object_sha: str) -> dict[str, Any]:
@@ -1021,6 +1039,9 @@ class GameExpClient:
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
+                "collaboration_coordination_v2": True,
+                "precise_execution_preconditions_v2": True,
+                "resumable_work_handoff_v2": True,
             },
             "iteration_routing": {
                 "default_existing_experiment_change": "REVISION",
@@ -1044,12 +1065,20 @@ class GameExpClient:
                 "selected_or_terminal_work_reopens_automatically": False,
             },
             "collaboration_coordination": {
-                "protocol_version": 1,
+                "protocol_version": 2,
                 "intent_before_source_edit": True,
                 "stale_base_rejected": True,
-                "overlap_policy": "SURFACE_NOT_LOCK",
+                "overlap_policy": "DERIVED_SURFACE_NOT_LOCK",
+                "persistent_conflict_objects": False,
                 "isolated_workspace_for_overlap": True,
                 "history_policy": "EXPLICIT_CURRENT_STATE",
+                "freshness_states": ["CURRENT", "STALE", "UNKNOWN", "NOT_APPLICABLE"],
+                "freshness_reason_codes": True,
+                "execution_preconditions": "TRUSTED_WRITER_AND_WORKER",
+                "work_claim_schema_version": 2,
+                "work_claim_lease_hours": 24,
+                "handoff_trust": "participant_reported",
+                "legacy_claim_freshness": "UNKNOWN_LEGACY_RECORD",
                 "lifecycle_authority": False,
             },
             "recommended_capabilities": {
@@ -1618,6 +1647,33 @@ class GameExpClient:
                     return True
         return False
 
+    def _observed_source_freshness(
+        self,
+        observed_source_sha: str | None,
+        canonical_source_sha: str,
+    ) -> dict[str, Any]:
+        if observed_source_sha is None:
+            return {"status": "UNKNOWN", "reason": "NOT_REPORTED"}
+        if observed_source_sha == canonical_source_sha:
+            return {"status": "CURRENT", "reason": None}
+        compare = getattr(self.transport, "compare_commits", None)
+        if not callable(compare):
+            return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+        try:
+            result = compare(canonical_source_sha, observed_source_sha)
+        except Exception:
+            return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+        status = result.get("status") if isinstance(result, dict) else None
+        if status == "ahead":
+            return {"status": "CURRENT", "reason": "LOCAL_AHEAD"}
+        if status == "behind":
+            return {"status": "STALE", "reason": "BEHIND"}
+        if status == "diverged":
+            return {"status": "STALE", "reason": "DIVERGED"}
+        if status == "identical":
+            return {"status": "CURRENT", "reason": None}
+        return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+
     def collaboration_context(
         self,
         experiment_id: str,
@@ -1651,7 +1707,15 @@ class GameExpClient:
             f"experiments/{experiment_id}/binding.json",
             ref=snapshot_head,
         )
-        if not isinstance(state, dict) or not isinstance(binding, dict):
+        manifest = self.transport.ledger_json(
+            f"experiments/{experiment_id}/manifest.json",
+            ref=snapshot_head,
+        )
+        if (
+            not isinstance(state, dict)
+            or not isinstance(binding, dict)
+            or not isinstance(manifest, dict)
+        ):
             return {
                 "status": "UNKNOWN",
                 "repo": self.transport.repo,
@@ -1710,8 +1774,9 @@ class GameExpClient:
                 "experiment_id": experiment_id,
                 "reason": "active_work_claim_ids_invalid",
             }
-        current_claims: list[dict[str, Any]] = []
-        stale_claims: list[dict[str, Any]] = []
+        claims: list[dict[str, Any]] = []
+        overlap_eligible_claims: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc)
         for claim_id in active_ids:
             if not isinstance(claim_id, str) or not claim_id:
                 continue
@@ -1721,25 +1786,48 @@ class GameExpClient:
             )
             if not isinstance(claim, dict):
                 continue
+            base_sha = claim.get("base_source_sha")
+            if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+                freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif base_sha == branch_head_sha:
+                freshness = {"status": "CURRENT", "reason": None}
+            else:
+                freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+
+            lease_expires_at = claim.get("lease_expires_at")
+            lease_status = "UNKNOWN"
+            if isinstance(lease_expires_at, str):
+                try:
+                    expires = datetime.fromisoformat(lease_expires_at.replace("Z", "+00:00"))
+                except ValueError:
+                    lease_status = "UNKNOWN"
+                else:
+                    lease_status = "EXPIRED" if expires <= now else "ACTIVE"
+
             row = {
                 "claim_id": claim.get("claim_id"),
+                "claim_schema_version": claim.get("claim_schema_version", 1),
                 "summary": claim.get("summary"),
+                "summary_trust": "participant_reported",
                 "paths": claim.get("paths") or [],
                 "actor": claim.get("actor"),
                 "executor": claim.get("executor"),
-                "base_source_sha": claim.get("base_source_sha"),
+                "base_source_sha": base_sha,
+                "freshness": freshness,
+                "release_status": "OPEN",
+                "lease_status": lease_status,
+                "lease_expires_at": lease_expires_at,
             }
-            if claim.get("base_source_sha") == branch_head_sha:
-                current_claims.append(row)
-            else:
-                stale_claims.append(row)
+            claims.append(row)
+            if lease_status != "EXPIRED":
+                overlap_eligible_claims.append(row)
 
         conflicts: list[dict[str, Any]] = []
-        for index, left in enumerate(current_claims):
+        for index, left in enumerate(overlap_eligible_claims):
             left_paths = [
                 str(item) for item in left.get("paths") or [] if isinstance(item, str)
             ]
-            for right in current_claims[index + 1 :]:
+            for right in overlap_eligible_claims[index + 1 :]:
                 right_paths = [
                     str(item) for item in right.get("paths") or [] if isinstance(item, str)
                 ]
@@ -1758,24 +1846,190 @@ class GameExpClient:
                         }
                     )
 
-        if observed_source_sha is None:
-            sync_status = "UNKNOWN"
-        elif observed_source_sha == branch_head_sha:
-            sync_status = "CURRENT"
-        else:
-            sync_status = "STALE"
+        source_freshness = self._observed_source_freshness(
+            observed_source_sha,
+            branch_head_sha,
+        )
 
-        if sync_status == "STALE":
-            next_action = "SYNC_SOURCE"
-            next_action_zh = "当前工作区已落后于实验分支；先同步到最新实验分支，再声明工作意图。"
-        elif conflicts:
-            next_action = "COORDINATE_WORK"
-            next_action_zh = (
-                "存在并发工作范围重叠；先协调范围，或使用隔离工作区后合并并验证。"
+        candidate_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        candidate_id = state.get("current_candidate_id")
+        candidate = None
+        if isinstance(candidate_id, str) and candidate_id:
+            candidate = self.transport.ledger_json(
+                f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                ref=snapshot_head,
             )
-        else:
-            next_action = "CLAIM_WORK"
-            next_action_zh = "当前状态可继续；在修改源码前声明本次工作意图。"
+            candidate_source = candidate.get("source_sha") if isinstance(candidate, dict) else None
+            if not isinstance(candidate_source, str):
+                candidate_freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif candidate_source == branch_head_sha:
+                candidate_freshness = {"status": "CURRENT", "reason": None}
+            else:
+                candidate_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+
+        review_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        review_id = state.get("current_review_id")
+        if isinstance(review_id, str) and review_id:
+            review_candidate = state.get("current_review_candidate_id")
+            if review_candidate != candidate_id:
+                review_freshness = {
+                    "status": "STALE",
+                    "reason": "BOUND_TO_OLDER_CANDIDATE",
+                }
+            elif candidate_freshness["status"] == "STALE":
+                review_freshness = {
+                    "status": "STALE",
+                    "reason": "SOURCE_ADVANCED",
+                }
+            else:
+                review_freshness = {
+                    "status": candidate_freshness["status"],
+                    "reason": candidate_freshness["reason"],
+                }
+
+        rehearsal_freshness = {"status": "NOT_APPLICABLE", "reason": None}
+        rehearsal_id = state.get("current_rehearsal_id")
+        if isinstance(rehearsal_id, str) and rehearsal_id:
+            rehearsal = self.transport.ledger_json(
+                f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+                ref=snapshot_head,
+            )
+            if not isinstance(rehearsal, dict):
+                rehearsal_freshness = {"status": "UNKNOWN", "reason": "LEGACY_RECORD"}
+            elif rehearsal.get("candidate_id") != candidate_id:
+                rehearsal_freshness = {
+                    "status": "STALE",
+                    "reason": "BOUND_TO_OLDER_CANDIDATE",
+                }
+            else:
+                try:
+                    main_ref = self.transport.git_ref("heads/main")
+                    main_obj = main_ref.get("object") if isinstance(main_ref, dict) else None
+                    live_main = main_obj.get("sha") if isinstance(main_obj, dict) else None
+                except Exception:
+                    live_main = None
+                if not isinstance(live_main, str):
+                    rehearsal_freshness = {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+                elif rehearsal.get("main_sha") != live_main:
+                    rehearsal_freshness = {"status": "STALE", "reason": "MAIN_ADVANCED"}
+                elif candidate_freshness["status"] == "STALE":
+                    rehearsal_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+                else:
+                    rehearsal_freshness = {"status": "CURRENT", "reason": None}
+
+        attention_reasons: list[str] = []
+        next_actions: list[str] = []
+        if source_freshness["status"] == "STALE":
+            next_actions.append("SYNC_SOURCE")
+        elif source_freshness["status"] == "UNKNOWN":
+            next_actions.append("VERIFY_SOURCE")
+        if conflicts:
+            attention_reasons.append("WORK_SCOPE_OVERLAP")
+            next_actions.append("REVIEW_OVERLAP")
+        if state.get("lifecycle") == "REVIEW" and candidate_freshness["status"] == "STALE":
+            attention_reasons.append("REVIEW_TARGET_SUPERSEDED")
+        if rehearsal_freshness.get("reason") == "MAIN_ADVANCED":
+            attention_reasons.append("INTEGRATION_VERIFICATION_STALE")
+            next_actions.append("RERUN_INTEGRATION_VERIFICATION")
+        if not next_actions:
+            next_actions.append("CLAIM_WORK")
+
+        attention_level = 2 if attention_reasons else 0
+        if source_freshness["status"] == "UNKNOWN" and not attention_reasons:
+            attention_level = 1
+
+        latest_handoff = None
+        handoff_release_id = state.get("last_work_handoff_release_id")
+        if isinstance(handoff_release_id, str) and handoff_release_id:
+            release = self.transport.ledger_json(
+                f"experiments/{experiment_id}/work-releases/{handoff_release_id}.json",
+                ref=snapshot_head,
+            )
+            if isinstance(release, dict) and isinstance(release.get("handoff"), dict):
+                latest_handoff = {
+                    "release_id": handoff_release_id,
+                    "claim_id": release.get("claim_id"),
+                    "handoff": release.get("handoff"),
+                    "trust": "participant_reported",
+                }
+
+        current_review = None
+        if isinstance(review_id, str) and review_id:
+            current_review = self.transport.ledger_json(
+                f"experiments/{experiment_id}/reviews/{review_id}.json",
+                ref=snapshot_head,
+            )
+        latest_human_feedback = None
+        if isinstance(current_review, dict):
+            latest_human_feedback = {
+                "kind": "review",
+                "review_id": review_id,
+                "candidate_id": current_review.get("candidate_id"),
+                "outcome": current_review.get("outcome"),
+                "notes": current_review.get("notes"),
+                "actor": current_review.get("actor"),
+                "trust": "trusted_actor_recorded_human_report",
+            }
+
+        human_gate = None
+        if state.get("lifecycle") == "REVIEW":
+            if not isinstance(candidate_id, str) or not candidate_id:
+                human_gate = {
+                    "code": "AWAIT_CANDIDATE",
+                    "requires_human_action": False,
+                }
+            elif not isinstance(review_id, str) or not review_id:
+                human_gate = {
+                    "code": "AWAIT_HUMAN_REVIEW",
+                    "requires_human_action": True,
+                }
+            elif isinstance(current_review, dict) and current_review.get("outcome") == "PASS":
+                human_gate = {
+                    "code": "AWAIT_PROMISING_DECISION",
+                    "requires_human_action": True,
+                }
+
+        if isinstance(human_gate, dict) and human_gate.get("requires_human_action") is True:
+            code = human_gate.get("code")
+            if isinstance(code, str) and code:
+                attention_reasons.append(code)
+                next_actions.append(code)
+                attention_level = max(attention_level, 2)
+
+        trusted_evidence: dict[str, Any] = {}
+        if isinstance(candidate, dict):
+            trusted_evidence["candidate"] = {
+                "candidate_id": candidate_id,
+                "source_sha": candidate.get("source_sha"),
+                "artifact_digest": candidate.get("artifact_digest"),
+                "checks": candidate.get("checks") or [],
+                "freshness": candidate_freshness,
+            }
+        if isinstance(rehearsal_id, str) and rehearsal_id:
+            rehearsal_record = self.transport.ledger_json(
+                f"experiments/{experiment_id}/rehearsals/{rehearsal_id}.json",
+                ref=snapshot_head,
+            )
+            if isinstance(rehearsal_record, dict):
+                trusted_evidence["rehearsal"] = {
+                    "rehearsal_id": rehearsal_id,
+                    "candidate_id": rehearsal_record.get("candidate_id"),
+                    "source_sha": rehearsal_record.get("source_sha"),
+                    "main_sha": rehearsal_record.get("main_sha"),
+                    "integration_tree_sha": rehearsal_record.get("integration_tree_sha"),
+                    "checks": rehearsal_record.get("checks") or [],
+                    "freshness": rehearsal_freshness,
+                }
+
+        spec = {
+            "path": f"experiments/{experiment_id}/manifest.json",
+            "digest": digest_object(manifest),
+            "title": manifest.get("title"),
+            "hypothesis": manifest.get("hypothesis"),
+            "success_criteria": manifest.get("success_criteria") or [],
+            "kill_criteria": manifest.get("kill_criteria") or [],
+            "trust": "protected_ledger",
+        }
 
         return {
             "status": "PASS",
@@ -1783,16 +2037,61 @@ class GameExpClient:
             "snapshot_head": snapshot_head,
             "experiment_id": experiment_id,
             "lifecycle": state.get("lifecycle"),
+            "spec": spec,
+            "human_gate": human_gate,
+            "latest_human_feedback": latest_human_feedback,
+            "trusted_evidence": trusted_evidence,
             "branch_ref": branch_ref,
             "branch_head_sha": branch_head_sha,
             "observed_source_sha": observed_source_sha,
-            "sync_status": sync_status,
-            "active_claims": current_claims,
-            "stale_claims": stale_claims,
+            "sync_status": source_freshness["status"],
+            "as_of": {
+                "ledger_commit": snapshot_head,
+                "canonical_source_sha": branch_head_sha,
+                "read": "LIVE",
+            },
+            "freshness": {
+                "source": {
+                    **source_freshness,
+                    "observed": observed_source_sha,
+                    "canonical": branch_head_sha,
+                },
+                "candidate": {
+                    **candidate_freshness,
+                    "candidate_id": candidate_id,
+                    "source_sha": (
+                        candidate.get("source_sha") if isinstance(candidate, dict) else None
+                    ),
+                },
+                "review": {
+                    **review_freshness,
+                    "review_id": review_id,
+                    "candidate_id": state.get("current_review_candidate_id"),
+                },
+                "rehearsal": {
+                    **rehearsal_freshness,
+                    "rehearsal_id": rehearsal_id,
+                },
+            },
+            "claims": claims,
+            "active_claims": [
+                row for row in claims if row.get("lease_status") != "EXPIRED"
+            ],
+            "expired_claims": [
+                row for row in claims if row.get("lease_status") == "EXPIRED"
+            ],
+            "stale_claims": [
+                row for row in claims if row.get("freshness", {}).get("status") == "STALE"
+            ],
             "conflicts": conflicts,
             "coordination_required": bool(conflicts),
-            "next_action": next_action,
-            "next_action_zh": next_action_zh,
+            "attention": {
+                "level": attention_level,
+                "reasons": attention_reasons,
+            },
+            "next_actions": list(dict.fromkeys(next_actions)),
+            "next_action": next_actions[0],
+            "latest_handoff": latest_handoff,
             "policy": {
                 "overlap_blocks_work": False,
                 "prefer_isolated_workspace_on_overlap": True,
@@ -1839,6 +2138,7 @@ class GameExpClient:
         notes: str,
         request_id: str,
         result_source_sha: str | None = None,
+        handoff: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
         input_value: dict[str, Any] = {
@@ -1849,6 +2149,8 @@ class GameExpClient:
         }
         if result_source_sha is not None:
             input_value["result_source_sha"] = result_source_sha
+        if handoff is not None:
+            input_value["handoff"] = handoff
         return self.submit(
             operation="work.release",
             input_value=input_value,
@@ -4155,6 +4457,14 @@ class GameExpClient:
         value = payload.get("input")
         return value if isinstance(value, dict) else None
 
+    @staticmethod
+    def _execution_preconditions_from_record(
+        record: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = record.get("payload")
+        value = payload.get("preconditions") if isinstance(payload, dict) else None
+        return dict(value) if isinstance(value, dict) else {}
+
     def _execution_claim_matches(
         self,
         record: dict[str, Any],
@@ -4320,6 +4630,7 @@ class GameExpClient:
         experiment_id = claim.get("experiment_id")
         arguments = claim.get("arguments")
         state_digest = claim.get("state_digest")
+        claim_preconditions = self._execution_preconditions_from_record(record)
         if (
             not isinstance(action, str)
             or action not in ASYNC_EXECUTION_ACTIONS
@@ -4367,6 +4678,37 @@ class GameExpClient:
                 "expected_state_digest": state_digest,
                 "actual_state_digest": digest_object(state),
             }
+
+        if claim_preconditions.get("protocol_version") == 2:
+            try:
+                current_preconditions = self.execution_preconditions(
+                    action,
+                    experiment_id,
+                    state=state,
+                    snapshot_head=snapshot_head,
+                )
+            except ClientError as exc:
+                return {
+                    "status": "UNKNOWN",
+                    "operation_status": "PRECONDITION_UNAVAILABLE",
+                    "request_id": rid,
+                    "repo": self.transport.repo,
+                    "experiment_id": experiment_id,
+                    "action": action,
+                    "error": str(exc),
+                }
+            if current_preconditions != claim_preconditions:
+                return {
+                    "status": "CONFLICT",
+                    "conflict_type": "EXECUTION_PRECONDITION_CHANGED",
+                    "operation_status": "STALE",
+                    "request_id": rid,
+                    "repo": self.transport.repo,
+                    "experiment_id": experiment_id,
+                    "action": action,
+                    "expected_preconditions": claim_preconditions,
+                    "actual_preconditions": current_preconditions,
+                }
         try:
             workflow_url = self.transport.dispatch_execution(
                 action=action,
@@ -4395,6 +4737,87 @@ class GameExpClient:
             "arguments": arguments,
             "workflow_url": workflow_url,
         }
+
+    @staticmethod
+    def _ref_commit_sha(ref: dict[str, Any] | None, name: str) -> str:
+        obj = ref.get("object") if isinstance(ref, dict) else None
+        sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ClientError(f"{name} ref does not resolve to a commit SHA")
+        return sha
+
+    def execution_preconditions(
+        self,
+        action: str,
+        experiment_id: str,
+        *,
+        state: dict[str, Any] | None = None,
+        snapshot_head: str | None = None,
+    ) -> dict[str, Any]:
+        if action not in ASYNC_EXECUTION_ACTIONS:
+            raise ClientError(f"unsupported async execution action: {action}")
+        head = snapshot_head or self.transport.ledger_head()
+        current_state = state or self.transport.ledger_json(
+            f"experiments/{experiment_id}/state.json",
+            ref=head,
+        )
+        binding = self.transport.ledger_json(
+            f"experiments/{experiment_id}/binding.json",
+            ref=head,
+        )
+        if not isinstance(current_state, dict) or not isinstance(binding, dict):
+            raise ClientError("experiment binding/state is unavailable")
+        initialization = binding.get("initialization")
+        if not isinstance(initialization, dict):
+            raise ClientError("binding initialization is unavailable")
+
+        pre: dict[str, Any] = {
+            "protocol_version": 2,
+            "experiment_state_digest": digest_object(current_state),
+        }
+
+        if action in {"initialize", "candidate_build"}:
+            manifest_digest = initialization.get("manifest_digest")
+            if not isinstance(manifest_digest, str) or not manifest_digest.startswith("sha256:"):
+                raise ClientError("binding manifest digest is unavailable")
+            pre["manifest_digest"] = manifest_digest
+
+        if action in {"candidate_build", "archive"}:
+            branch_ref = initialization.get("branch_ref")
+            if not isinstance(branch_ref, str) or not branch_ref.startswith("refs/heads/"):
+                raise ClientError("canonical experiment branch is unavailable")
+            pre["source_sha"] = self._ref_commit_sha(
+                self.transport.git_ref(branch_ref.removeprefix("refs/")),
+                "canonical experiment branch",
+            )
+
+        if action in {"rehearse", "integrate", "integrate_finalize"}:
+            candidate_id = current_state.get("current_candidate_id")
+            if not isinstance(candidate_id, str) or not candidate_id:
+                raise ClientError("experiment has no current Candidate")
+            pre["candidate_id"] = candidate_id
+            if action == "rehearse":
+                candidate = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                    ref=head,
+                )
+                source_sha = candidate.get("source_sha") if isinstance(candidate, dict) else None
+                if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+                    raise ClientError("current Candidate source SHA is unavailable")
+                pre["candidate_source_sha"] = source_sha
+
+        if action in {"integrate", "integrate_finalize"}:
+            rehearsal_id = current_state.get("current_rehearsal_id")
+            if not isinstance(rehearsal_id, str) or not rehearsal_id:
+                raise ClientError("experiment has no current Rehearsal")
+            pre["rehearsal_id"] = rehearsal_id
+
+        if action in {"rehearse", "integrate"}:
+            pre["main_sha"] = self._ref_commit_sha(
+                self.transport.git_ref("heads/main"),
+                "main",
+            )
+        return pre
 
     def start_execution(
         self,
@@ -4463,6 +4886,23 @@ class GameExpClient:
                 "experiment_id": experiment_id,
                 "error": "experiment is not bound in the authoritative Ledger",
             }
+        try:
+            execution_preconditions = self.execution_preconditions(
+                action,
+                experiment_id,
+                state=state,
+                snapshot_head=snapshot_head,
+            )
+        except ClientError as exc:
+            return {
+                "status": "UNKNOWN",
+                "operation_status": "PRECONDITION_UNAVAILABLE",
+                "request_id": rid,
+                "repo": self.transport.repo,
+                "experiment_id": experiment_id,
+                "action": action,
+                "error": str(exc),
+            }
         claim = self.submit(
             operation="execution.claim",
             input_value={
@@ -4471,6 +4911,7 @@ class GameExpClient:
                 "arguments": values,
                 "state_digest": digest_object(state),
             },
+            preconditions=execution_preconditions,
             request_id=rid,
         )
         claim = self._wait_for_request_commit(rid, claim)

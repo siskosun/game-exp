@@ -30,6 +30,7 @@ class FakeTransport:
         self._ledger_paths = []
         self._ledger_json_refs = []
         self._git_refs = {}
+        self._compare_commits = {}
         self._tag_objects = {}
         self._rules = [
             {"name": "game-exp ledger", "enforcement": "active"},
@@ -40,6 +41,12 @@ class FakeTransport:
 
     def ledger_head(self):
         return self.head
+
+    def compare_commits(self, base_sha, head_sha):
+        return self._compare_commits.get(
+            (base_sha, head_sha),
+            {"status": "behind"},
+        )
 
     def repository_access(self):
         return {
@@ -1650,10 +1657,15 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v1"])
+        self.assertTrue(result["features"]["collaboration_coordination_v2"])
+        self.assertTrue(result["features"]["precise_execution_preconditions_v2"])
+        self.assertTrue(result["features"]["resumable_work_handoff_v2"])
         coordination = result["collaboration_coordination"]
+        self.assertEqual(coordination["protocol_version"], 2)
         self.assertTrue(coordination["intent_before_source_edit"])
         self.assertTrue(coordination["stale_base_rejected"])
-        self.assertEqual(coordination["overlap_policy"], "SURFACE_NOT_LOCK")
+        self.assertEqual(coordination["overlap_policy"], "DERIVED_SURFACE_NOT_LOCK")
+        self.assertFalse(coordination["persistent_conflict_objects"])
         self.assertTrue(coordination["isolated_workspace_for_overlap"])
         self.assertFalse(coordination["lifecycle_authority"])
         self.assertIn("collaboration_context", result["queries"])
@@ -1700,6 +1712,12 @@ class ClientTests(unittest.TestCase):
         transport._ledger_json["experiments/EXP-7/binding.json"] = {
             "initialization": {"branch_ref": "refs/heads/exp/7"},
         }
+        transport._ledger_json["experiments/EXP-7/manifest.json"] = {
+            "title": "Movement tuning",
+            "hypothesis": "Movement feel improves retention in playtest.",
+            "success_criteria": ["Players describe movement as responsive."],
+            "kill_criteria": ["Players still describe movement as sluggish."],
+        }
         transport._ledger_json[
             "experiments/EXP-7/work-claims/req_work_1.json"
         ] = {
@@ -1734,7 +1752,7 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["sync_status"], "CURRENT")
-        self.assertEqual(result["next_action"], "COORDINATE_WORK")
+        self.assertEqual(result["next_action"], "REVIEW_OVERLAP")
         self.assertTrue(result["coordination_required"])
         self.assertEqual(len(result["conflicts"]), 1)
         self.assertFalse(result["conflicts"][0]["blocking"])
@@ -1743,6 +1761,7 @@ class ClientTests(unittest.TestCase):
             ["req_work_1", "req_work_2"],
         )
 
+        transport._compare_commits[("b" * 40, "c" * 40)] = {"status": "behind"}
         stale_observer = GameExpClient(transport).collaboration_context(
             "EXP-7",
             observed_source_sha="c" * 40,
@@ -1750,13 +1769,30 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(stale_observer["sync_status"], "STALE")
         self.assertEqual(stale_observer["next_action"], "SYNC_SOURCE")
 
+        transport._compare_commits[("b" * 40, "e" * 40)] = {"status": "ahead"}
+        local_ahead = GameExpClient(transport).collaboration_context(
+            "EXP-7",
+            observed_source_sha="e" * 40,
+        )
+        self.assertEqual(local_ahead["freshness"]["source"]["status"], "CURRENT")
+        self.assertEqual(local_ahead["freshness"]["source"]["reason"], "LOCAL_AHEAD")
+
         transport._git_refs["heads/exp/7"] = {
             "object": {"type": "commit", "sha": "d" * 40}
         }
         advanced = GameExpClient(transport).collaboration_context("EXP-7")
-        self.assertEqual(len(advanced["active_claims"]), 0)
+        self.assertEqual(len(advanced["active_claims"]), 2)
         self.assertEqual(len(advanced["stale_claims"]), 2)
-        self.assertFalse(advanced["coordination_required"])
+        self.assertTrue(advanced["coordination_required"])
+        self.assertTrue(
+            all(row["lease_status"] == "UNKNOWN" for row in advanced["claims"])
+        )
+        self.assertTrue(
+            all(
+                row["freshness"]["reason"] == "SOURCE_ADVANCED"
+                for row in advanced["stale_claims"]
+            )
+        )
 
     def test_work_claim_and_release_use_protected_operations(self):
         transport = FakeTransport()

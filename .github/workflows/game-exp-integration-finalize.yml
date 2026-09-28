@@ -79,6 +79,7 @@ jobs:
           path: control
           sparse-checkout: |
             tools/game-exp/integration_control.py
+            tools/game-exp/execution_guard.py
             tools/game-exp/trusted_writer.py
             tools/game-exp/domain_core.py
             tools/game-exp/protocol_core.py
@@ -88,6 +89,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Validate protected execution claim
+        env:
+          GAME_EXP_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python control/tools/game-exp/execution_guard.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --action "integrate_finalize" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --request-id "${{ inputs.request_id }}"
       - name: Independently verify merged Integration PR
         shell: bash
         env:

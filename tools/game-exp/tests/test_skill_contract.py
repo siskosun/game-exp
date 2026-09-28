@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.19.0")
+        self.assertEqual(manifest["version"], "0.20.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -452,9 +452,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "game_exp_collaboration_context",
             "game_exp_work_claim",
             "game_exp_work_release",
-            "does not require an extra user confirmation",
+            "does not require another user approval",
             "Never spawn additional Agents merely because a claim overlaps",
-            "protected collaboration context and canonical branch SHA as current execution state",
+            "unpublished local edits are not recoverable through game-exp",
+            "HANDED_OFF",
         ):
             self.assertIn(phrase, skill)
 
@@ -466,11 +467,12 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, workflow)
 
         for phrase in (
-            "Collaboration coordination contract v1",
-            "features.collaboration_coordination_v1=true",
+            "Collaboration coordination contract v2",
+            "features.collaboration_coordination_v2=true",
+            "DOMAIN_CLIENT_UPGRADE_REQUIRED",
             "WORK_SCOPE_OVERLAP",
             "blocking=false",
-            "Chat transcripts",
+            "participant_reported",
         ):
             self.assertIn(phrase, contract)
 
@@ -478,6 +480,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "out-of-sync",
             "not a hard lock",
             "explicit execution-state handoff",
+            "persistent Conflict objects",
+            "Protected execution preconditions",
             "CAID",
             "SyncMind",
             "CooperBench",

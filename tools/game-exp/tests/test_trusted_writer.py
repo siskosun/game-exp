@@ -9,7 +9,7 @@ HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))
 
 from domain_core import DomainError  # noqa: E402
-from trusted_writer import resolve_trusted_actor, resolve_trusted_archive, resolve_trusted_binding, resolve_trusted_candidate, resolve_trusted_integration, resolve_trusted_rehearsal, resolve_trusted_retention, resolve_trusted_selection_rehearsal  # noqa: E402
+from trusted_writer import resolve_trusted_actor, resolve_trusted_archive, resolve_trusted_binding, resolve_trusted_candidate, resolve_trusted_execution, resolve_trusted_integration, resolve_trusted_rehearsal, resolve_trusted_retention, resolve_trusted_selection_rehearsal  # noqa: E402
 
 
 def payload():
@@ -77,7 +77,9 @@ class TrustedResolverTests(unittest.TestCase):
         }
         with self.assertRaises(DomainError) as ctx:
             resolve_trusted_candidate(
+                "owner/repo",
                 payload,
+                Path("."),
                 authority="request",
                 context_path=None,
             )
@@ -118,16 +120,75 @@ class TrustedResolverTests(unittest.TestCase):
             },
         }
         with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "candidate.json"
+            root = Path(td)
+            path = root / "candidate.json"
             path.write_text(json.dumps(value), encoding="utf-8")
-            ctx = resolve_trusted_candidate(
-                payload,
-                authority="candidate",
-                context_path=str(path),
+            binding = root / "experiments/EXP-21/binding.json"
+            binding.parent.mkdir(parents=True, exist_ok=True)
+            binding.write_text(
+                json.dumps(
+                    {
+                        "initialization": {
+                            "branch_ref": "refs/heads/exp/21",
+                        }
+                    }
+                ),
+                encoding="utf-8",
             )
+            with patch(
+                "trusted_writer.github_json",
+                return_value={"object": {"sha": "a" * 40}},
+            ):
+                ctx = resolve_trusted_candidate(
+                    "owner/repo",
+                    payload,
+                    root,
+                    authority="candidate",
+                    context_path=str(path),
+                )
         self.assertEqual(ctx.candidate_id, "C-21-123-1")
         self.assertEqual(ctx.run_id, "123")
         self.assertEqual(ctx.checks[0]["source"], "TRUSTED_OBSERVED")
+
+    @patch("trusted_writer.github_json")
+    def test_execution_resolver_reads_live_branch_and_main(self, api):
+        import json
+        import tempfile
+
+        payload = {
+            "kind": "operation_request",
+            "operation": "execution.claim",
+            "input": {
+                "experiment_id": "EXP-21",
+                "action": "rehearse",
+                "arguments": {},
+                "state_digest": "sha256:" + "1" * 64,
+            },
+            "preconditions": {
+                "protocol_version": 2,
+                "experiment_state_digest": "sha256:" + "1" * 64,
+                "candidate_id": "C-21-1-1",
+                "candidate_source_sha": "a" * 40,
+                "main_sha": "b" * 40,
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            binding = root / "experiments/EXP-21/binding.json"
+            binding.parent.mkdir(parents=True, exist_ok=True)
+            binding.write_text(
+                json.dumps(
+                    {"initialization": {"branch_ref": "refs/heads/exp/21"}},
+                ),
+                encoding="utf-8",
+            )
+            api.side_effect = [
+                {"object": {"sha": "b" * 40}},
+            ]
+            ctx = resolve_trusted_execution("owner/repo", payload, root)
+        self.assertEqual(ctx.experiment_id, "EXP-21")
+        self.assertIsNone(ctx.branch_head_sha)
+        self.assertEqual(ctx.main_sha, "b" * 40)
 
     @patch("trusted_writer.github_json")
     def test_promising_retention_resolver_uses_live_immutable_release(self, api):

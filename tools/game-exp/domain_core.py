@@ -4,6 +4,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -141,6 +142,16 @@ class TrustedWorkContext:
     experiment_id: str
     branch_ref: str
     branch_head_sha: str
+    observed_at: str | None = None
+    lease_expires_at: str | None = None
+
+
+@dataclass(frozen=True)
+class TrustedExecutionContext:
+    experiment_id: str
+    branch_ref: str | None
+    branch_head_sha: str | None
+    main_sha: str | None
 
 
 @dataclass(frozen=True)
@@ -157,6 +168,7 @@ class TrustedCandidateContext:
     checks: tuple[dict[str, Any], ...]
     retention: dict[str, Any]
     attestation: dict[str, Any]
+    current_branch_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -688,6 +700,23 @@ def _active_work_claim_records(
     return records
 
 
+def _work_claim_participates_in_overlap(
+    claim: dict[str, Any],
+    observed_at: str | None,
+) -> bool:
+    expires_raw = claim.get("lease_expires_at")
+    if expires_raw is None:
+        return True
+    if not isinstance(expires_raw, str) or not isinstance(observed_at, str):
+        return True
+    try:
+        expires = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+        observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return expires > observed
+
+
 def _plan_work_claim(
     *,
     repo_dir: Path,
@@ -719,11 +748,13 @@ def _plan_work_claim(
         "harness": _string(executor["harness"], "operation.input.executor.harness"),
         "agent": _string(executor["agent"], "operation.input.executor.agent"),
     }
+    session_id = None
     if "session_id" in executor:
-        normalized_executor["session_id"] = _string(
+        session_id = _string(
             executor["session_id"],
             "operation.input.executor.session_id",
         )
+        normalized_executor["session_id"] = session_id
 
     if trusted_actor is None or trusted_actor.permission not in {"admin", "maintain", "write"}:
         raise DomainError(
@@ -758,6 +789,7 @@ def _plan_work_claim(
         claim["claim_id"]
         for claim in active
         if claim.get("base_source_sha") == trusted_work.branch_head_sha
+        and _work_claim_participates_in_overlap(claim, trusted_work.observed_at)
         and _work_paths_overlap(paths, list(claim.get("paths") or []))
     )
     claim = {
@@ -776,6 +808,17 @@ def _plan_work_claim(
             "source": "github-collaborator-permission",
         },
         "executor": normalized_executor,
+        "claim_schema_version": 2 if session_id else 1,
+        "lease_expires_at": (
+            trusted_work.lease_expires_at
+            if session_id and trusted_work is not None
+            else None
+        ),
+        "observed_at": (
+            trusted_work.observed_at
+            if trusted_work is not None
+            else None
+        ),
         "overlap_with": overlap_with,
         "coordination_required": bool(overlap_with),
     }
@@ -816,14 +859,17 @@ def _plan_work_release(
         input_value,
         {"experiment_id", "claim_id", "outcome", "notes"},
         where="operation.input",
-        optional={"result_source_sha"},
+        optional={"result_source_sha", "handoff"},
     )
     experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
     claim_id = _string(input_value["claim_id"], "operation.input.claim_id")
     outcome = _string(input_value["outcome"], "operation.input.outcome")
     notes = _string(input_value["notes"], "operation.input.notes")
-    if outcome not in {"COMPLETED", "ABANDONED"}:
-        raise DomainError("work release outcome must be COMPLETED or ABANDONED", code="DOMAIN_WORK_INVALID")
+    if outcome not in {"COMPLETED", "ABANDONED", "HANDED_OFF"}:
+        raise DomainError(
+            "work release outcome must be COMPLETED, ABANDONED, or HANDED_OFF",
+            code="DOMAIN_WORK_INVALID",
+        )
 
     if trusted_actor is None or trusted_actor.permission not in {"admin", "maintain", "write"}:
         raise DomainError(
@@ -854,7 +900,42 @@ def _plan_work_release(
         raise DomainError("trusted work context is required", code="DOMAIN_AUTHORIZATION_FAILED")
 
     result_source_sha = input_value.get("result_source_sha")
-    if outcome == "COMPLETED":
+    handoff = input_value.get("handoff")
+    if handoff is not None:
+        handoff = _mapping(handoff, "operation.input.handoff")
+        _expect_keys(
+            handoff,
+            {"head_sha", "done", "remaining", "known_failures", "user_constraints", "open_questions"},
+            where="operation.input.handoff",
+        )
+        if outcome != "HANDED_OFF":
+            raise DomainError(
+                "handoff is allowed only with HANDED_OFF outcome",
+                code="DOMAIN_WORK_INVALID",
+            )
+        head_sha = _string(handoff["head_sha"], "operation.input.handoff.head_sha")
+        if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
+            raise DomainError("handoff.head_sha must be a 40-character commit SHA", code="DOMAIN_WORK_INVALID")
+        if head_sha != trusted_work.branch_head_sha:
+            raise DomainError(
+                "handoff must reference the current pushed canonical experiment branch head",
+                code="DOMAIN_WORK_STALE",
+            )
+        normalized_handoff = {"head_sha": head_sha}
+        for key in ("done", "remaining", "known_failures", "user_constraints", "open_questions"):
+            value = handoff[key]
+            if not isinstance(value, list) or len(value) > 16:
+                raise DomainError(f"handoff.{key} must be a list with at most 16 entries", code="DOMAIN_WORK_INVALID")
+            rows: list[str] = []
+            for item in value:
+                if not isinstance(item, str) or not item.strip() or len(item) > 500:
+                    raise DomainError(f"handoff.{key} entries must be non-empty strings up to 500 chars", code="DOMAIN_WORK_INVALID")
+                rows.append(item.strip())
+            normalized_handoff[key] = rows
+    else:
+        normalized_handoff = None
+
+    if outcome in {"COMPLETED", "HANDED_OFF"}:
         result_source_sha = _string(result_source_sha, "operation.input.result_source_sha")
         if not re.fullmatch(r"[0-9a-f]{40}", result_source_sha):
             raise DomainError("result_source_sha must be a 40-character commit SHA", code="DOMAIN_WORK_INVALID")
@@ -866,6 +947,11 @@ def _plan_work_release(
     elif result_source_sha is not None:
         raise DomainError(
             "ABANDONED work release must not include result_source_sha",
+            code="DOMAIN_WORK_INVALID",
+        )
+    if outcome == "HANDED_OFF" and normalized_handoff is None:
+        raise DomainError(
+            "HANDED_OFF work release requires handoff",
             code="DOMAIN_WORK_INVALID",
         )
 
@@ -881,6 +967,10 @@ def _plan_work_release(
         "notes": notes,
         "result_source_sha": result_source_sha,
         "observed_branch_head_sha": trusted_work.branch_head_sha,
+        "handoff": normalized_handoff,
+        "handoff_trust": (
+            "participant_reported" if normalized_handoff is not None else None
+        ),
         "actor": {
             "login": trusted_actor.login,
             "user_id": trusted_actor.user_id,
@@ -899,6 +989,8 @@ def _plan_work_release(
     next_state["work_sequence"] = sequence + 1
     next_state["active_work_claim_ids"] = [item for item in active_ids if item != claim_id]
     next_state["last_work_release_id"] = request_id
+    if normalized_handoff is not None:
+        next_state["last_work_handoff_release_id"] = request_id
 
     return DomainPlan(
         status="APPLIED",
@@ -1471,6 +1563,14 @@ def _plan_candidate(
 
     if not re.fullmatch(r"[0-9a-f]{40}", trusted_candidate.source_sha):
         raise DomainError("Candidate source_sha must be a 40-character commit SHA")
+    if (
+        trusted_candidate.current_branch_sha is not None
+        and trusted_candidate.source_sha != trusted_candidate.current_branch_sha
+    ):
+        raise DomainError(
+            "Candidate source is no longer the canonical experiment branch head",
+            code="DOMAIN_CANDIDATE_CONFLICT",
+        )
     init = binding.get("initialization")
     if not isinstance(init, dict):
         raise DomainError("binding initialization missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
@@ -2364,12 +2464,128 @@ def _plan_archive_commit(
     )
 
 
+def _execution_preconditions(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    raw = payload.get("preconditions")
+    if not isinstance(raw, dict):
+        raise DomainError(
+            "operation.preconditions must be an object",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    return raw
+
+
+def _require_execution_preconditions(
+    *,
+    repo_dir: Path,
+    payload: dict[str, Any],
+    experiment_id: str,
+    action: str,
+    state: dict[str, Any],
+    binding: dict[str, Any],
+    trusted_execution: TrustedExecutionContext | None,
+) -> dict[str, Any]:
+    pre = _execution_preconditions(payload)
+    if pre.get("protocol_version") != 2:
+        raise DomainError(
+            "this protected async operation requires collaboration protocol v2; upgrade the client",
+            code="DOMAIN_CLIENT_UPGRADE_REQUIRED",
+        )
+    expected_common = {"protocol_version", "experiment_state_digest"}
+    expected_by_action = {
+        "initialize": {"manifest_digest"},
+        "candidate_build": {"manifest_digest", "source_sha"},
+        "rehearse": {"candidate_id", "candidate_source_sha", "main_sha"},
+        "integrate": {"candidate_id", "rehearsal_id", "main_sha"},
+        "integrate_finalize": {"candidate_id", "rehearsal_id"},
+        "archive": {"source_sha"},
+    }
+    allowed = expected_common | expected_by_action[action]
+    if set(pre) != allowed:
+        raise DomainError(
+            f"execution preconditions mismatch for {action}: "
+            f"expected={sorted(allowed)} actual={sorted(pre)}",
+            code="DOMAIN_EXECUTION_INVALID",
+        )
+    if pre.get("experiment_state_digest") != digest_object(state):
+        raise DomainError(
+            "protected async operation was based on stale experiment state",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+    if trusted_execution is None or trusted_execution.experiment_id != experiment_id:
+        raise DomainError(
+            "trusted execution context is required",
+            code="DOMAIN_AUTHORIZATION_FAILED",
+        )
+
+    init = binding.get("initialization")
+    if not isinstance(init, dict):
+        raise DomainError(
+            "binding initialization missing",
+            code="DOMAIN_BOUND_EXPERIMENT_INVALID",
+        )
+    if "manifest_digest" in pre and pre.get("manifest_digest") != init.get("manifest_digest"):
+        raise DomainError(
+            "execution manifest precondition is stale",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+
+    if "source_sha" in pre:
+        source_sha = pre.get("source_sha")
+        if (
+            not isinstance(source_sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", source_sha)
+            or source_sha != trusted_execution.branch_head_sha
+        ):
+            raise DomainError(
+                "execution source precondition is stale",
+                code="DOMAIN_EXECUTION_CONFLICT",
+            )
+
+    candidate_id = pre.get("candidate_id")
+    if candidate_id is not None:
+        if candidate_id != state.get("current_candidate_id"):
+            raise DomainError(
+                "execution Candidate precondition is stale",
+                code="DOMAIN_EXECUTION_CONFLICT",
+            )
+        candidate = _load_candidate(repo_dir, experiment_id, candidate_id)
+        expected_source = pre.get("candidate_source_sha")
+        if expected_source is not None and candidate.get("source_sha") != expected_source:
+            raise DomainError(
+                "execution Candidate source precondition is stale",
+                code="DOMAIN_EXECUTION_CONFLICT",
+            )
+
+    rehearsal_id = pre.get("rehearsal_id")
+    if rehearsal_id is not None and rehearsal_id != state.get("current_rehearsal_id"):
+        raise DomainError(
+            "execution Rehearsal precondition is stale",
+            code="DOMAIN_EXECUTION_CONFLICT",
+        )
+
+    if "main_sha" in pre:
+        main_sha = pre.get("main_sha")
+        if (
+            not isinstance(main_sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", main_sha)
+            or main_sha != trusted_execution.main_sha
+        ):
+            raise DomainError(
+                "execution main precondition is stale",
+                code="DOMAIN_EXECUTION_CONFLICT",
+            )
+    return pre
+
+
 def _plan_execution_claim(
     *,
     repo_dir: Path,
     payload: dict[str, Any],
     request_id: str,
     trusted_actor: TrustedActorContext | None,
+    trusted_execution: TrustedExecutionContext | None,
 ) -> DomainPlan:
     input_value = _mapping(payload.get("input"), "operation.input")
     _expect_keys(
@@ -2432,8 +2648,17 @@ def _plan_execution_claim(
             f"actor {trusted_actor.login!r} lacks write permission",
             code="DOMAIN_AUTHORIZATION_FAILED",
         )
-    _binding, _manifest, state, _binding_operation = _load_bound_experiment(
+    binding, _manifest, state, _binding_operation = _load_bound_experiment(
         repo_dir, experiment_id
+    )
+    _require_execution_preconditions(
+        repo_dir=repo_dir,
+        payload=payload,
+        experiment_id=experiment_id,
+        action=action,
+        state=state,
+        binding=binding,
+        trusted_execution=trusted_execution,
     )
     actual_state_digest = digest_object(state)
     if actual_state_digest != state_digest:
@@ -2485,6 +2710,7 @@ def plan_domain_mutation(
     trusted_binding: TrustedBindingContext | None = None,
     trusted_actor: TrustedActorContext | None = None,
     trusted_work: TrustedWorkContext | None = None,
+    trusted_execution: TrustedExecutionContext | None = None,
     trusted_candidate: TrustedCandidateContext | None = None,
     trusted_retention: TrustedRetentionContext | None = None,
     trusted_rehearsal: TrustedRehearsalContext | None = None,
@@ -2516,6 +2742,7 @@ def plan_domain_mutation(
             payload=payload,
             request_id=request_id,
             trusted_actor=trusted_actor,
+            trusted_execution=trusted_execution,
         )
     if operation == "archive.prepare":
         return _plan_archive_prepare(
