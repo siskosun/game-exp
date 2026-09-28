@@ -716,13 +716,14 @@ def _ensure_rulesets(repo: str, trust_mode: str) -> dict[str, Any]:
             if not isinstance(rule_id, int):
                 raise ProjectSetupError(f"existing ruleset {name!r} has no valid id")
             full = _json(_gh_api(repo, f"rulesets/{rule_id}"))
-            if ruleset_semantics(full) != ruleset_semantics(template):
+            if not ruleset_satisfies(full, template):
+                repaired = strengthen_ruleset(full, template)
                 changed = _json(
                     _gh_api(
                         repo,
                         f"rulesets/{rule_id}",
                         method="PUT",
-                        body=template,
+                        body=repaired,
                     )
                 )
                 if not isinstance(changed, dict):
