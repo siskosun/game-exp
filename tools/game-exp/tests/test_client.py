@@ -9,8 +9,14 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))
 
-from client import ClientError, GameExpClient, TransportUncertainError  # noqa: E402
+from client import (  # noqa: E402
+    ClientError,
+    GameExpClient,
+    TransportUncertainError,
+    _runtime_version,
+)
 from protocol_core import digest_object  # noqa: E402
+from trust_policy import ruleset_templates  # noqa: E402
 
 
 class FakeTransport:
@@ -64,6 +70,8 @@ class FakeTransport:
         }
 
     def repository_json(self, path, ref=None):
+        if path == "plugins/game-exp/plugin.json":
+            return {"version": _runtime_version()}
         if path == ".game-exp/project-policy.json":
             return {
                 "schema_version": 2,
@@ -197,11 +205,23 @@ class FakeTransport:
     def rulesets(self):
         return self._rules
 
+    def ruleset_details(self):
+        return {
+            row["name"]: row
+            for row in ruleset_templates("single-principal")
+        }
+
+    def environment_branch_policies(self, environment):
+        return [{"id": 1, "name": "main", "type": "branch"}]
+
+    def environment_secret_names(self, environment):
+        return {"GAME_EXP_WRITER_KEY"}
+
     def deploy_keys(self):
         return [{"title": "game-exp trusted writer", "read_only": False}]
 
     def secret_names(self):
-        return {"GAME_EXP_WRITER_KEY"}
+        return set()
 
     def immutable_releases(self):
         return {"enabled": True, "enforced_by_owner": False}
@@ -519,11 +539,15 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "CONFLICT")
         self.assertEqual(result["conflict_type"], "LOCAL_REQUEST_ID_CONFLICT")
 
-    def test_status_is_explicit_pass(self):
+    def test_status_is_compact_version_and_access_handshake(self):
         transport = FakeTransport()
         result = GameExpClient(transport).status()
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
+        self.assertEqual(result["runtime_version"], _runtime_version())
+        self.assertEqual(result["repository_version"], _runtime_version())
+        self.assertEqual(result["version_state"], "MATCH")
+        self.assertEqual(result["access"]["status"], "WRITE")
 
     def test_access_check_reports_write_and_read_only(self):
         transport = FakeTransport()
@@ -1600,7 +1624,7 @@ class ClientTests(unittest.TestCase):
                 "HTTP 403: Upgrade to GitHub Pro or make this repository public "
                 "to enable this feature."
             )
-        transport.rulesets = blocked_rulesets
+        transport.ruleset_details = blocked_rulesets
         result = GameExpClient(transport).doctor()
         self.assertEqual(result["status"], "FAIL")
         rulesets = next(row for row in result["checks"] if row["name"] == "rulesets")
