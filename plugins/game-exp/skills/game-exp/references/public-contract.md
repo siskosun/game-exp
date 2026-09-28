@@ -138,6 +138,29 @@ For asynchronous lifecycle workers (Initialize, Candidate, Rehearsal, Integratio
 
 The Trusted Writer validates these identities at claim commit, and the worker validates the committed claim again before effects. Only a workflow run whose action/arguments match that committed claim may perform effects. Duplicate runs with the same request id are remotely deduplicated.
 
+## 1.0 session handshake and MCP surface
+
+Start an unfamiliar session with `game_exp_status`. The status response is intentionally compact and includes:
+
+- exact `owner/name` repository identity;
+- current protected Ledger head;
+- repository access snapshot;
+- running game-exp version;
+- repository game-exp version;
+- `MATCH / RUNTIME_OLDER / REPOSITORY_OLDER / UNKNOWN` version state;
+- supported Manifest/project-policy protocol versions.
+
+A runtime/repository version mismatch is a pre-mutation warning: align versions before changing experiment state.
+
+Global MCP use requires an explicit repository argument or an intentionally configured `GAME_EXP_REPO`; it must not infer a repository from an unrelated process working directory.
+
+The 1.0 default MCP surface keeps daily workflow tools only. Compatibility/diagnostic surfaces remain implemented but are not registered unless explicitly enabled:
+
+- `game_exp_access_check`, `game_exp_capabilities`, `game_exp_request_get` via `GAME_EXP_ENABLE_LEGACY_TOOLS=1`;
+- the conformance simulator tools via `GAME_EXP_ENABLE_CONFORMANCE_TOOLS=1` or an active conformance session.
+
+This is an Agent-context optimization only. It does not remove the underlying CLI/protocol compatibility contract.
+
 ## Routing and recovery
 
 Before any mutation has been submitted, prefer interfaces in this order:
