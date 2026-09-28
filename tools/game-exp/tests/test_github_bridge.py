@@ -86,6 +86,90 @@ class GitHubBridgeTests(unittest.TestCase):
             "admin",
         )
 
+    def test_parse_work_claim_and_release_commands(self):
+        claim = github_bridge.parse_command(
+            self.command(
+                {
+                    "schema_version": 1,
+                    "request_id": "req_work_50",
+                    "action": "work_claim",
+                    "experiment_id": "EXP-50",
+                    "base_source_sha": "b" * 40,
+                    "summary": "Tune movement",
+                    "paths": ["games/player"],
+                    "executor": {"harness": "codex", "agent": "gpt"},
+                }
+            )
+        )
+        self.assertEqual(claim["action"], "work_claim")
+
+        release = github_bridge.parse_command(
+            self.command(
+                {
+                    "schema_version": 1,
+                    "request_id": "req_release_50",
+                    "action": "work_release",
+                    "experiment_id": "EXP-50",
+                    "claim_id": "req_work_50",
+                    "outcome": "ABANDONED",
+                    "notes": "No longer needed.",
+                    "result_source_sha": None,
+                }
+            )
+        )
+        self.assertEqual(release["action"], "work_release")
+
+    @patch("github_bridge.submit_writer")
+    def test_work_claim_and_release_use_trusted_writer(self, submit_writer):
+        submit_writer.return_value = {"status": "COMMITTED"}
+        claim = github_bridge.execute_action(
+            {
+                "schema_version": 1,
+                "request_id": "req_work_50",
+                "action": "work_claim",
+                "experiment_id": "EXP-50",
+                "base_source_sha": "b" * 40,
+                "summary": "Tune movement",
+                "paths": ["games/player"],
+                "executor": {"harness": "codex", "agent": "gpt"},
+            },
+            repo="owner/repo",
+            actor_login="alice",
+            comment_id="123",
+            ssh_key="/tmp/key",
+            run_id="456",
+            run_attempt="1",
+            workflow_source_sha="a" * 40,
+        )
+        self.assertEqual(claim["status"], "COMMITTED")
+        payload = submit_writer.call_args.args[2]
+        self.assertEqual(payload["operation"], "work.claim")
+        self.assertEqual(payload["input"]["base_source_sha"], "b" * 40)
+
+        release = github_bridge.execute_action(
+            {
+                "schema_version": 1,
+                "request_id": "req_release_50",
+                "action": "work_release",
+                "experiment_id": "EXP-50",
+                "claim_id": "req_work_50",
+                "outcome": "ABANDONED",
+                "notes": "Superseded.",
+                "result_source_sha": None,
+            },
+            repo="owner/repo",
+            actor_login="alice",
+            comment_id="124",
+            ssh_key="/tmp/key",
+            run_id="457",
+            run_attempt="1",
+            workflow_source_sha="a" * 40,
+        )
+        self.assertEqual(release["status"], "COMMITTED")
+        payload = submit_writer.call_args.args[2]
+        self.assertEqual(payload["operation"], "work.release")
+        self.assertNotIn("result_source_sha", payload["input"])
+
     @patch("github_bridge._claim_async_execution")
     @patch("github_bridge._dispatch_workflow")
     def test_rehearse_routes_to_existing_trusted_workflow(self, dispatch, claim):
