@@ -763,7 +763,7 @@ def _ensure_rulesets(repo: str, trust_mode: str) -> dict[str, Any]:
         if not isinstance(summary, dict) or not isinstance(summary.get("id"), int):
             raise ProjectSetupError(f"ruleset {name!r} missing after provisioning")
         full = _json(_gh_api(repo, f"rulesets/{summary['id']}"))
-        if ruleset_semantics(full) != ruleset_semantics(template):
+        if not ruleset_satisfies(full, template):
             raise ProjectSetupError(f"ruleset {name!r} failed semantic verification")
 
     return {
