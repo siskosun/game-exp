@@ -1006,6 +1006,28 @@ class GameExpClient:
                 "complete_project_setup": True,
                 "self_describing_manifest": True,
                 "manifest_schema_v2": True,
+                "iteration_routing_v1": True,
+            },
+            "iteration_routing": {
+                "default_existing_experiment_change": "REVISION",
+                "classification_dimensions": [
+                    "hypothesis",
+                    "success_criteria",
+                    "core_mechanic",
+                    "target_player_experience",
+                ],
+                "clear_revision_requires_confirmation": False,
+                "new_experiment_requires_confirmation": True,
+                "ambiguous_case": "ASK_DESIGN_INTENT",
+                "revision": {
+                    "reuse_experiment": True,
+                    "reuse_canonical_branch": True,
+                    "new_issue": False,
+                    "new_branch": False,
+                    "new_candidate_after_substantive_change": True,
+                    "previous_review_carries_forward": False,
+                },
+                "selected_or_terminal_work_reopens_automatically": False,
             },
             "queries": [
                 "status",
