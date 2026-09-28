@@ -13,6 +13,7 @@ from client import (  # noqa: E402
     ClientError,
     GameExpClient,
     TransportUncertainError,
+    _recommended_prototype_executor,
     _runtime_version,
 )
 from protocol_core import digest_object  # noqa: E402
@@ -984,6 +985,10 @@ class ClientTests(unittest.TestCase):
         self.assertFalse(executor["affects_experiment_health"])
         self.assertTrue(executor["check_before_implementation"])
         self.assertEqual(executor["availability_resolved_by"], "host")
+        self.assertEqual(
+            [row["id"] for row in handoff["recommended_executors"]],
+            ["godot-prototype-studio", "h5-game-prototype-agent"],
+        )
         self.assertIn("不是必需依赖", executor["missing_prompt_zh"])
         self.assertIn("不安装也可以", executor["missing_prompt_zh"])
         self.assertEqual(handoff["source"]["branch_ref"], "refs/heads/exp/7")
@@ -1790,6 +1795,7 @@ class ClientTests(unittest.TestCase):
         self.assertIn("work.claim", result["commands"])
         self.assertIn("work.release", result["commands"])
         godot = result["recommended_capabilities"]["godot_prototype_studio"]
+        h5 = result["recommended_capabilities"]["h5_game_prototype_agent"]
         self.assertEqual(godot["id"], "godot-prototype-studio")
         self.assertEqual(
             godot["source_url"],
@@ -1799,6 +1805,15 @@ class ClientTests(unittest.TestCase):
         self.assertFalse(godot["missing_is_blocking"])
         self.assertFalse(godot["affects_experiment_health"])
         self.assertEqual(godot["fallback"], "host_native_source_editing")
+        self.assertEqual(h5["id"], "h5-game-prototype-agent")
+        self.assertEqual(
+            h5["source_url"],
+            "https://github.com/siskosun/h5-game-prototype-agent",
+        )
+        self.assertFalse(h5["required"])
+        self.assertFalse(h5["missing_is_blocking"])
+        self.assertFalse(h5["affects_experiment_health"])
+        self.assertTrue(result["features"]["h5_handoff"])
         routing = result["iteration_routing"]
         self.assertEqual(routing["default_existing_experiment_change"], "REVISION")
         self.assertFalse(routing["clear_revision_requires_confirmation"])
@@ -2071,6 +2086,12 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(FakeTransport()).notification_feed(limit=0)
         self.assertEqual(result["status"], "REJECTED")
         self.assertEqual(result["reason"], "invalid_limit")
+
+    def test_prototype_executor_selection_uses_h5_for_node_npm(self):
+        h5 = _recommended_prototype_executor({"adapter": "node-npm"})
+        godot = _recommended_prototype_executor({"adapter": "custom"})
+        self.assertEqual(h5["id"], "h5-game-prototype-agent")
+        self.assertEqual(godot["id"], "godot-prototype-studio")
 
     def test_prototype_handoff_rejects_invalid_experiment_id(self):
         result = GameExpClient(FakeTransport()).prototype_handoff("bad")
