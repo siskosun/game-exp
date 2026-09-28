@@ -88,9 +88,10 @@ This fail-closed behavior prevents a clean Godot, Python, or other repository fr
 
 For normal Chinese UI, `display` is authoritative presentation copy:
 
-- `display.presentation_version >= 3` means the host must not rebuild visible labels by translating raw field names;
+- `display.presentation_version >= 4` means the host must not rebuild visible labels by translating raw field names;
 - render `display.rows_zh` and `display.trust_summary_zh`, or use `display.summary_text_zh` for a plain-text surface;
 - `presentation.primary=display` and `display.render_contract` explicitly mark raw `project`, `repository`, `statistics`, and enum fields as logic/diagnostic inputs;
+- presentation v4 adds `strict_primary_copy=true`, a canonical terminology map, and `forbidden_primary_tokens` so rich Harness UIs can mechanically prevent mixed Chinese/engineering copy;
 - raw codes such as `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, and internal names such as `doctor` are not ordinary UI copy;
 - `doctor` is presented as `仓库检查`, never a literal translation such as `医生检查`;
 - repository identifiers, branch names, commit hashes, experiment ids, and product names may remain literal.
