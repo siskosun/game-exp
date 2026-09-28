@@ -85,12 +85,14 @@ Release with `game_exp_work_release`: `COMPLETED`, `ABANDONED`, or `HANDED_OFF`.
 
 ## Prototype implementation handoff
 
-Godot Prototype Studio is recommended but not a mandatory dependency. Before Godot work, check the current host's available Skill/tool catalog for `godot-prototype-studio`.
+Specialized prototype executors are recommended but not mandatory dependencies. Before implementation, check the current host's available Skill/tool catalog.
 
-If missing, show one non-blocking suggestion:
-https://github.com/siskosun/godot-prototype-studio
+- Godot -> `godot-prototype-studio` · https://github.com/siskosun/godot-prototype-studio
+- H5/browser -> `h5-game-prototype-agent` · https://github.com/siskosun/h5-game-prototype-agent
 
-Continue with the current Harness if appropriate. Missing capability must not make experiment health fail. Never claim Godot-specific validation that was not run.
+The canonical Harness installer normally synchronizes both latest semantic-version-tagged Skills into the selected Harness. Missing capability must not make experiment health fail. Continue with the current Harness if appropriate, and never claim specialized validation that was not run.
+
+For H5 PROBE work, `READY_FOR_PLAYTEST` is implementation evidence only; it never means Review PASS or PROMISING.
 
 ## Evaluation Evidence v1
 
