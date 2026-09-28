@@ -61,7 +61,7 @@ Never change repository visibility automatically to work around plan limits.
 
 ## Experiment Board
 
-Use `game_exp_board` for the full Board and the focused panel tools for one experiment/subject. It is a read-only projection from one pinned Ledger snapshot.
+Use `game_exp_board` for the default Board. If advanced focused-panel tools are registered, they may be used for one experiment/subject; otherwise use Board focus plus `game_exp_experiment_get`. All are read-only projections from one pinned Ledger snapshot.
 
 Chinese is the default presentation. Use the emitted `display` contract rather than retranslating raw fields. Normal views are `总览`, `待处理`, `原型`, `分支图`, `归档`. Keep system-generated panel entries in natural Chinese. `health=FAIL` blocks normal lifecycle work.
 
