@@ -201,11 +201,13 @@ class GameExpSkillContractTests(unittest.TestCase):
             "contributors_complete",
             "display.rows_zh",
             "display.summary_text_zh",
-            "display.presentation_version >= 3",
+            "display.presentation_version >= 4",
             "仓库检查",
             "never `医生检查`",
             "实验记录快照",
             "Do not append machine codes",
+            "strict_primary_copy",
+            "forbidden_primary_tokens",
         ):
             self.assertIn(phrase, board)
 
