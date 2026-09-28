@@ -55,6 +55,14 @@ H5_GAME_PROTOTYPE_AGENT = {
     "fallback": "host_native_source_editing",
 }
 
+def _recommended_prototype_executor(runtime: dict[str, Any]) -> dict[str, Any]:
+    return (
+        H5_GAME_PROTOTYPE_AGENT
+        if str(runtime.get("adapter") or "") == "node-npm"
+        else GODOT_PROTOTYPE_STUDIO
+    )
+
+
 WORKFLOW_EXECUTION_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
     "initialize": ("game-exp-source-initializer.yml", ()),
     "candidate_build": ("game-exp-candidate.yml", ()),
@@ -4067,11 +4075,7 @@ class GameExpClient:
                 branch_head_sha = obj["sha"]
         handoff_id = f"IMPLEMENT_EXPERIMENT:{experiment_id}:{snapshot_head}"
         adapter = str(runtime.get("adapter") or "")
-        selected_executor = (
-            H5_GAME_PROTOTYPE_AGENT
-            if adapter == "node-npm"
-            else GODOT_PROTOTYPE_STUDIO
-        )
+        selected_executor = _recommended_prototype_executor(runtime)
         selected_name = selected_executor["name"]
         selected_url = selected_executor["source_url"]
         return {
