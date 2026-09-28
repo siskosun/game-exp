@@ -154,12 +154,12 @@ class GameExpSkillContractTests(unittest.TestCase):
             "authorized GitHub connector",
         ):
             self.assertIn(phrase, content)
-        for phrase in (
-            "CONFLICT",
-            "REJECTED",
-            "game_exp_archive_abort",
-            "game_exp_review_record",
-        ):
+        public_contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+        for phrase in ("CONFLICT", "REJECTED"):
+            self.assertIn(phrase, public_contract)
+        for phrase in ("game_exp_archive_abort", "game_exp_review_record"):
             self.assertIn(phrase, workflow)
         self.assertIn("repo-level", setup)
 
