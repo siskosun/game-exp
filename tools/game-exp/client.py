@@ -11,6 +11,12 @@ from typing import Any
 
 from project_policy import POLICY_PATH, ProjectPolicyError, policy_digest, validate_policy
 from protocol_core import (
+from trust_policy import (
+    WRITER_ENVIRONMENT,
+    WRITER_KEY_TITLE,
+    WRITER_SECRET,
+    validate_rulesets,
+)
     ASYNC_EXECUTION_ACTIONS,
     build_operation_payload,
     contract_descriptor,
@@ -592,6 +598,67 @@ class GitHubTransport:
         if not isinstance(data, list):
             raise ClientError("GitHub rulesets response is not a list")
         return data
+
+    def ruleset_details(self) -> dict[str, dict[str, Any]]:
+        result: dict[str, dict[str, Any]] = {}
+        for row in self.rulesets():
+            if not isinstance(row, dict):
+                continue
+            name = row.get("name")
+            rule_id = row.get("id")
+            if not isinstance(name, str) or not isinstance(rule_id, int):
+                continue
+            proc = _run(
+                ["gh", "api", f"repos/{self.repo}/rulesets/{rule_id}"],
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise TransportUncertainError(
+                    f"cannot read ruleset details for {name!r}: {proc.stderr[-800:]}"
+                )
+            value = _json_output(proc)
+            if isinstance(value, dict):
+                result[name] = value
+        return result
+
+    def environment_branch_policies(self, environment: str) -> list[dict[str, Any]] | None:
+        proc = _run(
+            [
+                "gh",
+                "api",
+                f"repos/{self.repo}/environments/{environment}/deployment-branch-policies?per_page=100",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        data = _json_output(proc)
+        rows = data.get("branch_policies") if isinstance(data, dict) else None
+        return rows if isinstance(rows, list) else None
+
+    def environment_secret_names(self, environment: str) -> set[str] | None:
+        proc = _run(
+            [
+                "gh",
+                "secret",
+                "list",
+                "--env",
+                environment,
+                "--repo",
+                self.repo,
+                "--json",
+                "name",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        data = _json_output(proc)
+        return {
+            row["name"]
+            for row in data
+            if isinstance(row, dict) and isinstance(row.get("name"), str)
+        }
 
     def deploy_keys(self) -> list[dict[str, Any]] | None:
         proc = _run(["gh", "api", f"repos/{self.repo}/keys"], check=False)
@@ -5556,21 +5623,16 @@ class GameExpClient:
         except Exception as exc:
             add("ledger_ref", "FAIL", str(exc))
 
+        trust_mode = None
         try:
-            rules = self.transport.rulesets()
-            active_names = {
-                row.get("name")
-                for row in rules
-                if row.get("enforcement") == "active"
-            }
-            required = {
-                "game-exp ledger",
-                "game-exp experiment branches",
-                "game-exp immutable refs",
-                "game-exp protected main",
-            }
-            missing = sorted(required - active_names)
-            add("rulesets", "PASS" if not missing else "FAIL", {"missing": missing})
+            details = self.transport.ruleset_details()
+            rule_check = validate_rulesets(details)
+            trust_mode = rule_check.get("trust_mode")
+            add(
+                "rulesets",
+                rule_check["status"],
+                rule_check,
+            )
         except Exception as exc:
             detail = str(exc)
             lowered = detail.lower()
@@ -5593,12 +5655,38 @@ class GameExpClient:
             else:
                 add("rulesets", "UNKNOWN", detail)
 
+        policies = self.transport.environment_branch_policies(WRITER_ENVIRONMENT)
+        if policies is None:
+            add(
+                "trusted_writer_environment",
+                "UNKNOWN",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "code": "ENVIRONMENT_UNREADABLE",
+                },
+            )
+        else:
+            normalized = sorted(
+                (row.get("name"), row.get("type"))
+                for row in policies
+                if isinstance(row, dict)
+            )
+            add(
+                "trusted_writer_environment",
+                "PASS" if normalized == [("main", "branch")] else "FAIL",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "branch_policies": normalized,
+                    "required": [("main", "branch")],
+                },
+            )
+
         keys = self.transport.deploy_keys()
         if keys is None:
             add("trusted_writer_deploy_key", "UNKNOWN", "cannot read deploy keys")
         else:
             write_keys = [k for k in keys if not k.get("read_only", True)]
-            exact = [k for k in write_keys if k.get("title") == "game-exp trusted writer"]
+            exact = [k for k in write_keys if k.get("title") == WRITER_KEY_TITLE]
             add(
                 "trusted_writer_deploy_key",
                 "PASS" if len(exact) == 1 and len(write_keys) == 1 else "FAIL",
@@ -5609,14 +5697,30 @@ class GameExpClient:
                 },
             )
 
-        secrets = self.transport.secret_names()
-        if secrets is None:
-            add("trusted_writer_secret", "UNKNOWN", "cannot list repository secrets")
-        else:
+        env_secrets = self.transport.environment_secret_names(WRITER_ENVIRONMENT)
+        repo_secrets = self.transport.secret_names()
+        if env_secrets is None or repo_secrets is None:
             add(
                 "trusted_writer_secret",
-                "PASS" if "GAME_EXP_WRITER_KEY" in secrets else "FAIL",
-                None,
+                "UNKNOWN",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "environment_secret_visible": env_secrets is not None,
+                    "repository_secret_visible": repo_secrets is not None,
+                },
+            )
+        else:
+            env_present = WRITER_SECRET in env_secrets
+            legacy_repo_present = WRITER_SECRET in repo_secrets
+            add(
+                "trusted_writer_secret",
+                "PASS" if env_present and not legacy_repo_present else "FAIL",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "environment_secret_present": env_present,
+                    "legacy_repository_secret_present": legacy_repo_present,
+                    "required_scope": "environment",
+                },
             )
 
         immutable = self.transport.immutable_releases()
@@ -5666,5 +5770,6 @@ class GameExpClient:
             "status": overall,
             "repo": self.transport.repo,
             "experiment_id": experiment_id,
+            "trust_mode": trust_mode,
             "checks": checks,
         }
