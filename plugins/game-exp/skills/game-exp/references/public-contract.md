@@ -27,9 +27,9 @@ Use `game_exp_capabilities` or `game-exp capabilities` to inspect business featu
 
 A new Harness must be able to create the first experiment without reading another repository or historical Ledger examples.
 
-Use \`game_exp_experiment_template\` or CLI \`experiment-template\` to read:
+Use `game_exp_experiment_template` or CLI `experiment-template` to read:
 
-- the current repository's \`.game-exp/project-policy.json\`;
+- the current repository's `.game-exp/project-policy.json`;
 - the recommended Manifest schema version;
 - the runtime shape derived from that project policy;
 - the default human review protocol;
@@ -40,18 +40,18 @@ Manifest schema v2 remains the recommended generic runtime contract for project-
 
 Both v2 and v3 use the generic repository-policy runtime shape:
 
-\`\`\`json
+```json
 {
   "runtime": {
     "adapter": "node-npm",
     "policy_path": ".game-exp/project-policy.json"
   }
 }
-\`\`\`
+```
 
 Schema v3 additionally requires one content-addressed Evaluation Profile reference:
 
-\`\`\`json
+```json
 {
   "evaluation_profile": {
     "path": ".game-exp/evaluation-profiles/profile-id.json",
@@ -59,21 +59,21 @@ Schema v3 additionally requires one content-addressed Evaluation Profile referen
     "version": 1
   }
 }
-\`\`\`
+```
 
 The adapter value comes from the current repository project policy. Manifest schema v1 remains accepted for existing experiments and uses the legacy Godot-specific runtime object. New experiments should not emit Godot placeholder fields for non-Godot repositories.
 
-The example Manifest returned by \`experiment-template\` contains unresolved placeholders and is explicitly non-bindable. The Agent must resolve the real Issue identity, parent SHA, stable operation id, scope, subject, timestamp and, for schema v3, the exact Profile digest before Bind.
+The example Manifest returned by `experiment-template` contains unresolved placeholders and is explicitly non-bindable. The Agent must resolve the real Issue identity, parent SHA, stable operation id, scope, subject, timestamp and, for schema v3, the exact Profile digest before Bind.
 
 ## Project policy schema
 
 Project validation policy is repository-local and independent from Manifest schema.
 
-- Project policy schema v1 remains compatible and is limited to the legacy \`node-npm\` shape.
+- Project policy schema v1 remains compatible and is limited to the legacy `node-npm` shape.
 - Project policy schema v2 keeps install/test/build as argv arrays and makes the adapter generic.
-- Project policy schema v3 adds one protected \`evaluation\` argv command plus the fixed \`.game-exp/evaluation-output\` directory. Use it only when the repository is ready to participate in Evaluation Evidence v1.
-- For \`node-npm\`, schema v2/v3 requires an exact \`toolchain.node_version\`. Trusted workflows use that value with \`actions/setup-node\`; they no longer require a repository \`.node-version\` file.
-- For adapters other than \`node-npm\`, \`toolchain\` is currently empty and game-exp performs no implicit runtime installation. Declared argv commands must be self-contained on the trusted \`ubuntu-latest\` runner.
+- Project policy schema v3 adds one protected `evaluation` argv command plus the fixed `.game-exp/evaluation-output` directory. Use it only when the repository is ready to participate in Evaluation Evidence v1.
+- For `node-npm`, schema v2/v3 requires an exact `toolchain.node_version`. Trusted workflows use that value with `actions/setup-node`; they no longer require a repository `.node-version` file.
+- For adapters other than `node-npm`, `toolchain` is currently empty and game-exp performs no implicit runtime installation. Declared argv commands must be self-contained on the trusted `ubuntu-latest` runner.
 
 Bootstrap must not guess Node/npm for an unknown repository type. Existing v1/v2 repositories remain valid and are not automatically upgraded to evaluation-enabled v3.
 
@@ -92,13 +92,13 @@ The Profile is content-addressed and frozen by the human-authorized Manifest Bin
 7. recomputes referenced evidence digests;
 8. stores only compact trusted summaries/digests in Ledger while retaining larger bytes in the immutable Candidate release.
 
-Screening is exactly \`ELIGIBLE | INELIGIBLE | INCONCLUSIVE\`. It never mutates lifecycle.
+Screening is exactly `ELIGIBLE | INELIGIBLE | INCONCLUSIVE`. It never mutates lifecycle.
 
-\`PARTICIPANT_REPORTED\` exploration cannot by itself create trusted PASS/FAIL. \`HUMAN_REPORTED\` A/B preference is recorded through the existing Review authority path and remains distinct from \`TRUSTED_OBSERVED\` machine evidence.
+`PARTICIPANT_REPORTED` exploration cannot by itself create trusted PASS/FAIL. `HUMAN_REPORTED` A/B preference is recorded through the existing Review authority path and remains distinct from `TRUSTED_OBSERVED` machine evidence.
 
-v1 introduces no persistent Comparison Set. One challenger compares with the current Candidate of its \`supersedes\` incumbent. Structured blind A/B comparison is optional Review evidence only when the Manifest review protocol is \`incumbent-challenger-blind-ab-v1\`.
+v1 introduces no persistent Comparison Set. One challenger compares with the current Candidate of its `supersedes` incumbent. Structured blind A/B comparison is optional Review evidence only when the Manifest review protocol is `incumbent-challenger-blind-ab-v1`.
 
-See \`evaluation.md\`.
+See `evaluation.md`.
 
 ## Board presentation contract
 
