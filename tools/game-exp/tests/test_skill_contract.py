@@ -563,8 +563,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, skill)
 
         for phrase in (
-            "Godot** -> `godot-prototype-studio`",
-            "H5/browser** -> `h5-game-prototype-agent`",
+            "Godot Prototype Studio (`godot-prototype-studio`)",
+            "H5 Game Prototype Agent (`h5-game-prototype-agent`)",
             "missing executor capability does not change repository health",
             "READY_FOR_PLAYTEST",
             "repository root",
