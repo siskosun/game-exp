@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "game-exp-client-e2e.yml"
 
 
