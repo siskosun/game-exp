@@ -73,6 +73,32 @@ If the execution claim committed but worker dispatch cannot be proven, the Bridg
 {"schema_version":1,"request_id":"req_candidate_42_1","action":"candidate_build","experiment_id":"EXP-42"}
 ~~~
 
+### work_claim
+
+Declare source-editing intent before changing the canonical experiment branch:
+
+~~~json
+{"schema_version":1,"request_id":"req_work_42_1","action":"work_claim","experiment_id":"EXP-42","base_source_sha":"<40-char-current-exp-branch-sha>","summary":"Tune movement feel","paths":["games/player"],"executor":{"harness":"codex","agent":"gpt","session_id":"optional-session"}}
+~~~
+
+The Trusted Writer verifies that `base_source_sha` is still the current canonical experiment branch head. Overlap with another current work claim is recorded as a coordination signal; it is not a hard lock.
+
+### work_release
+
+After the work is represented by the canonical experiment branch:
+
+~~~json
+{"schema_version":1,"request_id":"req_work_release_42_1","action":"work_release","experiment_id":"EXP-42","claim_id":"req_work_42_1","outcome":"COMPLETED","notes":"Merged and verified.","result_source_sha":"<40-char-current-exp-branch-sha>"}
+~~~
+
+To drop work without a result:
+
+~~~json
+{"schema_version":1,"request_id":"req_work_release_42_2","action":"work_release","experiment_id":"EXP-42","claim_id":"req_work_42_1","outcome":"ABANDONED","notes":"Superseded by another implementation.","result_source_sha":null}
+~~~
+
+Work claims/releases are coordination records, not lifecycle decisions or human approvals.
+
 ### review_record
 
 ~~~json
