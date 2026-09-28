@@ -1106,6 +1106,41 @@ class ClientTests(unittest.TestCase):
         for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
             self.assertNotIn(forbidden, visible)
 
+    def test_board_display_contract_hides_read_only_machine_enum(self):
+        transport = FakeTransport()
+        transport.repository_access = lambda: {
+            "status": "READ_ONLY",
+            "can_read": True,
+            "can_write": False,
+            "can_admin": False,
+            "admin_coverage": "PARTIAL",
+            "reason": "read only",
+            "repository_id": "1384446218",
+            "visibility": "private",
+            "private": True,
+            "default_branch": "main",
+            "owner_type": "User",
+        }
+        result = GameExpClient(transport).board()
+        display = result["display"]
+        self.assertEqual(
+            display["rows_zh"][0]["value"],
+            "owner/repo · 私有 · 默认分支 main",
+        )
+        self.assertEqual(
+            display["rows_zh"][2]["value"],
+            "只读 · 不可创建实验",
+        )
+        visible = "\n".join(
+            [
+                display["summary_text_zh"],
+                display["trust_summary_zh"],
+                *(f"{row['label']}：{row['value']}" for row in display["rows_zh"]),
+            ]
+        )
+        for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
+            self.assertNotIn(forbidden, visible)
+
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
         transport = FakeTransport()
         transport._rules = []
