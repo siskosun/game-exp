@@ -2701,6 +2701,31 @@ class GameExpClient:
             if not isinstance(initialization, dict):
                 initialization = {}
 
+            unreleased_work_claims: list[dict[str, Any]] = []
+            raw_claim_ids = state.get("active_work_claim_ids") or []
+            if isinstance(raw_claim_ids, list):
+                for claim_id in raw_claim_ids:
+                    if not isinstance(claim_id, str) or not claim_id:
+                        continue
+                    claim = self.transport.ledger_json(
+                        f"experiments/{experiment_id}/work-claims/{claim_id}.json",
+                        ref=snapshot_head,
+                    )
+                    if isinstance(claim, dict):
+                        unreleased_work_claims.append(
+                            {
+                                "claim_id": claim.get("claim_id"),
+                                "summary": claim.get("summary"),
+                                "paths": claim.get("paths") or [],
+                                "actor": claim.get("actor"),
+                                "executor": claim.get("executor"),
+                                "base_source_sha": claim.get("base_source_sha"),
+                                "coordination_required_at_claim": bool(
+                                    claim.get("coordination_required")
+                                ),
+                            }
+                        )
+
             item = {
                 "repository": self.transport.repo,
                 "repository_name": self.transport.repo.split("/", 1)[-1],
@@ -2750,6 +2775,13 @@ class GameExpClient:
                 "health_code": health["code"],
                 "next_gate": next_gate,
                 "attention": attention,
+                "unreleased_work_claims": unreleased_work_claims,
+                "unreleased_work_claim_count": len(unreleased_work_claims),
+                "work_awareness_zh": (
+                    f"{len(unreleased_work_claims)} 项未结束工作意图"
+                    if unreleased_work_claims
+                    else "当前没有未结束工作意图"
+                ),
             }
             contributor_info = self._contributors_for_item(item)
             item["contributors"] = contributor_info.get("contributors", [])
@@ -3995,6 +4027,16 @@ class GameExpClient:
             "relationships": {
                 "outgoing": row.get("relationships_outgoing") or [],
                 "incoming": row.get("relationships_incoming") or [],
+            },
+            "collaboration": {
+                "unreleased_work_claims": row.get("unreleased_work_claims") or [],
+                "unreleased_work_claim_count": row.get("unreleased_work_claim_count", 0),
+                "summary_zh": row.get("work_awareness_zh"),
+                "source": "ledger_snapshot",
+                "note_zh": (
+                    "这里显示未结束工作意图；是否仍基于当前实验分支，"
+                    "以 collaboration_context 的实时同步检查为准。"
+                ),
             },
             "evidence": {
                 "parent_sha": row.get("parent_sha"),
