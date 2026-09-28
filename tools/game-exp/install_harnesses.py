@@ -650,13 +650,33 @@ class HarnessInstaller:
             ),
         }
 
+    def _transaction_targets(self) -> list[pathlib.Path]:
+        return [
+            self.runtime_dir,
+            self.skill_target,
+            self.config_path,
+            *companion_target_paths(self.home, self.harness),
+        ]
+
     def install(self) -> dict[str, Any]:
         self.preflight()
-        companions = CompanionSkillSynchronizer(
-            self.home,
-            harness=self.harness,
-        ).sync()
-        return self._install_after_preflight(companions)
+        snapshot = _InstallSnapshot(self._transaction_targets())
+        try:
+            companions = CompanionSkillSynchronizer(
+                self.home,
+                harness=self.harness,
+            ).sync()
+            return self._install_after_preflight(companions)
+        except Exception as exc:
+            try:
+                snapshot.restore()
+            except Exception as rollback_exc:
+                raise HarnessInstallError(
+                    f"install failed ({exc}); rollback also failed ({rollback_exc})"
+                ) from exc
+            raise
+        finally:
+            snapshot.close()
 
 
 def install_many(
@@ -678,19 +698,36 @@ def install_many(
     ]
     for installer in installers:
         installer.preflight()
-    companion_results = {
-        installer.harness: CompanionSkillSynchronizer(
-            home,
-            harness=installer.harness,
-        ).sync()
+    transaction_targets = [
+        target
         for installer in installers
-    }
-    results = {
-        installer.harness: installer._install_after_preflight(
-            companion_results[installer.harness]
-        )
-        for installer in installers
-    }
+        for target in installer._transaction_targets()
+    ]
+    snapshot = _InstallSnapshot(transaction_targets)
+    try:
+        companion_results = {
+            installer.harness: CompanionSkillSynchronizer(
+                home,
+                harness=installer.harness,
+            ).sync()
+            for installer in installers
+        }
+        results = {
+            installer.harness: installer._install_after_preflight(
+                companion_results[installer.harness]
+            )
+            for installer in installers
+        }
+    except Exception as exc:
+        try:
+            snapshot.restore()
+        except Exception as rollback_exc:
+            raise HarnessInstallError(
+                f"multi-Harness install failed ({exc}); rollback also failed ({rollback_exc})"
+            ) from exc
+        raise
+    finally:
+        snapshot.close()
     versions = {row["version"] for row in results.values()}
     if len(versions) != 1:
         raise HarnessInstallError("multi-Harness install produced inconsistent versions")
