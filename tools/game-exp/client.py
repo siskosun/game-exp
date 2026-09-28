@@ -4468,7 +4468,14 @@ class GameExpClient:
                 "base_tag_ref": row.get("base_tag_ref"),
                 "final_tag_ref": row.get("final_tag_ref"),
                 "candidate_id": row.get("candidate_id"),
+                "candidate_evaluation": row.get("candidate_evaluation"),
+                "eligible_for_human_comparison": row.get(
+                    "eligible_for_human_comparison"
+                ),
+                "evaluation_summary_zh": row.get("evaluation_summary_zh"),
+                "incumbent_comparison": row.get("incumbent_comparison"),
                 "review_id": row.get("review_id"),
+                "review_comparison": row.get("review_comparison"),
                 "review_outcome": row.get("review_outcome"),
                 "rehearsal_id": row.get("rehearsal_id"),
                 "integration_id": row.get("integration_id"),
@@ -4478,6 +4485,25 @@ class GameExpClient:
                 "title_zh": "代码与记录",
                 "rows_zh": [
                     {"key": "candidate_id", "label": "候选版本", "value": row.get("candidate_id")},
+                    {
+                        "key": "evaluation",
+                        "label": "可信筛查",
+                        "value": row.get("evaluation_summary_zh"),
+                    },
+                    {
+                        "key": "comparison",
+                        "label": "现任 / 挑战者比较",
+                        "value": (
+                            "已记录人工盲测"
+                            if isinstance(row.get("review_comparison"), dict)
+                            else (
+                                "待人工比较"
+                                if row.get("incumbent_comparison") is not None
+                                and row.get("eligible_for_human_comparison") == "ELIGIBLE"
+                                else None
+                            )
+                        ),
+                    },
                     {
                         "key": "review_id",
                         "label": "人工评审",
