@@ -562,5 +562,34 @@ class GameExpSkillContractTests(unittest.TestCase):
         self.assertEqual(entrypoints, [SKILL])
 
 
+    def test_evaluation_evidence_contract_preserves_human_authority(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        evaluation = (
+            PLUGIN / "skills" / "game-exp" / "references" / "evaluation.md"
+        ).read_text(encoding="utf-8")
+        for phrase in (
+            "## Evaluation Evidence v1",
+            "project-policy schema v3",
+            "explicit confirmation before Bind",
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "INCONCLUSIVE",
+            "incumbent-challenger-blind-ab-v1",
+            "Do not add Elo",
+        ):
+            self.assertIn(phrase, skill)
+        for phrase in (
+            "content-addressed Evaluation Profile",
+            "trusted clean",
+            "TRUSTED_OBSERVED",
+            "PARTICIPANT_REPORTED",
+            "HUMAN_REPORTED",
+            "No authoritative Comparison Set object",
+            "Screening is evidence only",
+            "human FAIL Review / REJECTED",
+        ):
+            self.assertIn(phrase, evaluation)
+
+
 if __name__ == "__main__":
     unittest.main()
