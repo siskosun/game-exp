@@ -757,6 +757,24 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["experiments"][0]["contributors"], ["alice", "bob"])
         self.assertEqual(result["experiments"][0]["contributors_source"], "github_commits")
         self.assertTrue(result["experiments"][0]["contributors_complete"])
+        card = result["experiments"][0]["card_zh"]
+        self.assertEqual(card["locale"], "zh-CN")
+        self.assertEqual(card["prototype_zh"], "Arena Duel")
+        self.assertEqual(card["initiator_zh"], "alice")
+        self.assertEqual(card["contributors_zh"], "alice\u3001bob")
+        self.assertEqual(card["branch_zh"], "refs/heads/exp/7")
+        self.assertEqual(card["progress_zh"], "\u8bc4\u5ba1\u4e2d")
+        self.assertEqual(card["health_zh"], "\u6b63\u5e38")
+        self.assertEqual(
+            card["next_action_zh"],
+            "\u63d0\u4ea4\u4eba\u5de5\u8bc4\u5ba1\u7ed3\u679c\uff08\u901a\u8fc7 / \u672a\u901a\u8fc7\uff09",
+        )
+        self.assertEqual(
+            [row["label"] for row in card["rows_zh"]],
+            ["\u5b9e\u9a8c", "\u539f\u578b", "\u53d1\u8d77\u4eba", "\u4ee3\u7801\u8d21\u732e\u8005", "\u5206\u652f", "\u8fdb\u5c55", "\u5065\u5eb7", "\u4e0b\u4e00\u6b65"],
+        )
+        self.assertNotIn("REVIEW", card["summary_text_zh"])
+        self.assertNotIn("PASS", card["summary_text_zh"])
         self.assertEqual(result["experiments"][1]["initiator"]["login"], "carol")
         self.assertEqual(result["experiments"][1]["contributors"], ["carol"])
         self.assertEqual(result["experiments"][1]["prototype_name"], "仓库级/未指定原型")
@@ -1022,7 +1040,7 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(transport).board()
         display = result["display"]
 
-        self.assertEqual(result["presentation"]["contract_version"], 4)
+        self.assertEqual(result["presentation"]["contract_version"], 5)
         self.assertEqual(result["presentation"]["primary"], "display")
         self.assertEqual(
             result["presentation"]["primary_text_path"],
@@ -1032,12 +1050,14 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["presentation"]["copy_is_ready_to_render"])
         self.assertTrue(result["presentation"]["strict_primary_copy"])
         self.assertTrue(result["presentation"]["raw_fields_are_diagnostics"])
+        self.assertEqual(result["presentation"]["experiment_card_path"], "experiments[].card_zh")
+        self.assertTrue(result["presentation"]["experiment_cards_ready_to_render"])
         self.assertEqual(
             result["presentation"]["forbidden_primary_tokens"],
             display["render_contract"]["forbidden_primary_tokens"],
         )
         self.assertEqual(display["locale"], "zh-CN")
-        self.assertEqual(display["presentation_version"], 4)
+        self.assertEqual(display["presentation_version"], 5)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
         self.assertEqual(
             [row["label"] for row in display["rows_zh"]],

@@ -992,6 +992,7 @@ class GameExpClient:
                 "board": True,
                 "board_presentation_v3": True,
                 "board_presentation_v4": True,
+                "board_presentation_v5": True,
                 "strict_chinese_board_copy": True,
                 "natural_chinese_board": True,
                 "request_recovery": True,
@@ -1770,6 +1771,80 @@ class GameExpClient:
             "UNKNOWN": "未知",
         }.get(next_gate, next_gate)
 
+    @classmethod
+    def _board_experiment_card_zh(cls, item: dict[str, Any]) -> dict[str, Any]:
+        experiment_id = str(item.get("experiment_id") or "\u672a\u77e5\u5b9e\u9a8c")
+        title = item.get("title")
+        title_zh = title.strip() if isinstance(title, str) and title.strip() else experiment_id
+        subject_name = item.get("subject_name")
+        prototype_zh = (
+            subject_name.strip()
+            if isinstance(subject_name, str) and subject_name.strip()
+            else "\u672a\u6307\u5b9a\u539f\u578b"
+        )
+        initiator = item.get("initiator")
+        initiator_login = (
+            initiator.get("login")
+            if isinstance(initiator, dict) and isinstance(initiator.get("login"), str)
+            else None
+        )
+        initiator_zh = initiator_login or "\u5386\u53f2\u8bb0\u5f55\u672a\u4fdd\u5b58"
+        branch_ref = item.get("branch_ref")
+        branch_zh = (
+            branch_ref.strip()
+            if isinstance(branch_ref, str) and branch_ref.strip()
+            else "\u5c1a\u672a\u521d\u59cb\u5316"
+        )
+        display = item.get("display") if isinstance(item.get("display"), dict) else {}
+        progress_zh = str(display.get("lifecycle") or "\u672a\u77e5")
+        health_zh = str(display.get("health") or "\u672a\u77e5")
+        attention = item.get("attention")
+        if isinstance(attention, dict) and attention.get("required"):
+            next_action_zh = str(
+                attention.get("action_zh")
+                or display.get("next_gate")
+                or "\u5904\u7406\u9700\u8981\u5173\u6ce8\u7684\u95ee\u9898"
+            )
+        else:
+            next_action_zh = str(
+                display.get("next_gate") or "\u67e5\u770b\u5b9e\u9a8c\u72b6\u6001"
+            )
+        contributors = item.get("contributors")
+        contributors_zh = (
+            "\u3001".join(
+                str(value) for value in contributors if isinstance(value, str)
+            )
+            if isinstance(contributors, list)
+            else ""
+        ) or "\u6682\u65e0\u8bb0\u5f55"
+        rows_zh = [
+            {"label": "\u5b9e\u9a8c", "value": f"{experiment_id} \u00b7 {title_zh}"},
+            {"label": "\u539f\u578b", "value": prototype_zh},
+            {"label": "\u53d1\u8d77\u4eba", "value": initiator_zh},
+            {"label": "\u4ee3\u7801\u8d21\u732e\u8005", "value": contributors_zh},
+            {"label": "\u5206\u652f", "value": branch_zh},
+            {"label": "\u8fdb\u5c55", "value": progress_zh},
+            {"label": "\u5065\u5eb7", "value": health_zh},
+            {"label": "\u4e0b\u4e00\u6b65", "value": next_action_zh},
+        ]
+        summary_text_zh = "\n".join(
+            f"{row['label']}\uff1a{row['value']}" for row in rows_zh
+        )
+        return {
+            "locale": "zh-CN",
+            "title_zh": f"{experiment_id} \u00b7 {title_zh}",
+            "rows_zh": rows_zh,
+            "prototype_zh": prototype_zh,
+            "initiator_zh": initiator_zh,
+            "contributors_zh": contributors_zh,
+            "branch_zh": branch_zh,
+            "progress_zh": progress_zh,
+            "health_zh": health_zh,
+            "next_action_zh": next_action_zh,
+            "summary_text_zh": summary_text_zh,
+            "raw_machine_codes_hidden_by_default": True,
+        }
+
     @staticmethod
     def _board_relationship_type_zh(relation_type: str) -> str:
         return {
@@ -2469,6 +2544,9 @@ class GameExpClient:
                 item["display"]["attention_reason"] = "实验依赖需要复核"
                 item["display"]["attention_action"] = "确认依赖语义后继续；不会自动淘汰当前实验"
 
+        for item in items:
+            item["card_zh"] = self._board_experiment_card_zh(item)
+
         attention_ids = [
             item["experiment_id"]
             for item in sorted(
@@ -2855,7 +2933,7 @@ class GameExpClient:
         ]
         display = {
             "locale": "zh-CN",
-            "presentation_version": 4,
+            "presentation_version": 5,
             "title_zh": title_zh,
             "rows_zh": rows_zh,
             "project_status_zh": project_status_zh,
@@ -2911,13 +2989,15 @@ class GameExpClient:
             "status": "PASS",
             "display": display,
             "presentation": {
-                "contract_version": 4,
+                "contract_version": 5,
                 "primary": "display",
                 "primary_text_path": "display.summary_text_zh",
                 "locale": "zh-CN",
                 "copy_is_ready_to_render": True,
                 "strict_primary_copy": True,
                 "raw_fields_are_diagnostics": True,
+                "experiment_card_path": "experiments[].card_zh",
+                "experiment_cards_ready_to_render": True,
                 "forbidden_primary_tokens": forbidden_primary_tokens,
             },
             "repo": self.transport.repo,

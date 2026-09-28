@@ -270,3 +270,4 @@ The return evidence must bind:
 A local filesystem path alone is not sufficient cross-Harness evidence unless it is explicitly marked `portable=false`.
 
 A2A may later transport the same task/artifact semantics if Godot Prototype Studio becomes an independent Agent. A2A transport must not redefine game-exp human approvals, idempotency or evidence validity.
+\n\n### Board presentation v5\n\nexperiments[].card_zh is the normative primary-copy surface for experiment cards. It is ready to render in Chinese and carries experiment, prototype, initiator, contributor, branch, progress, health, and next-action rows. Raw enum fields remain available for logic and diagnostics but are not primary UI copy.\n

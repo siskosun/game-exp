@@ -265,3 +265,4 @@ When an active experiment depends on a REJECTED, ABANDONED, or ARCHIVED experime
 - keep `blocks_progress=false` until a more specific dependency predicate exists.
 
 An ABANDONED upstream means work stopped without asserting a failed Review; the downstream must be rechecked rather than auto-rejected. An ARCHIVED upstream may be perfectly valid if its integrated capability or immutable final snapshot satisfies the downstream dependency. Lifecycle alone is insufficient to decide.
+\n\n## Experiment card rendering\n\nEach experiment exposes card_zh as ready-to-render Chinese copy for the card surface. Render card_zh.rows_zh or card_zh.summary_text_zh directly for repository, prototype, and attention views. Do not rebuild labels from raw lifecycle, health, permission, or next-gate enums. Raw machine fields remain diagnostics only.\n
