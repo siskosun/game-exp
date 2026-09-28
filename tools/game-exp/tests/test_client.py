@@ -30,6 +30,7 @@ class FakeTransport:
         self._ledger_paths = []
         self._ledger_json_refs = []
         self._git_refs = {}
+        self._compare_commits = {}
         self._tag_objects = {}
         self._rules = [
             {"name": "game-exp ledger", "enforcement": "active"},
@@ -40,6 +41,12 @@ class FakeTransport:
 
     def ledger_head(self):
         return self.head
+
+    def compare_commits(self, base_sha, head_sha):
+        return self._compare_commits.get(
+            (base_sha, head_sha),
+            {"status": "behind"},
+        )
 
     def repository_access(self):
         return {
@@ -1748,12 +1755,21 @@ class ClientTests(unittest.TestCase):
             ["req_work_1", "req_work_2"],
         )
 
+        transport._compare_commits[("b" * 40, "c" * 40)] = {"status": "behind"}
         stale_observer = GameExpClient(transport).collaboration_context(
             "EXP-7",
             observed_source_sha="c" * 40,
         )
         self.assertEqual(stale_observer["sync_status"], "STALE")
         self.assertEqual(stale_observer["next_action"], "SYNC_SOURCE")
+
+        transport._compare_commits[("b" * 40, "e" * 40)] = {"status": "ahead"}
+        local_ahead = GameExpClient(transport).collaboration_context(
+            "EXP-7",
+            observed_source_sha="e" * 40,
+        )
+        self.assertEqual(local_ahead["freshness"]["source"]["status"], "CURRENT")
+        self.assertEqual(local_ahead["freshness"]["source"]["reason"], "LOCAL_AHEAD")
 
         transport._git_refs["heads/exp/7"] = {
             "object": {"type": "commit", "sha": "d" * 40}
