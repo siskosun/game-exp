@@ -9,7 +9,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))
 
-from domain_core import DomainError, TrustedActorContext, plan_domain_mutation  # noqa: E402
+from domain_core import DomainError, TrustedActorContext, TrustedExecutionContext, plan_domain_mutation  # noqa: E402
 from protocol_core import build_operation_payload, digest_object  # noqa: E402
 
 
@@ -83,6 +83,7 @@ class AsyncExecutionClaimTests(unittest.TestCase):
             },
             "initialization": {
                 "manifest_digest": digest_object(manifest),
+                "branch_ref": "refs/heads/exp/9",
             },
         }
         (root / "binding.json").write_text(json.dumps(binding), encoding="utf-8")
@@ -111,15 +112,111 @@ class AsyncExecutionClaimTests(unittest.TestCase):
             permission="write",
         )
 
+    def _candidate_fixture(self):
+        candidate_id = "C-9-100-1"
+        source_sha = "b" * 40
+        root = self.root / "experiments" / self.experiment_id
+        candidate = {
+            "kind": "candidate",
+            "candidate_id": candidate_id,
+            "experiment_id": self.experiment_id,
+            "source_sha": source_sha,
+            "manifest_digest": json.loads((root / "binding.json").read_text(encoding="utf-8"))["initialization"]["manifest_digest"],
+            "artifact_digest": "sha256:" + "c" * 64,
+            "policy_digest": "sha256:" + "d" * 64,
+            "workflow_source_sha": "e" * 40,
+            "github_run_id": "100",
+            "github_run_attempt": "1",
+            "checks": [
+                {"name": "build", "status": "PASS", "source": "TRUSTED_OBSERVED"},
+            ],
+            "retention": {
+                "provider": "github-immutable-release",
+                "immutable": True,
+                "artifact_digest": "sha256:" + "c" * 64,
+                "release_tag": "game-exp-candidate-9-100-1",
+                "release_url": "https://example.test/release",
+            },
+            "attestation": {
+                "provider": "github-artifact-attestations",
+                "verified": True,
+                "subject_digest": "sha256:" + "c" * 64,
+                "source_sha": source_sha,
+            },
+        }
+        path = root / "candidates" / f"{candidate_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(candidate), encoding="utf-8")
+        self.state["current_candidate_id"] = candidate_id
+        (root / "state.json").write_text(json.dumps(self.state), encoding="utf-8")
+        return candidate_id, source_sha
+
     def plan(self, *, action="candidate_build", arguments=None, state_digest=None, actor=None):
+        root = self.root / "experiments" / self.experiment_id
+        binding = json.loads((root / "binding.json").read_text(encoding="utf-8"))
+        actual_state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        supplied_state_digest = state_digest or digest_object(actual_state)
+        preconditions = {
+            "protocol_version": 2,
+            "experiment_state_digest": supplied_state_digest,
+        }
+        trusted = TrustedExecutionContext(
+            experiment_id=self.experiment_id,
+            branch_ref="refs/heads/exp/9",
+            branch_head_sha=None,
+            main_sha=None,
+        )
+        if action == "candidate_build":
+            preconditions.update(
+                {
+                    "manifest_digest": binding["initialization"]["manifest_digest"],
+                    "source_sha": "b" * 40,
+                }
+            )
+            trusted = TrustedExecutionContext(
+                experiment_id=self.experiment_id,
+                branch_ref="refs/heads/exp/9",
+                branch_head_sha="b" * 40,
+                main_sha=None,
+            )
+        elif action == "initialize":
+            preconditions["manifest_digest"] = binding["initialization"]["manifest_digest"]
+        elif action == "rehearse":
+            candidate_id = actual_state.get("current_candidate_id")
+            candidate = json.loads(
+                (root / "candidates" / f"{candidate_id}.json").read_text(encoding="utf-8")
+            )
+            preconditions.update(
+                {
+                    "candidate_id": candidate_id,
+                    "candidate_source_sha": candidate["source_sha"],
+                    "main_sha": "f" * 40,
+                }
+            )
+            trusted = TrustedExecutionContext(
+                experiment_id=self.experiment_id,
+                branch_ref="refs/heads/exp/9",
+                branch_head_sha=None,
+                main_sha="f" * 40,
+            )
+        elif action == "archive":
+            preconditions["source_sha"] = "b" * 40
+            trusted = TrustedExecutionContext(
+                experiment_id=self.experiment_id,
+                branch_ref="refs/heads/exp/9",
+                branch_head_sha="b" * 40,
+                main_sha=None,
+            )
+
         payload = build_operation_payload(
             "execution.claim",
             {
                 "experiment_id": self.experiment_id,
                 "action": action,
                 "arguments": arguments or {},
-                "state_digest": state_digest or digest_object(self.state),
+                "state_digest": supplied_state_digest,
             },
+            preconditions=preconditions,
         )
         return plan_domain_mutation(
             repo_dir=self.root,
@@ -128,6 +225,7 @@ class AsyncExecutionClaimTests(unittest.TestCase):
             payload_digest=digest_object(payload),
             repository_full_name="owner/repo",
             trusted_actor=self.actor if actor is None else actor,
+            trusted_execution=trusted,
         )
 
     def test_claim_is_request_only_and_bound_to_experiment(self):
@@ -154,7 +252,7 @@ class AsyncExecutionClaimTests(unittest.TestCase):
 
     def test_claim_rejects_wrong_lifecycle(self):
         with self.assertRaises(DomainError) as ctx:
-            self.plan(action="rehearse")
+            self.plan(action="initialize")
         self.assertEqual(ctx.exception.code, "DOMAIN_EXECUTION_CONFLICT")
 
     def test_selected_experiment_can_claim_rehearsal_refresh(self):
@@ -163,6 +261,7 @@ class AsyncExecutionClaimTests(unittest.TestCase):
         root = self.root / "experiments" / self.experiment_id
         (root / "state.json").write_text(json.dumps(selected), encoding="utf-8")
         self.state = selected
+        self._candidate_fixture()
         plan = self.plan(action="rehearse")
         self.assertEqual(plan.status, "REQUEST_ONLY")
         self.assertEqual(plan.experiment_id, self.experiment_id)
