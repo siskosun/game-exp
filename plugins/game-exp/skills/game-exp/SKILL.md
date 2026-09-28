@@ -37,15 +37,15 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 | Task | Primary tool / action | Read |
 |---|---|---|
 | Status / permissions / version | `game_exp_status` | `references/public-contract.md` |
-| New repository / trust repair | `game_exp_project_preflight`, `game_exp_project_init`, Doctor | `references/project-setup.md` |
+| New repository / trust repair | `game_exp_project_init` (optional advanced preflight), Doctor | `references/project-setup.md` |
 | First experiment | `game_exp_experiment_template`, Bind, Initialize | `references/onboarding.md`, `references/workflow.md` |
-| Board / one experiment / one prototype | `game_exp_board`, `game_exp_experiment_panel`, `game_exp_subject_panel` | `references/board.md`, `references/chat-ui.md` |
+| Board / one experiment / one prototype | `game_exp_board`; optional advanced panel tools when enabled | `references/board.md`, `references/chat-ui.md` |
 | Continue implementation | collaboration preflight, source edit, Work Claim/Release | `references/collaboration.md`, `references/workflow.md` |
 | Godot implementation / playable handoff | `game_exp_prototype_handoff` | `references/prototype-handoff.md` |
 | Candidate / evaluation / human comparison | Candidate, Review | `references/evaluation.md`, `references/workflow.md` |
 | Review / PROMISING / SELECTED / Integration | trusted lifecycle tools | `references/workflow.md`, `references/public-contract.md` |
 | Archive / recovery | Archive tools | `references/workflow.md`, `references/public-contract.md` |
-| Notifications | `game_exp_notifications` | `references/notifications.md` |
+| Notifications | optional advanced `game_exp_notifications` | `references/notifications.md` |
 | GitHub Issue commands | GitHub Bridge | `references/github-bridge.md` |
 | Harness behavior screening | optional conformance tools | `references/conformance.md` |
 
@@ -53,7 +53,7 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 
 Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion.
 
-Run `game_exp_project_preflight`; stop on material plan/permission/source blockers. Run `game_exp_project_init` only from local stdio MCP or CLI using repository-admin credentials. Shared/streamable HTTP MCP must never perform complete project initialization.
+If the optional advanced `game_exp_project_preflight` tool is registered, use it first; otherwise `game_exp_project_init` performs the same fail-closed preflight before any mutation. Run project initialization only from local stdio MCP or CLI using repository-admin credentials. Shared/streamable HTTP MCP must never perform complete project initialization.
 
 1.0 uses a main-only `game-exp-trusted-writer` Environment for the private writer key and semantic Ruleset verification. `single-principal` and `multi-principal` are explicit trust modes; multi-principal repositories require an independent main-branch approval. A final repo-level Doctor PASS plus Trusted Writer self-test is required for `PROJECT_READY`.
 
@@ -117,6 +117,8 @@ Archive is a destructive/recovery-sensitive workflow. Follow `references/workflo
 ## Cross-interface recovery
 
 MCP tools, CLI, and the GitHub Bridge share stable request-id semantics. Use `game_exp_operation_get` to resolve an operation and `game_exp_operation_resume` only when the protocol says effects can be safely resumed.
+
+The default 1.0 MCP surface keeps day-to-day lifecycle and recovery tools only. Optional diagnostics and secondary projections (`project_preflight`, single-experiment/subject panels, notifications, generic request submit) require `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. Legacy aliases require `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools require their dedicated conformance mode/flag. Do not assume optional tools are registered.
 
 For `UNKNOWN`, transport uncertainty, or claim-without-result, keep the same request id. For authorization failure, do not use fallback authority. Use the authorized GitHub connector when repository data/actions are needed and available.
 
