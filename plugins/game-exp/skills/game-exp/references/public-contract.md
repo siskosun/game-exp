@@ -108,15 +108,16 @@ Every logical mutation has one stable `request_id` / operation id.
 - Never create a new id to escape uncertainty.
 - Authorization failure is terminal for that attempted authority context. Do not retry the same logical mutation through another interface to bypass it.
 
-For asynchronous lifecycle workers (Initialize, Candidate, Rehearsal, Integration, Integration Finalize, Archive), the stable id first commits an `execution.claim` in the protected Ledger. That claim binds:
+For asynchronous lifecycle workers (Initialize, Candidate, Rehearsal, Integration, Integration Finalize, Archive), the stable id first commits an `execution.claim` in the protected Ledger. A v2 claim binds:
 
 - experiment id;
 - action;
 - exact action arguments;
 - authoritative experiment-state digest;
+- action-specific version identities such as source SHA, Candidate/Rehearsal ids, manifest digest and main SHA;
 - Trusted Writer-verified GitHub actor.
 
-Only a workflow run whose action/arguments match that committed claim may perform effects. Duplicate runs with the same request id are remotely deduplicated.
+The Trusted Writer validates these identities at claim commit, and the worker validates the committed claim again before effects. Only a workflow run whose action/arguments match that committed claim may perform effects. Duplicate runs with the same request id are remotely deduplicated.
 
 ## Routing and recovery
 
