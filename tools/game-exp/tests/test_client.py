@@ -1040,7 +1040,7 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(transport).board()
         display = result["display"]
 
-        self.assertEqual(result["presentation"]["contract_version"], 5)
+        self.assertEqual(result["presentation"]["contract_version"], 6)
         self.assertEqual(result["presentation"]["primary"], "display")
         self.assertEqual(
             result["presentation"]["primary_text_path"],
@@ -1057,7 +1057,7 @@ class ClientTests(unittest.TestCase):
             display["render_contract"]["forbidden_primary_tokens"],
         )
         self.assertEqual(display["locale"], "zh-CN")
-        self.assertEqual(display["presentation_version"], 5)
+        self.assertEqual(display["presentation_version"], 6)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
         self.assertEqual(
             [row["label"] for row in display["rows_zh"]],
