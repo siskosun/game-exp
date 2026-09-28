@@ -18,7 +18,7 @@ trusted lifecycle worker
 protected game-exp/ledger
 ```
 
-GitHub Rulesets and the dedicated Deploy Key remain the write authority.
+GitHub Rulesets, the main-only `game-exp-trusted-writer` Environment, and the dedicated Deploy Key form the write authority.
 
 ## Result states
 
@@ -43,15 +43,10 @@ python tools/game-exp/cli.py --repo owner/repo --json capabilities
 Submit a request:
 
 ```powershell
-@'
-{
-  "hypothesis": "three roles improve readability"
-}
-'@ | Set-Content -Encoding utf8 $env:TEMP\game-exp-input.json
+python tools/game-exp/cli.py --repo owner/repo --json experiment-template
 
-python tools/game-exp/cli.py --repo owner/repo --json request experiment.create `
-  --request-id req-example-1 `
-  --input-file $env:TEMP\game-exp-input.json
+# Use the returned Manifest with experiment.bind through the documented
+# high-level workflow/MCP/Bridge path; unknown low-level operation names fail closed.
 ```
 
 The command returns a stable `request_id`. If the workflow result is uncertain:
@@ -111,7 +106,7 @@ The bootstrap copies the production game-exp tools, lifecycle workflows, Skill/P
 
 It is fail-closed: a different existing managed game-exp file or conflicting Codex game-exp section stops the install before writes. Existing unrelated marketplace plugins are preserved, and an existing valid project policy is preserved.
 
-The bootstrap deliberately does not create or upload the Trusted Writer private key, repository secret, Rulesets, or Immutable Releases settings. After committing the generated files, configure those repository controls and run:
+The bootstrap deliberately does not create or upload the Trusted Writer private key, Environment secret, Rulesets, or Immutable Releases settings. After committing the generated files, configure those repository controls and run:
 
 ```powershell
 python tools/game-exp/cli.py --repo owner/name --json doctor
@@ -302,7 +297,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `0.20.0`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.0.0`.
 
 ### Windows UTF-8 compatibility
 
