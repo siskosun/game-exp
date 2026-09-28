@@ -88,6 +88,7 @@
   "notes_zh": [
     "安装与升级使用同一命令。",
     "默认只更新当前 Harness；不要顺带更新其他 Harness。",
+    "安装或升级当前 Harness 的 game-exp 时，会从两个独立 GitHub 仓库读取最新语义版本标签，并同步当前 Harness 下的 Godot Prototype Studio 与 H5 Game Prototype Agent；不会联动修改其他 Harness。",
     "不要在普通升级中同步 toy2game、game-exp-sandbox 或其他消费仓库。",
     "全局 MCP 保持动态仓库绑定，运行时显式传入当前 owner/repo。",
     "可先使用 --check 只读判断 NOT_INSTALLED / CURRENT / UPGRADE_AVAILABLE；不会写文件。",
@@ -123,5 +124,22 @@
     "python",
     "tools/game-exp/distribution_check.py",
     "--json"
-  ]
+  ],
+  "companion_skill_sync": {
+    "mode": "latest_semver_tag",
+    "same_harness_only": true,
+    "skills": [
+      {
+        "name": "godot-prototype-studio",
+        "source": "https://github.com/siskosun/godot-prototype-studio"
+      },
+      {
+        "name": "h5-game-prototype-agent",
+        "source": "https://github.com/siskosun/h5-game-prototype-agent"
+      }
+    ],
+    "runtime_filter": "skill-runtime-allowlist",
+    "unversioned_source_policy": "reject",
+    "failure_policy": "fail_install_command_with_explicit_error"
+  }
 }
