@@ -3454,6 +3454,10 @@ class GameExpClient:
                     "section_zh": "依赖需复核",
                     "action_zh": "确认依赖语义后继续；不会自动淘汰当前实验",
                 }
+            item["surface_hint"] = self._board_surface_hint(
+                item.get("attention") or {},
+                str(item.get("next_gate") or "UNKNOWN"),
+            )
                 item["display"]["attention_section"] = "依赖需复核"
                 item["display"]["attention_reason"] = "实验依赖需要复核"
                 item["display"]["attention_action"] = "确认依赖语义后继续；不会自动淘汰当前实验"
