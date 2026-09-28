@@ -217,17 +217,17 @@ Read `references/workflow.md` for the cross-interface routing contract.
 
 ## Evaluation Evidence v1
 
-When a repository uses project-policy schema v3 / Manifest schema v3, follow \`references/evaluation.md\`.
+When a repository uses project-policy schema v3 / Manifest schema v3, follow `references/evaluation.md`.
 
 - Treat the Manifest's content-addressed Evaluation Profile as part of the experiment acceptance contract. It separates standing requirements from hypothesis-specific requirements and describes player goals/interfaces rather than hard-coded controls.
 - Do not edit the Evaluation Profile merely to make one implementation pass. A changed Profile digest requires fresh comparable Candidate evidence.
 - The trusted Candidate workflow owns automated screening evidence. Project/Harness/Agent self-reports are not trusted PASS/FAIL evidence.
-- Screening is exactly \`ELIGIBLE\`, \`INELIGIBLE\`, or \`INCONCLUSIVE\` when Evaluation Evidence exists. It is evidence only and must not mutate lifecycle or create a synthetic human Review.
-- A test-harness/environment failure, unavailable evidence, unresolved required flake, or an Agent failing to discover a path is \`INCONCLUSIVE\` unless a trusted observation proves a product defect.
-- Keep game-exp exploration serial by default. Local 2-4 variant exploration remains the prototype executor's concern. At game-exp level v1 compares one challenger with the experiment it \`supersedes\`; do not create an N-way Comparison Set.
-- If the Manifest Review protocol is \`incumbent-challenger-blind-ab-v1\`, an explicit human Review may include structured blind A/B evidence. Bind both current Candidate identities/artifact digests and the same Profile digest.
-- Human pairwise evidence is \`HUMAN_REPORTED\`. It can inform Review/PROMISING, but does not auto-select, auto-reject, or replace the explicit Review outcome.
-- Do not add Elo or a generic fun score for a small 2-4 option comparison. Preserve dimension-level results, order effects, disagreement and \`NO_CLEAR_DIFFERENCE\`.
+- Screening is exactly `ELIGIBLE`, `INELIGIBLE`, or `INCONCLUSIVE` when Evaluation Evidence exists. It is evidence only and must not mutate lifecycle or create a synthetic human Review.
+- A test-harness/environment failure, unavailable evidence, unresolved required flake, or an Agent failing to discover a path is `INCONCLUSIVE` unless a trusted observation proves a product defect.
+- Keep game-exp exploration serial by default. Local 2-4 variant exploration remains the prototype executor's concern. At game-exp level v1 compares one challenger with the experiment it `supersedes`; do not create an N-way Comparison Set.
+- If the Manifest Review protocol is `incumbent-challenger-blind-ab-v1`, an explicit human Review may include structured blind A/B evidence. Bind both current Candidate identities/artifact digests and the same Profile digest.
+- Human pairwise evidence is `HUMAN_REPORTED`. It can inform Review/PROMISING, but does not auto-select, auto-reject, or replace the explicit Review outcome.
+- Do not add Elo or a generic fun score for a small 2-4 option comparison. Preserve dimension-level results, order effects, disagreement and `NO_CLEAR_DIFFERENCE`.
 
 ## Candidate and human Review
 
