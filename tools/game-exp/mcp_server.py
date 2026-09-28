@@ -686,7 +686,7 @@ def game_exp_request_get(
     return _client(repo).operation_get(request_id)
 
 
-@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_operation_resume(
     request_id: str,
     repo: str | None = None,
