@@ -105,15 +105,18 @@ class HarnessInstallerTests(unittest.TestCase):
             provenance = json.loads(
                 (runtime / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
             )
+            self.assertEqual(provenance["schema_version"], 2)
             self.assertEqual(
-                provenance,
-                {
-                    "schema_version": 1,
-                    "source": "https://github.com/siskosun/game-exp",
-                    "version": "1.0.0",
-                    "harness": "codex",
-                },
+                provenance["source"],
+                "https://github.com/siskosun/game-exp",
             )
+            self.assertEqual(provenance["version"], "1.0.0")
+            self.assertEqual(provenance["harness"], "codex")
+            self.assertEqual(
+                provenance["digest_algorithm"],
+                "sha256-managed-runtime-v1",
+            )
+            self.assertRegex(provenance["source_digest"], r"^sha256:[0-9a-f]{64}$")
             codex_data = tomllib.loads(codex.read_text(encoding="utf-8"))
             game_exp = codex_data["mcp_servers"]["game-exp"]
             self.assertEqual(game_exp["command"], "uv")
@@ -146,6 +149,108 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(
                 [row["name"] for row in current["companion_skills"]],
                 ["godot-prototype-studio", "h5-game-prototype-agent"],
+            )
+
+    def test_same_version_incomplete_runtime_is_upgrade_available(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            installer.runtime_dir.mkdir(parents=True)
+            (installer.runtime_dir / "VERSION.txt").write_text(
+                "1.0.0\n",
+                encoding="utf-8",
+            )
+
+            plan = installer.plan()
+            self.assertEqual(plan["installed_version"], "1.0.0")
+            self.assertEqual(plan["install_state"], "UPGRADE_AVAILABLE")
+            self.assertIn("SAME_VERSION_INSTALL_DRIFT", plan["install_reason"])
+            self.assertNotEqual(plan["install_state"], "CURRENT")
+
+    def test_same_version_digest_drift_is_upgrade_available(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                installer.install()
+
+            mcp = installer.runtime_dir / "tools" / "game-exp" / "mcp_server.py"
+            mcp.write_text(
+                mcp.read_text(encoding="utf-8") + "\n# drift\n",
+                encoding="utf-8",
+            )
+            plan = installer.plan()
+            self.assertEqual(plan["install_state"], "UPGRADE_AVAILABLE")
+            self.assertIn("SAME_VERSION_INSTALL_DRIFT", plan["install_reason"])
+            self.assertRegex(plan["source_digest"], r"^sha256:[0-9a-f]{64}$")
+            self.assertRegex(plan["installed_digest"], r"^sha256:[0-9a-f]{64}$")
+
+    def test_failed_companion_sync_rolls_back_partial_companion_change(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            gps = home / ".codex" / "skills" / "godot-prototype-studio"
+
+            def partial_sync():
+                gps.mkdir(parents=True)
+                (gps / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+                raise RuntimeError("simulated second companion download failure")
+
+            self._companion_sync.side_effect = partial_sync
+            self._companion_sync.return_value = None
+
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "simulated second companion download failure",
+                ):
+                    installer.install()
+
+            self.assertFalse(gps.exists())
+            self.assertFalse(installer.runtime_dir.exists())
+            self.assertFalse(installer.skill_target.exists())
+            self.assertFalse(installer.config_path.exists())
+
+    def test_late_game_exp_failure_rolls_back_companion_updates(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            gps = home / ".codex" / "skills" / "godot-prototype-studio"
+            h5 = home / ".codex" / "skills" / "h5-game-prototype-agent"
+            gps.mkdir(parents=True)
+            h5.mkdir(parents=True)
+            (gps / "VERSION").write_text("old-gps\n", encoding="utf-8")
+            (h5 / "VERSION").write_text("old-h5\n", encoding="utf-8")
+
+            def changed_sync():
+                (gps / "VERSION").write_text("new-gps\n", encoding="utf-8")
+                (h5 / "VERSION").write_text("new-h5\n", encoding="utf-8")
+                return self._companion_result
+
+            self._companion_sync.side_effect = changed_sync
+            self._companion_sync.return_value = None
+
+            with (
+                mock.patch("install_harnesses.shutil.which", return_value="uv"),
+                mock.patch.object(
+                    HarnessInstaller,
+                    "_install_runtime",
+                    side_effect=RuntimeError("simulated runtime activation failure"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "simulated runtime activation failure",
+                ):
+                    installer.install()
+
+            self.assertEqual(
+                (gps / "VERSION").read_text(encoding="utf-8"),
+                "old-gps\n",
+            )
+            self.assertEqual(
+                (h5 / "VERSION").read_text(encoding="utf-8"),
+                "old-h5\n",
             )
 
     def test_downgrade_requires_explicit_override(self):

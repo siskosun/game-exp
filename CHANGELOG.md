@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0 maintenance fix - 2026-09-29
+
+- Keep the game-exp version at `1.0.0`.
+- Make `--check` compare a deterministic managed-runtime digest plus required installed entrypoints/configuration, so older maintenance builds with the same version string no longer report `CURRENT`.
+- Store the managed-runtime digest in install provenance and normalize line endings before hashing for Windows/macOS/Linux consistency.
+- Wrap game-exp runtime, Skill, MCP config, GPS and H5 managed targets in an install rollback transaction so a later failure does not leave a partial managed upgrade.
+- Replace the stale client E2E `experiment.create` request with a stable `experiment.bind` canary contract, explicit applied-domain assertions, exact replay checks, and an explicit human GitHub E2E credential requirement.
+- Add regression tests for incomplete same-version installs, digest drift, partial companion failure rollback, late game-exp failure rollback, and E2E operation drift.
+
 ## 1.0.0 maintenance fix - 2026-09-28
 
 - Keep the game-exp version at `1.0.0`.

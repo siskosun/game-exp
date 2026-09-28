@@ -163,7 +163,11 @@ Use `--check` for a read-only comparison before upgrading:
 python tools/game-exp/install_harnesses.py --harness codex --check --json
 ```
 
-The check never writes files. A source version older than the selected installed
+The check never writes files. A matching `VERSION.txt` is not sufficient for
+`CURRENT`: the installer also verifies the deterministic managed-runtime digest,
+required runtime entrypoints, the installed game-exp Skill metadata, and the
+selected Harness MCP entry. This intentionally detects same-version maintenance
+fixes and incomplete installs. A source version older than the selected installed
 runtime is blocked by default; `--allow-downgrade` is reserved for an explicit
 rollback.
 
@@ -186,7 +190,8 @@ For each Harness the installer:
   before activating the new runtime;
 - preflights only the selected Harness's existing TOML/JSON;
 - never writes a global `GAME_EXP_REPO`; repository binding remains dynamic;
-- refuses unversioned companion sources instead of silently following a development branch.
+- refuses unversioned companion sources instead of silently following a development branch;
+- snapshots all managed targets before mutation and restores them if any game-exp/GPS/H5 install step fails.
 
 On Windows, if a live process keeps the selected runtime or Skill directory
 open, the installer falls back from directory swap to per-file atomic

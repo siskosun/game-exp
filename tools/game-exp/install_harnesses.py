@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -15,6 +16,7 @@ from bootstrap import _managed_paths
 from companion_skills import (
     CompanionSkillSyncError,
     CompanionSkillSynchronizer,
+    companion_target_paths,
     companion_targets,
 )
 
@@ -125,6 +127,81 @@ def _copy_tree_atomic(source: pathlib.Path, target: pathlib.Path) -> str:
             shutil.rmtree(stage)
 
 
+def _managed_digest(root: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    for rel in sorted(_managed_paths()):
+        path = root / rel
+        if not path.is_file():
+            raise HarnessInstallError(f"managed runtime file is missing: {rel}")
+        rel_bytes = rel.encode("utf-8")
+        content = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        digest.update(len(rel_bytes).to_bytes(4, "big"))
+        digest.update(rel_bytes)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return "sha256:" + digest.hexdigest()
+
+
+class _InstallSnapshot:
+    def __init__(self, targets: list[pathlib.Path]):
+        unique: list[pathlib.Path] = []
+        seen: set[pathlib.Path] = set()
+        for target in targets:
+            resolved = target.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            unique.append(resolved)
+        self._temp = tempfile.TemporaryDirectory(prefix="game-exp-install-rollback-")
+        self._root = pathlib.Path(self._temp.name)
+        self._entries: list[tuple[pathlib.Path, str, pathlib.Path | None]] = []
+        for index, target in enumerate(unique):
+            backup = self._root / str(index)
+            if target.is_dir():
+                shutil.copytree(target, backup)
+                kind = "dir"
+            elif target.is_file():
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup)
+                kind = "file"
+            elif target.exists():
+                raise HarnessInstallError(f"unsupported install target type: {target}")
+            else:
+                backup = None
+                kind = "missing"
+            self._entries.append((target, kind, backup))
+
+    def restore(self) -> None:
+        errors: list[str] = []
+        for target, kind, backup in reversed(self._entries):
+            try:
+                if kind == "missing":
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    elif target.exists():
+                        target.unlink()
+                    continue
+                if backup is None:
+                    raise HarnessInstallError(f"rollback backup missing for {target}")
+                if kind == "file":
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    _atomic_write(target, backup.read_bytes())
+                    continue
+                if target.is_file():
+                    target.unlink()
+                _copy_tree_atomic(backup, target)
+            except Exception as exc:
+                errors.append(f"{target}: {exc}")
+        if errors:
+            raise HarnessInstallError(
+                "install rollback was incomplete: " + "; ".join(errors)
+            )
+
+    def close(self) -> None:
+        self._temp.cleanup()
+
+
 def _remove_toml_table(text: str, table_prefix: str) -> str:
     lines = text.splitlines(keepends=True)
     out: list[str] = []
@@ -218,14 +295,17 @@ class HarnessInstaller:
                 dst = stage / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
+            source_digest = _managed_digest(self.source_root)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
             (stage / "INSTALL_SOURCE.json").write_text(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "source": CANONICAL_SOURCE,
                         "version": self.version,
                         "harness": self.harness,
+                        "source_digest": source_digest,
+                        "digest_algorithm": "sha256-managed-runtime-v1",
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -252,13 +332,19 @@ class HarnessInstaller:
         provenance = json.loads(
             (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
         )
+        expected_digest = _managed_digest(self.source_root)
+        actual_digest = _managed_digest(root)
         if provenance != {
-            "schema_version": 1,
+            "schema_version": 2,
             "source": CANONICAL_SOURCE,
             "version": self.version,
             "harness": self.harness,
+            "source_digest": expected_digest,
+            "digest_algorithm": "sha256-managed-runtime-v1",
         }:
             raise HarnessInstallError("staged install provenance mismatch")
+        if actual_digest != expected_digest:
+            raise HarnessInstallError("staged managed-runtime digest mismatch")
         icon = root / "plugins" / "game-exp" / "skills" / "game-exp" / "assets" / "icon.svg"
         raw = icon.read_bytes()
         if len(raw) < 64 or b"<svg" not in raw[:512].lower():
@@ -314,6 +400,53 @@ class HarnessInstaller:
         value = marker.read_text(encoding="utf-8").strip()
         return value or None
 
+    def _validate_installed_config(self) -> None:
+        path = self.config_path
+        if not path.is_file():
+            raise HarnessInstallError("selected Harness MCP config is missing")
+        if self.harness == "codex":
+            value = tomllib.loads(path.read_text(encoding="utf-8"))
+            servers = value.get("mcp_servers")
+        else:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            servers = value.get("mcpServers") if isinstance(value, dict) else None
+        if not isinstance(servers, dict):
+            raise HarnessInstallError("selected Harness MCP server table is missing")
+        entry = servers.get("game-exp")
+        if not isinstance(entry, dict):
+            raise HarnessInstallError("selected Harness game-exp MCP entry is missing")
+        if entry.get("command") != "uv":
+            raise HarnessInstallError("selected Harness game-exp MCP command drifted")
+        args = entry.get("args")
+        if not isinstance(args, list) or not args:
+            raise HarnessInstallError("selected Harness game-exp MCP args are missing")
+        try:
+            configured_script = pathlib.Path(str(args[-1])).resolve()
+        except Exception as exc:
+            raise HarnessInstallError("selected Harness game-exp MCP path is invalid") from exc
+        if configured_script != self.mcp_script.resolve():
+            raise HarnessInstallError("selected Harness game-exp MCP path drifted")
+
+    def _same_version_install_detail(self) -> tuple[bool, str | None, str | None]:
+        installed_digest = None
+        try:
+            provenance = json.loads(
+                (self.runtime_dir / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
+            )
+            if isinstance(provenance, dict):
+                raw_digest = provenance.get("source_digest")
+                if isinstance(raw_digest, str):
+                    installed_digest = raw_digest
+            self._validate_runtime(self.runtime_dir)
+            if not (self.skill_target / "SKILL.md").is_file():
+                raise HarnessInstallError("installed game-exp Skill entrypoint is missing")
+            if not (self.skill_target / "agents" / "openai.yaml").is_file():
+                raise HarnessInstallError("installed game-exp Skill metadata is missing")
+            self._validate_installed_config()
+        except Exception as exc:
+            return False, str(exc), installed_digest
+        return True, None, installed_digest
+
     def legacy_shared_state(self) -> dict[str, Any]:
         runtime = self.home / ".agents" / "tools" / "game-exp"
         skill = self.home / ".agents" / "skills" / "game-exp"
@@ -335,11 +468,26 @@ class HarnessInstaller:
 
     def plan(self) -> dict[str, Any]:
         self._validate_source()
+        source_digest = _managed_digest(self.source_root)
         installed = self.installed_version()
+        installed_digest = None
+        reason = None
+        footprint = self.runtime_dir.exists() or self.skill_target.exists()
         if installed is None:
-            state = "NOT_INSTALLED"
+            if footprint:
+                state = "UPGRADE_AVAILABLE"
+                reason = "INSTALLED_FOOTPRINT_INCOMPLETE"
+            else:
+                state = "NOT_INSTALLED"
         elif installed == self.version:
-            state = "CURRENT"
+            valid, detail, installed_digest = self._same_version_install_detail()
+            if valid:
+                state = "CURRENT"
+            else:
+                state = "UPGRADE_AVAILABLE"
+                reason = "SAME_VERSION_INSTALL_DRIFT"
+                if detail:
+                    reason += ": " + detail
         else:
             source_tuple = _version_tuple(self.version)
             installed_tuple = _version_tuple(installed)
@@ -347,6 +495,7 @@ class HarnessInstaller:
                 state = "VERSION_UNCOMPARABLE"
             elif installed_tuple < source_tuple:
                 state = "UPGRADE_AVAILABLE"
+                reason = "VERSION_UPGRADE"
             else:
                 state = "SOURCE_OLDER_THAN_INSTALLED"
         return {
@@ -354,8 +503,11 @@ class HarnessInstaller:
             "harness": self.harness,
             "source": CANONICAL_SOURCE,
             "source_version": self.version,
+            "source_digest": source_digest,
             "installed_version": installed,
+            "installed_digest": installed_digest,
             "install_state": state,
+            "install_reason": reason,
             "runtime_dir": str(self.runtime_dir),
             "would_update_other_harnesses": False,
             "would_sync_companion_skills": True,
@@ -498,13 +650,33 @@ class HarnessInstaller:
             ),
         }
 
+    def _transaction_targets(self) -> list[pathlib.Path]:
+        return [
+            self.runtime_dir,
+            self.skill_target,
+            self.config_path,
+            *companion_target_paths(self.home, self.harness),
+        ]
+
     def install(self) -> dict[str, Any]:
         self.preflight()
-        companions = CompanionSkillSynchronizer(
-            self.home,
-            harness=self.harness,
-        ).sync()
-        return self._install_after_preflight(companions)
+        snapshot = _InstallSnapshot(self._transaction_targets())
+        try:
+            companions = CompanionSkillSynchronizer(
+                self.home,
+                harness=self.harness,
+            ).sync()
+            return self._install_after_preflight(companions)
+        except Exception as exc:
+            try:
+                snapshot.restore()
+            except Exception as rollback_exc:
+                raise HarnessInstallError(
+                    f"install failed ({exc}); rollback also failed ({rollback_exc})"
+                ) from exc
+            raise
+        finally:
+            snapshot.close()
 
 
 def install_many(
@@ -526,19 +698,36 @@ def install_many(
     ]
     for installer in installers:
         installer.preflight()
-    companion_results = {
-        installer.harness: CompanionSkillSynchronizer(
-            home,
-            harness=installer.harness,
-        ).sync()
+    transaction_targets = [
+        target
         for installer in installers
-    }
-    results = {
-        installer.harness: installer._install_after_preflight(
-            companion_results[installer.harness]
-        )
-        for installer in installers
-    }
+        for target in installer._transaction_targets()
+    ]
+    snapshot = _InstallSnapshot(transaction_targets)
+    try:
+        companion_results = {
+            installer.harness: CompanionSkillSynchronizer(
+                home,
+                harness=installer.harness,
+            ).sync()
+            for installer in installers
+        }
+        results = {
+            installer.harness: installer._install_after_preflight(
+                companion_results[installer.harness]
+            )
+            for installer in installers
+        }
+    except Exception as exc:
+        try:
+            snapshot.restore()
+        except Exception as rollback_exc:
+            raise HarnessInstallError(
+                f"multi-Harness install failed ({exc}); rollback also failed ({rollback_exc})"
+            ) from exc
+        raise
+    finally:
+        snapshot.close()
     versions = {row["version"] for row in results.values()}
     if len(versions) != 1:
         raise HarnessInstallError("multi-Harness install produced inconsistent versions")
