@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "game-exp",
-  "version": "0.21.0",
+  "version": "1.0.0",
   "description": "Harness-neutral trusted game experiment workflow with Evaluation Evidence v1, content-addressed Evaluation Profiles, trusted Candidate replay/check evidence, incumbent/challenger human comparison, resumable collaboration, Harness-isolated install/upgrade, protected Ledger authority, and human lifecycle gates.",
   "repository": "https://github.com/siskosun/game-exp",
   "keywords": [
