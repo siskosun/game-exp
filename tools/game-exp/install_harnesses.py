@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -15,6 +16,7 @@ from bootstrap import _managed_paths
 from companion_skills import (
     CompanionSkillSyncError,
     CompanionSkillSynchronizer,
+    companion_target_paths,
     companion_targets,
 )
 
@@ -123,6 +125,81 @@ def _copy_tree_atomic(source: pathlib.Path, target: pathlib.Path) -> str:
     finally:
         if stage.exists():
             shutil.rmtree(stage)
+
+
+def _managed_digest(root: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    for rel in sorted(_managed_paths()):
+        path = root / rel
+        if not path.is_file():
+            raise HarnessInstallError(f"managed runtime file is missing: {rel}")
+        rel_bytes = rel.encode("utf-8")
+        content = path.read_bytes()
+        digest.update(len(rel_bytes).to_bytes(4, "big"))
+        digest.update(rel_bytes)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return "sha256:" + digest.hexdigest()
+
+
+class _InstallSnapshot:
+    def __init__(self, targets: list[pathlib.Path]):
+        unique: list[pathlib.Path] = []
+        seen: set[pathlib.Path] = set()
+        for target in targets:
+            resolved = target.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            unique.append(resolved)
+        self._temp = tempfile.TemporaryDirectory(prefix="game-exp-install-rollback-")
+        self._root = pathlib.Path(self._temp.name)
+        self._entries: list[tuple[pathlib.Path, str, pathlib.Path | None]] = []
+        for index, target in enumerate(unique):
+            backup = self._root / str(index)
+            if target.is_dir():
+                shutil.copytree(target, backup)
+                kind = "dir"
+            elif target.is_file():
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup)
+                kind = "file"
+            elif target.exists():
+                raise HarnessInstallError(f"unsupported install target type: {target}")
+            else:
+                backup = None
+                kind = "missing"
+            self._entries.append((target, kind, backup))
+
+    def restore(self) -> None:
+        errors: list[str] = []
+        for target, kind, backup in reversed(self._entries):
+            try:
+                if kind == "missing":
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    elif target.exists():
+                        target.unlink()
+                    continue
+                if backup is None:
+                    raise HarnessInstallError(f"rollback backup missing for {target}")
+                if kind == "file":
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    _atomic_write(target, backup.read_bytes())
+                    continue
+                if target.is_file():
+                    target.unlink()
+                _copy_tree_atomic(backup, target)
+            except Exception as exc:
+                errors.append(f"{target}: {exc}")
+        if errors:
+            raise HarnessInstallError(
+                "install rollback was incomplete: " + "; ".join(errors)
+            )
+
+    def close(self) -> None:
+        self._temp.cleanup()
 
 
 def _remove_toml_table(text: str, table_prefix: str) -> str:
