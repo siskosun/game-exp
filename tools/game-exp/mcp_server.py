@@ -21,21 +21,48 @@ from conformance_core import (
 mcp = MCPServer("game-exp")
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _optional_tool(enabled: bool, *, annotations: ToolAnnotations):
+    def decorate(func):
+        if enabled:
+            return mcp.tool(annotations=annotations)(func)
+        return func
+    return decorate
+
+
 def _conformance_session_path() -> str | None:
     value = os.environ.get("GAME_EXP_CONFORMANCE_SESSION")
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _target_repo(repo: str | None = None) -> str:
+    target = repo or os.environ.get("GAME_EXP_REPO")
+    if not isinstance(target, str) or "/" not in target.strip():
+        raise ValueError(
+            "explicit repo is required for global MCP use; pass owner/name or set GAME_EXP_REPO"
+        )
+    return target.strip()
 
 
 def _client(repo: str | None = None) -> GameExpClient | ConformanceClient:
     session_path = _conformance_session_path()
     if session_path is not None:
         return ConformanceClient(session_path, surface="mcp")
-    target = repo or os.environ.get("GAME_EXP_REPO")
-    return GameExpClient(GitHubTransport(target))
+    return GameExpClient(GitHubTransport(_target_repo(repo)))
 
 
 def _mcp_transport() -> str:
     return os.environ.get("GAME_EXP_MCP_TRANSPORT", "stdio").strip().lower() or "stdio"
+
+
+CONFORMANCE_TOOLS_ENABLED = (
+    _conformance_session_path() is not None
+    or _env_flag("GAME_EXP_ENABLE_CONFORMANCE_TOOLS")
+)
+LEGACY_MCP_TOOLS_ENABLED = _env_flag("GAME_EXP_ENABLE_LEGACY_TOOLS")
 
 
 def _http_single_principal_write_enabled() -> bool:
@@ -66,14 +93,14 @@ def _write_identity_rejection(repo: str | None) -> dict[str, Any] | None:
     }
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
+@_optional_tool(CONFORMANCE_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 def game_exp_conformance_suite() -> dict[str, Any]:
     """Return the fixed synthetic behavior screening suite. Never touches GitHub."""
     result = conformance_suite_descriptor()
     return {"status": "PASS", "conformance_simulation": True, **result}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+@_optional_tool(CONFORMANCE_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
 def game_exp_conformance_start(
     scenario_id: str,
     session_id: str | None = None,
@@ -98,7 +125,7 @@ def game_exp_conformance_start(
     }
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
+@_optional_tool(CONFORMANCE_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 def game_exp_conformance_compare(
     baseline: dict[str, Any],
     candidate: dict[str, Any],
@@ -107,7 +134,7 @@ def game_exp_conformance_compare(
     return conformance_compare_reports(baseline, candidate)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
+@_optional_tool(CONFORMANCE_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 def game_exp_conformance_result() -> dict[str, Any]:
     """Evaluate the configured synthetic session against the standing suite."""
     path = _conformance_session_path()
@@ -136,7 +163,7 @@ def game_exp_project_preflight(repo: str | None = None) -> dict[str, Any]:
             "complete": False,
             "code": "PROJECT_SETUP_NOT_AVAILABLE_IN_CONFORMANCE",
         }
-    target = GitHubTransport(repo or os.environ.get("GAME_EXP_REPO")).repo
+    target = GitHubTransport(_target_repo(repo)).repo
     return project_preflight(target)
 
 
@@ -144,6 +171,7 @@ def game_exp_project_preflight(repo: str | None = None) -> dict[str, Any]:
 def game_exp_project_init(
     repo: str | None = None,
     run_selftest: bool = True,
+    trust_mode: str = "auto",
 ) -> dict[str, Any]:
     """Provision all repository trust controls. Only local stdio MCP may run this."""
     if _conformance_session_path() is not None:
@@ -153,20 +181,24 @@ def game_exp_project_init(
             "code": "PROJECT_SETUP_NOT_AVAILABLE_IN_CONFORMANCE",
         }
     if _mcp_transport() != "stdio":
-        target = GitHubTransport(repo or os.environ.get("GAME_EXP_REPO")).repo
+        target = GitHubTransport(_target_repo(repo)).repo
         return {
             "status": "REJECTED",
             "complete": False,
             "repo": target,
             "code": "PROJECT_SETUP_LOCAL_STDIO_REQUIRED",
             "error": (
-                "project-init generates a repository Deploy Key and writes an Actions "
-                "secret; run it through local CLI/stdio MCP with the repository admin "
+                "project-init generates a repository Deploy Key and writes a main-only "
+                "Environment secret; run it through local CLI/stdio MCP with the repository admin "
                 "GitHub principal, never through shared HTTP MCP"
             ),
         }
-    target = GitHubTransport(repo or os.environ.get("GAME_EXP_REPO")).repo
-    result = project_provision(target, run_selftest=run_selftest)
+    target = GitHubTransport(_target_repo(repo)).repo
+    result = project_provision(
+        target,
+        run_selftest=run_selftest,
+        trust_mode=trust_mode,
+    )
     if not run_selftest and result.get("status") == "PASS":
         result["status"] = "INCOMPLETE"
         result["complete"] = False
@@ -179,13 +211,13 @@ def game_exp_status(repo: str | None = None) -> dict[str, Any]:
     """Return the target repository and authoritative game-exp Ledger head."""
     return _client(repo).status()
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(LEGACY_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_access_check(repo: str | None = None) -> dict[str, Any]:
     """Return the current GitHub repository access level for onboarding and gating."""
     return _client(repo).access_check()
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(LEGACY_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_capabilities(repo: str | None = None) -> dict[str, Any]:
     """Return versioned business capabilities and the active MCP identity boundary."""
     result = _client(repo).capabilities()
@@ -458,7 +490,7 @@ def game_exp_review_record(
     outcome: str,
     notes: str,
     request_id: str,
-    candidate_id: str | None = None,
+    candidate_id: str,
     comparison: dict[str, Any] | None = None,
     actor_claim: str | None = None,
     repo: str | None = None,
@@ -468,19 +500,6 @@ def game_exp_review_record(
     if blocked is not None:
         return blocked
     client = _client(repo)
-    if candidate_id is None:
-        projection = client.experiment_get(experiment_id)
-        if projection.get("status") != "PASS":
-            return projection
-        candidate_id = projection.get("state", {}).get("current_candidate_id")
-        if not isinstance(candidate_id, str) or not candidate_id:
-            return {
-                "status": "REJECTED",
-                "repo": client.transport.repo,
-                "experiment_id": experiment_id,
-                "request_id": request_id,
-                "error": "experiment has no current Candidate",
-            }
     return client.review_record(
         experiment_id,
         candidate_id=candidate_id,
@@ -657,7 +676,7 @@ def game_exp_operation_get(
     return _client(repo).operation_get(request_id)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@_optional_tool(LEGACY_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_request_get(
     request_id: str,
     repo: str | None = None,
