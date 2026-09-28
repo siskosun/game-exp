@@ -211,6 +211,9 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         CANONICAL_SOURCE in skill_text
         and "INSTALL.json" in skill_text
         and "Do not synchronize application repositories" in skill_text
+        and "godot-prototype-studio" in skill_text
+        and "h5-game-prototype-agent" in skill_text
+        and "semantic-version-tagged" in skill_text
         and "--cleanup-legacy-shared" in skill_text,
     )
 
