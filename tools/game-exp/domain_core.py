@@ -158,7 +158,6 @@ class TrustedCandidateContext:
     experiment_id: str
     candidate_id: str
     source_sha: str
-    current_branch_sha: str | None = None
     manifest_digest: str
     artifact_digest: str
     policy_digest: str
@@ -168,6 +167,7 @@ class TrustedCandidateContext:
     checks: tuple[dict[str, Any], ...]
     retention: dict[str, Any]
     attestation: dict[str, Any]
+    current_branch_sha: str | None = None
 
 
 @dataclass(frozen=True)
