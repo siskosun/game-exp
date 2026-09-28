@@ -358,6 +358,13 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: game-exp-candidate-observation-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/download-artifact@v5
+        if: needs.resolve.outputs.evaluation_enabled == 'true'
+        with:
+          name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Require trusted writer secret
         shell: bash
         env:
@@ -406,18 +413,34 @@ jobs:
           ISSUE_NUMBER: ${{ needs.resolve.outputs.issue_number }}
           SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
           ARTIFACT_SHA: ${{ steps.digest.outputs.sha }}
+          EVALUATION_ENABLED: ${{ needs.resolve.outputs.evaluation_enabled }}
         run: |
           set -euo pipefail
           candidate_id="C-$ISSUE_NUMBER-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tag="game-exp-candidate-$ISSUE_NUMBER-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf '%s  candidate.tgz\n' "$ARTIFACT_SHA" > candidate.sha256
-          gh release create "$tag" candidate.tgz candidate.sha256             --repo "$GITHUB_REPOSITORY"             --target "$SOURCE_SHA"             --title "game-exp $candidate_id"             --notes "candidate_id=$candidate_id
+          assets=(candidate.tgz candidate.sha256)
+          if [ "$EVALUATION_ENABLED" = "true" ]; then
+            test -f evaluation-output.tgz
+            test -f trusted-evaluation-summary.json
+            cp trusted-evaluation-summary.json evaluation-summary.json
+            expected_bundle="$(python -c 'import json; print(json.load(open("trusted-evaluation-summary.json"))["bundle_digest"].removeprefix("sha256:"))')"
+            actual_bundle="$(sha256sum evaluation-output.tgz | cut -d' ' -f1)"
+            test "$actual_bundle" = "$expected_bundle"
+            assets+=(evaluation-output.tgz evaluation-summary.json)
+          fi
+          gh release create "$tag" "${assets[@]}"             --repo "$GITHUB_REPOSITORY"             --target "$SOURCE_SHA"             --title "game-exp $candidate_id"             --notes "candidate_id=$candidate_id
           source_sha=$SOURCE_SHA
           run_id=$GITHUB_RUN_ID
           run_attempt=$GITHUB_RUN_ATTEMPT
           artifact_digest=sha256:$ARTIFACT_SHA"
           url="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets             --jq '.assets[].name' | grep -qx candidate.tgz
+          asset_names="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$asset_names" | grep -qx candidate.tgz
+          if [ "$EVALUATION_ENABLED" = "true" ]; then
+            printf '%s\n' "$asset_names" | grep -qx evaluation-output.tgz
+            printf '%s\n' "$asset_names" | grep -qx evaluation-summary.json
+          fi
           echo "candidate_id=$candidate_id" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "url=$url" >> "$GITHUB_OUTPUT"
@@ -451,6 +474,7 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_URL: ${{ steps.release.outputs.url }}
           WORKFLOW_SOURCE_SHA: ${{ github.workflow_sha }}
+          EVALUATION_ENABLED: ${{ needs.resolve.outputs.evaluation_enabled }}
         run: |
           set -euo pipefail
           PYTHONPATH=control/tools/game-exp python - <<'PY'
@@ -489,6 +513,35 @@ jobs:
                   "source_sha":os.environ["SOURCE_SHA"],
               },
           }
+          if os.environ.get("EVALUATION_ENABLED") == "true":
+              summary=json.loads(pathlib.Path("trusted-evaluation-summary.json").read_text(encoding="utf-8"))
+              if summary.get("enabled") is not True or summary.get("source") != "TRUSTED_OBSERVED":
+                  raise SystemExit("trusted evaluation summary is missing or untrusted")
+              result=summary.get("result") or {}
+              context["checks"].append(
+                  {"name":"evaluation_observation","status":"PASS","source":"TRUSTED_OBSERVED"}
+              )
+              context["evaluation"]={
+                  "profile_id":summary["profile_id"],
+                  "profile_digest":summary["profile_digest"],
+                  "result_digest":summary["result_digest"],
+                  "bundle_digest":summary["bundle_digest"],
+                  "bundle_asset_name":summary["bundle_asset_name"],
+                  "screening":summary["screening"],
+                  "source":summary["source"],
+                  "run_mode":result["run_mode"],
+                  "trace_digest":result.get("trace_digest"),
+                  "step_mode":result["step_mode"],
+                  "requirements":[
+                      {
+                          "id":row["id"],
+                          "status":row["status"],
+                          "classification":row["classification"],
+                      }
+                      for row in result["requirements"]
+                  ],
+              }
+
           pathlib.Path(os.environ["RUNNER_TEMP"],"candidate-context.json").write_bytes(
               canonical_json_bytes(context)+b"\n"
           )
