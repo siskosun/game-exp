@@ -212,6 +212,7 @@ jobs:
           sparse-checkout: |
             tools/game-exp/project_policy.py
             tools/game-exp/protocol_core.py
+            tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v6
@@ -220,7 +221,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - uses: actions/setup-node@v6
-        if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '2'
+        if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema != '1'
         with:
           node-version: ${{ needs.resolve.outputs.node_version }}
           cache: npm
@@ -230,12 +231,39 @@ jobs:
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run test --cwd .
       - name: Build candidate
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run build --cwd .
+      - name: Run trusted project evaluation
+        if: needs.resolve.outputs.evaluation_enabled == 'true'
+        env:
+          GAME_EXP_EVALUATION_PROFILE: ${{ needs.resolve.outputs.evaluation_profile_path }}
+          GAME_EXP_EVALUATION_PROFILE_DIGEST: ${{ needs.resolve.outputs.evaluation_profile_digest }}
+          GAME_EXP_EVALUATION_SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          GAME_EXP_EVALUATION_OUTPUT_DIR: ${{ needs.resolve.outputs.evaluation_output_dir }}
+        run: |
+          set -euo pipefail
+          test "$GAME_EXP_EVALUATION_OUTPUT_DIR" = ".game-exp/evaluation-output"
+          rm -rf "$GAME_EXP_EVALUATION_OUTPUT_DIR"
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py profile \
+            "$GAME_EXP_EVALUATION_PROFILE" \
+            --expected-digest "$GAME_EXP_EVALUATION_PROFILE_DIGEST"
+          python control/tools/game-exp/project_policy.py \
+            --policy control/.game-exp/project-policy.json \
+            run evaluation --cwd .
+          test -f "$GAME_EXP_EVALUATION_OUTPUT_DIR/result.json"
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py package \
+            "$GAME_EXP_EVALUATION_OUTPUT_DIR" evaluation-output.tgz
       - name: Package candidate bytes
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
       - uses: actions/upload-artifact@v4
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate.tgz
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: needs.resolve.outputs.evaluation_enabled == 'true'
+        with:
+          name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evaluation-output.tgz
           retention-days: 7
           if-no-files-found: error
 
