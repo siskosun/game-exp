@@ -214,6 +214,7 @@ jobs:
             tools/game-exp/protocol_core.py
             tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
+            .game-exp/evaluation/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v6
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '1'
