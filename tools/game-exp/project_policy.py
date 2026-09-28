@@ -113,7 +113,25 @@ def validate_policy(policy: Any) -> dict[str, Any]:
         if not isinstance(evaluation, dict):
             raise ProjectPolicyError("policy.evaluation: expected object")
         _strict_keys(evaluation, _ALLOWED_EVALUATION, "policy.evaluation")
-        _argv({"argv": evaluation["argv"]}, "policy.evaluation")
+        evaluation_argv = _argv({"argv": evaluation["argv"]}, "policy.evaluation")
+        trusted_prefix = "control/.game-exp/evaluation/"
+        direct_trusted = evaluation_argv[0].startswith(trusted_prefix)
+        interpreted_trusted = (
+            len(evaluation_argv) >= 2
+            and evaluation_argv[0] in {"python", "python3", "node", "bash", "sh"}
+            and evaluation_argv[1].startswith(trusted_prefix)
+        )
+        if not (direct_trusted or interpreted_trusted):
+            raise ProjectPolicyError(
+                "policy.evaluation.argv must execute a trusted runner from "
+                "control/.game-exp/evaluation/"
+            )
+        runner_token = (
+            evaluation_argv[0] if direct_trusted else evaluation_argv[1]
+        )
+        runner_relative = runner_token.removeprefix("control/")
+        _safe_rel_path(runner_relative, "policy.evaluation trusted runner")
+        evaluation["argv"] = evaluation_argv
         output_dir = _safe_rel_path(
             evaluation["output_dir"],
             "policy.evaluation.output_dir",
