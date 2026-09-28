@@ -8,6 +8,25 @@ Godot Prototype Studio owns prototype implementation, runtime verification, expo
 
 game-exp must not rebuild Godot editing/export/publishing capabilities.
 
+
+## Optional executor capability
+
+Godot Prototype Studio is the recommended specialized executor, not a game-exp dependency.
+
+Canonical source:
+
+`https://github.com/siskosun/godot-prototype-studio`
+
+Before Godot implementation begins, the host should check its own available Skill/tool catalog for `godot-prototype-studio`.
+
+- Installed/available: prefer it for implementation, runtime verification, export, and requested playable delivery.
+- Missing: show one non-blocking installation suggestion with the canonical source URL, explicitly say installation is optional, and continue with ordinary host source-editing capability unless the user chooses to install first.
+- Missing capability never changes experiment health, repository readiness, lifecycle, or trusted Ledger state.
+- The host must not infer installation from repository files; only the host knows which Skills/tools it can invoke.
+- Fallback implementation evidence is truthful-by-construction: report only checks, Godot runs, exports, and playable delivery that actually occurred.
+
+The handoff exposes this policy in `recommended_executor` so different Harnesses can render the same guidance without hard-coding their own repository URL or dependency semantics.
+
 ## Handoff schema v2
 
 Use `game_exp_prototype_handoff(experiment_id)`.

@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.18.8")
+        self.assertEqual(manifest["version"], "0.18.9")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -462,6 +462,40 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Iteration routing policy v1",
             "features.iteration_routing_v1=true",
             "A Harness may infer that a request crosses an experiment boundary",
+        ):
+            self.assertIn(phrase, contract)
+
+    def test_godot_executor_is_optional_and_non_blocking(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        handoff = (
+            PLUGIN / "skills" / "game-exp" / "references" / "prototype-handoff.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "check the current host's available Skill/tool catalog",
+            "https://github.com/siskosun/godot-prototype-studio",
+            "Missing Godot Prototype Studio is non-blocking",
+            "not a mandatory dependency",
+            "Never claim Godot-specific validation that was not run",
+        ):
+            self.assertIn(phrase, skill)
+
+        for phrase in (
+            "Godot Prototype Studio is the recommended specialized executor, not a game-exp dependency",
+            "show one non-blocking installation suggestion",
+            "Missing capability never changes experiment health",
+            "truthful-by-construction",
+        ):
+            self.assertIn(phrase, handoff)
+
+        for phrase in (
+            "Optional implementation capability contract v1",
+            "features.optional_implementation_capabilities_v1=true",
+            "recommended_capabilities.godot_prototype_studio",
+            "Handoff schema v2 remains compatible",
         ):
             self.assertIn(phrase, contract)
 

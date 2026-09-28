@@ -155,7 +155,15 @@ Follow `references/exploration-thread.md`. Do not automatically fan one creative
 
 When a game experiment needs implementation, runtime verification, export, or requested playable delivery, use `game_exp_prototype_handoff` and follow `references/prototype-handoff.md`. Handoff v2 binds the task to a Ledger snapshot and requires returned evidence to identify source SHA, build identity, check environment, artifact digest/location, and artifact portability.
 
-For Godot work, hand the returned brief to Godot Prototype Studio. game-exp remains responsible for experiment identity, scope, lifecycle and human gates; Godot Prototype Studio remains responsible for implementation and playable delivery.
+For Godot work, check the current host's available Skill/tool catalog for the exact `godot-prototype-studio` capability before implementation. This is a host capability check, not a Ledger/Doctor check; do not infer installation from repository files or historical chat state.
+
+- If available, prefer Godot Prototype Studio for implementation, runtime verification, export, and requested playable delivery.
+- If unavailable, tell the user once for that implementation workflow: `当前环境未检测到 Godot Prototype Studio。建议安装：https://github.com/siskosun/godot-prototype-studio。它不是必需依赖；不安装也可以使用当前 Agent/Harness 的代码能力继续开发。`
+- Missing Godot Prototype Studio is non-blocking. Do not mark experiment health, repository readiness, or lifecycle as failed because it is absent, and do not require installation confirmation before continuing.
+- When falling back to ordinary host source-editing capability, continue development within the same experiment scope and report only checks, runtime verification, exports, and playable evidence that were actually produced. Never claim Godot-specific validation that was not run.
+- Do not repeat the installation suggestion during the same implementation workflow after the user continues without it.
+
+game-exp remains responsible for experiment identity, scope, lifecycle and human gates. Godot Prototype Studio is the recommended specialized executor, not a mandatory dependency.
 
 ## Host capability boundary
 

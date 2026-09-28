@@ -22,6 +22,18 @@ from protocol_core import (
 RUN_URL_RE = re.compile(r"/actions/runs/(\d+)(?:$|[/?#])")
 EXPERIMENT_ID_RE = re.compile(r"^EXP-[1-9][0-9]*$")
 
+GODOT_PROTOTYPE_STUDIO = {
+    "id": "godot-prototype-studio",
+    "name": "Godot Prototype Studio",
+    "source_url": "https://github.com/siskosun/godot-prototype-studio",
+    "recommended": True,
+    "required": False,
+    "host_presence_check": "skill_catalog",
+    "missing_is_blocking": False,
+    "affects_experiment_health": False,
+    "fallback": "host_native_source_editing",
+}
+
 WORKFLOW_EXECUTION_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
     "initialize": ("game-exp-source-initializer.yml", ()),
     "candidate_build": ("game-exp-candidate.yml", ()),
@@ -1007,6 +1019,7 @@ class GameExpClient:
                 "self_describing_manifest": True,
                 "manifest_schema_v2": True,
                 "iteration_routing_v1": True,
+                "optional_implementation_capabilities_v1": True,
             },
             "iteration_routing": {
                 "default_existing_experiment_change": "REVISION",
@@ -1028,6 +1041,9 @@ class GameExpClient:
                     "previous_review_carries_forward": False,
                 },
                 "selected_or_terminal_work_reopens_automatically": False,
+            },
+            "recommended_capabilities": {
+                "godot_prototype_studio": dict(GODOT_PROTOTYPE_STUDIO),
             },
             "queries": [
                 "status",
@@ -3120,6 +3136,20 @@ class GameExpClient:
             "handoff_id": handoff_id,
             "handoff_target": "godot-prototype-studio",
             "handoff_kind": "IMPLEMENT_EXPERIMENT",
+            "recommended_executor": {
+                **dict(GODOT_PROTOTYPE_STUDIO),
+                "availability_resolved_by": "host",
+                "check_before_implementation": True,
+                "missing_prompt_zh": (
+                    "当前环境未检测到 Godot Prototype Studio。建议安装："
+                    "https://github.com/siskosun/godot-prototype-studio。"
+                    "它不是必需依赖；不安装也可以使用当前 Agent/Harness 的代码能力继续开发。"
+                ),
+                "fallback_evidence_rule_zh": (
+                    "使用当前 Agent/Harness 继续开发时，只记录实际完成的运行验证、导出和试玩证据；"
+                    "未执行的 Godot 专用验证不得标记为已完成。"
+                ),
+            },
             "source": {
                 "ledger_snapshot": snapshot_head,
                 "branch_ref": branch_ref,

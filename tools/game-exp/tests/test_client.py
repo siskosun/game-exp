@@ -894,6 +894,20 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(handoff["status"], "PASS")
         self.assertEqual(handoff["handoff_target"], "godot-prototype-studio")
         self.assertEqual(handoff["handoff_schema_version"], 2)
+        executor = handoff["recommended_executor"]
+        self.assertEqual(executor["id"], "godot-prototype-studio")
+        self.assertEqual(
+            executor["source_url"],
+            "https://github.com/siskosun/godot-prototype-studio",
+        )
+        self.assertTrue(executor["recommended"])
+        self.assertFalse(executor["required"])
+        self.assertFalse(executor["missing_is_blocking"])
+        self.assertFalse(executor["affects_experiment_health"])
+        self.assertTrue(executor["check_before_implementation"])
+        self.assertEqual(executor["availability_resolved_by"], "host")
+        self.assertIn("不是必需依赖", executor["missing_prompt_zh"])
+        self.assertIn("不安装也可以", executor["missing_prompt_zh"])
         self.assertEqual(handoff["source"]["branch_ref"], "refs/heads/exp/7")
         self.assertEqual(handoff["brief"]["hypothesis"], "roles improve readability")
         self.assertIn("source_sha", handoff["return_contract"]["required"])
@@ -1634,6 +1648,17 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["self_describing_manifest"])
         self.assertTrue(result["features"]["manifest_schema_v2"])
         self.assertTrue(result["features"]["iteration_routing_v1"])
+        self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
+        godot = result["recommended_capabilities"]["godot_prototype_studio"]
+        self.assertEqual(godot["id"], "godot-prototype-studio")
+        self.assertEqual(
+            godot["source_url"],
+            "https://github.com/siskosun/godot-prototype-studio",
+        )
+        self.assertFalse(godot["required"])
+        self.assertFalse(godot["missing_is_blocking"])
+        self.assertFalse(godot["affects_experiment_health"])
+        self.assertEqual(godot["fallback"], "host_native_source_editing")
         routing = result["iteration_routing"]
         self.assertEqual(routing["default_existing_experiment_change"], "REVISION")
         self.assertFalse(routing["clear_revision_requires_confirmation"])

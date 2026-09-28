@@ -290,3 +290,13 @@ A Harness may infer that a request crosses an experiment boundary, but it must g
 
 This policy does not mutate lifecycle state, loosen human gates, or authorize reopening `SELECTED`, `INTEGRATED`, or `ARCHIVED` work.
 
+## Optional implementation capability contract v1
+
+`game_exp_capabilities` exposes `features.optional_implementation_capabilities_v1=true` and `recommended_capabilities.godot_prototype_studio`.
+
+Godot Prototype Studio is recommended but optional. Its canonical source is `https://github.com/siskosun/godot-prototype-studio`. The host, not game-exp Ledger state, resolves whether the Skill/tool is currently available. Absence is non-blocking and must not affect project readiness, experiment health, or lifecycle.
+
+`game_exp_prototype_handoff` includes `recommended_executor` with the same canonical metadata, a Chinese non-blocking installation suggestion, and the fallback evidence rule. A host may continue with ordinary source-editing capability when the specialized Skill is unavailable, but may report only verification/export/playable evidence it actually produced.
+
+This adds optional result fields only; Handoff schema v2 remains compatible.
+
