@@ -1274,14 +1274,9 @@ def resolve_trusted_binding(repo: str, payload: dict) -> TrustedBindingContext |
                 "Evaluation Profile must be a JSON object",
                 code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
             )
-        if profile_value.get("schema_version") != 1:
+        if profile_value.get("schema_version") != evaluation_profile.get("version"):
             raise DomainError(
-                "Evaluation Profile schema_version must equal 1",
-                code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
-            )
-        if profile_value.get("profile_id") != evaluation_profile.get("profile_id"):
-            raise DomainError(
-                "Evaluation Profile profile_id differs from Manifest reference",
+                "Evaluation Profile schema_version differs from Manifest reference",
                 code="DOMAIN_EVALUATION_PROFILE_CONFLICT",
             )
         actual_profile_digest = digest_object(profile_value)
