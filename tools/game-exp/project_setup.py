@@ -396,7 +396,7 @@ def _ensure_writer_environment(repo: str) -> dict[str, Any]:
             continue
         policy_id = row.get("id")
         name = row.get("name")
-        policy_type = row.get("type")
+        policy_type = row.get("type") or "branch"
         if name == "main" and policy_type == "branch":
             main_seen = True
             continue
@@ -423,7 +423,7 @@ def _ensure_writer_environment(repo: str) -> dict[str, Any]:
     )
     verified = verify.get("branch_policies") if isinstance(verify, dict) else None
     active = [
-        (row.get("name"), row.get("type"))
+        (row.get("name"), row.get("type") or "branch")
         for row in (verified or [])
         if isinstance(row, dict)
     ]
