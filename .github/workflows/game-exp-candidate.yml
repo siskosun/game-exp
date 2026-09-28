@@ -70,6 +70,10 @@ jobs:
       adapter: ${{ steps.resolve.outputs.adapter }}
       policy_schema: ${{ steps.resolve.outputs.policy_schema }}
       node_version: ${{ steps.resolve.outputs.node_version }}
+      evaluation_enabled: ${{ steps.resolve.outputs.evaluation_enabled }}
+      evaluation_profile_path: ${{ steps.resolve.outputs.evaluation_profile_path }}
+      evaluation_profile_digest: ${{ steps.resolve.outputs.evaluation_profile_digest }}
+      evaluation_output_dir: ${{ steps.resolve.outputs.evaluation_output_dir }}
     steps:
       - name: Checkout trusted protocol core
         uses: actions/checkout@v6
@@ -81,6 +85,7 @@ jobs:
             tools/game-exp/protocol_core.py
             tools/game-exp/execution_guard.py
             tools/game-exp/project_policy.py
+            tools/game-exp/evaluation_evidence.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
       - name: Validate protected execution claim
@@ -135,6 +140,24 @@ jobs:
               raise SystemExit(f"candidate build not allowed in lifecycle {state.get('lifecycle')!r}")
 
           policy=load_policy("control/.game-exp/project-policy.json")
+          profile_ref=manifest.get("evaluation_profile")
+          evaluation_enabled=profile_ref is not None
+          if evaluation_enabled:
+              if manifest.get("schema_version") != 3:
+                  raise SystemExit("evaluation_profile requires Manifest schema v3")
+              if policy.get("schema_version") != 3:
+                  raise SystemExit("evaluation_profile requires project policy schema v3")
+              evaluation=policy.get("evaluation")
+              if not isinstance(evaluation,dict):
+                  raise SystemExit("project policy v3 evaluation block missing")
+              profile_path=profile_ref.get("path","")
+              profile_digest=profile_ref.get("digest","")
+              evaluation_output_dir=evaluation.get("output_dir","")
+          else:
+              profile_path=""
+              profile_digest=""
+              evaluation_output_dir=""
+
           with open(out,"a",encoding="utf-8") as fh:
               fh.write(f"experiment_id={experiment_id}\n")
               fh.write(f"issue_number={issue_number}\n")
@@ -145,7 +168,28 @@ jobs:
               fh.write(f"policy_schema={policy['schema_version']}\n")
               node_version=(policy.get("toolchain") or {}).get("node_version","")
               fh.write(f"node_version={node_version}\n")
+              fh.write(f"evaluation_enabled={'true' if evaluation_enabled else 'false'}\n")
+              fh.write(f"evaluation_profile_path={profile_path}\n")
+              fh.write(f"evaluation_profile_digest={profile_digest}\n")
+              fh.write(f"evaluation_output_dir={evaluation_output_dir}\n")
           PY
+
+      - name: Verify content-addressed Evaluation Profile
+        if: steps.resolve.outputs.evaluation_enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.resolve.outputs.source_sha }}
+          PROFILE_PATH: ${{ steps.resolve.outputs.evaluation_profile_path }}
+          PROFILE_DIGEST: ${{ steps.resolve.outputs.evaluation_profile_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/game-exp/evaluation"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/$PROFILE_PATH?ref=$SOURCE_SHA" \
+            > "$RUNNER_TEMP/game-exp/evaluation/profile.json"
+          PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py profile \
+            "$RUNNER_TEMP/game-exp/evaluation/profile.json" \
+            --expected-digest "$PROFILE_DIGEST"
 
   build:
     needs: resolve
