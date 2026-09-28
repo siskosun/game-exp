@@ -1036,6 +1036,8 @@ class GameExpClient:
                 "complete_project_setup": True,
                 "self_describing_manifest": True,
                 "manifest_schema_v2": True,
+                "manifest_schema_v3": True,
+                "evaluation_evidence_v1": True,
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
@@ -1063,6 +1065,18 @@ class GameExpClient:
                     "previous_review_carries_forward": False,
                 },
                 "selected_or_terminal_work_reopens_automatically": False,
+            },
+            "evaluation_evidence": {
+                "protocol_version": 1,
+                "manifest_schema": 3,
+                "profile_schema": 1,
+                "profile_reference": "CONTENT_ADDRESSED",
+                "trusted_result_source": "TRUSTED_OBSERVED",
+                "screening_states": ["ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"],
+                "screening_changes_lifecycle": False,
+                "persistent_comparison_set": False,
+                "small_candidate_ranking": "PAIRWISE_NO_ELO",
+                "human_selection_authority": True,
             },
             "collaboration_coordination": {
                 "protocol_version": 2,
@@ -1157,6 +1171,8 @@ class GameExpClient:
             "policy_path": POLICY_PATH,
         }
         review = {"protocol": "manual-playtest-v1"}
+        evaluation_enabled = policy.get("schema_version") == 3
+        manifest_schema_version = 3 if evaluation_enabled else 2
         required_user_input = [
             "目标原型/主体",
             "想改什么",
@@ -1173,7 +1189,7 @@ class GameExpClient:
             "review.protocol",
         ]
         example_manifest = {
-            "schema_version": 2,
+            "schema_version": manifest_schema_version,
             "experiment": {
                 "host": "github.com",
                 "repository_id": access.get("repository_id") or "<resolve:repository_id>",
@@ -1200,6 +1216,17 @@ class GameExpClient:
                 "avoid": [],
             },
             "runtime": runtime,
+            **(
+                {
+                    "evaluation_profile": {
+                        "path": ".game-exp/evaluation-profiles/<draft:profile-id>.json",
+                        "digest": "<resolve:sha256 canonical profile digest>",
+                        "version": 1,
+                    }
+                }
+                if evaluation_enabled
+                else {}
+            ),
             "review": review,
             "created_at": "<generate:RFC3339 timestamp>",
         }
@@ -1208,9 +1235,9 @@ class GameExpClient:
             "status": "PASS",
             "repo": self.transport.repo,
             "manifest_contract": {
-                "current_schema_version": 2,
-                "supported_schema_versions": [1, 2],
-                "recommended_schema_version": 2,
+                "current_schema_version": 3,
+                "supported_schema_versions": [1, 2, 3],
+                "recommended_schema_version": manifest_schema_version,
                 "schema_v1_status": "legacy-compatible",
                 "required_fields": [
                     "schema_version",
@@ -1226,7 +1253,7 @@ class GameExpClient:
                     "review",
                     "created_at",
                 ],
-                "optional_fields": ["subject", "relationships"],
+                "optional_fields": ["subject", "relationships", "evaluation_profile"],
                 "subject": {
                     "game_prototype_required_keys": [
                         "type",
@@ -1243,6 +1270,18 @@ class GameExpClient:
                 "relationships": {
                     "allowed_types": ["depends_on", "blocks", "supersedes"],
                     "target_format": "EXP-<number>",
+                },
+                "evaluation_profile_v1": {
+                    "schema_version": 3,
+                    "required_keys": ["path", "digest", "version"],
+                    "path_prefix": ".game-exp/evaluation-profiles/",
+                    "digest": "sha256:<64 lowercase hex>",
+                    "version": 1,
+                    "freeze_authority": "human_manifest_bind",
+                    "note_zh": (
+                        "评测定义按内容摘要绑定；修改后必须重建相关 Candidate，"
+                        "不能为了让某个原型过关而改判定标准。"
+                    ),
                 },
                 "runtime_v2": {
                     "required_keys": ["adapter", "policy_path"],
@@ -1261,7 +1300,7 @@ class GameExpClient:
                 "path": POLICY_PATH,
                 "digest": policy_digest(policy),
                 "schema_version": policy.get("schema_version"),
-                "recommended_schema_version": 2,
+                "recommended_schema_version": 3 if evaluation_enabled else 2,
                 "adapter": adapter,
                 "toolchain": policy.get("toolchain", {}),
                 "builtin_runner_setup": (
@@ -1274,6 +1313,7 @@ class GameExpClient:
                 "test": policy.get("test"),
                 "build": policy.get("build"),
                 "candidate": policy.get("candidate"),
+                "evaluation": policy.get("evaluation"),
                 "raw": policy,
                 "note_zh": (
                     "Node/npm 项目使用受信任的 Node 工具链设置；其他第二版适配器 "
@@ -1284,6 +1324,7 @@ class GameExpClient:
             "defaults": {
                 "runtime": runtime,
                 "review": review,
+                "evaluation_enabled": evaluation_enabled,
             },
             "required_user_input_zh": required_user_input,
             "agent_resolved_fields_zh": agent_resolved_fields,
