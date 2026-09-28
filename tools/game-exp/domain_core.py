@@ -4,6 +4,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -699,6 +700,23 @@ def _active_work_claim_records(
     return records
 
 
+def _work_claim_participates_in_overlap(
+    claim: dict[str, Any],
+    observed_at: str | None,
+) -> bool:
+    expires_raw = claim.get("lease_expires_at")
+    if expires_raw is None:
+        return True
+    if not isinstance(expires_raw, str) or not isinstance(observed_at, str):
+        return True
+    try:
+        expires = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+        observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return expires > observed
+
+
 def _plan_work_claim(
     *,
     repo_dir: Path,
@@ -771,6 +789,7 @@ def _plan_work_claim(
         claim["claim_id"]
         for claim in active
         if claim.get("base_source_sha") == trusted_work.branch_head_sha
+        and _work_claim_participates_in_overlap(claim, trusted_work.observed_at)
         and _work_paths_overlap(paths, list(claim.get("paths") or []))
     )
     claim = {
