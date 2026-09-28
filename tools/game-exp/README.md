@@ -201,6 +201,8 @@ Harness supports it) so the running process picks up the new version.
 
 The adapter uses the official Python MCP SDK v2 and delegates to the same validated Client / Trusted Domain Core. MCP never gets direct Git authority. The same tool surface supports local stdio for Codex and Streamable HTTP for ChatGPT Web.
 
+1.0 registers a compact default MCP surface (23 tools): normal lifecycle, Board, collaboration, trusted project init, operation lookup and safe resume. Secondary diagnostics/projections are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`; legacy aliases use `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools remain isolated behind conformance mode. This reduces model tool-selection noise without deleting the underlying APIs.
+
 Normal Harness use should prefer domain tools:
 
 Read / projection:
