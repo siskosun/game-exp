@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +11,7 @@ HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))
 
 from domain_core import DomainError  # noqa: E402
+from protocol_core import digest_object  # noqa: E402
 from trusted_writer import resolve_trusted_actor, resolve_trusted_archive, resolve_trusted_binding, resolve_trusted_candidate, resolve_trusted_execution, resolve_trusted_integration, resolve_trusted_rehearsal, resolve_trusted_retention, resolve_trusted_selection_rehearsal  # noqa: E402
 
 
@@ -59,6 +62,80 @@ class TrustedResolverTests(unittest.TestCase):
         self.assertEqual(ctx.issue_id, "2000000001")
         self.assertEqual(ctx.issue_number, "123")
         self.assertEqual(ctx.parent_sha, "a" * 40)
+
+    @patch("trusted_writer.github_json")
+    def test_schema_v3_binding_verifies_frozen_evaluation_profile(self, api):
+        profile = {
+            "schema_version": 1,
+            "profile_id": "squad-choice-v1",
+            "standing_requirements": [
+                {"id": "launch", "goal": "Prototype launches.", "required": True}
+            ],
+            "hypothesis_requirements": [],
+            "interface": {
+                "scenario_id": "cold-start",
+                "player_goal": "Reach the playable state.",
+                "seed_policy": "NOT_APPLICABLE",
+                "replay_policy": "OPTIONAL",
+                "snapshot_policy": "OPTIONAL",
+            },
+        }
+        value = payload()
+        manifest = value["input"]["manifest"]
+        manifest["schema_version"] = 3
+        manifest["runtime"] = {
+            "adapter": "command",
+            "policy_path": ".game-exp/project-policy.json",
+        }
+        manifest["evaluation_profile"] = {
+            "path": ".game-exp/evaluation-profiles/squad-choice-v1.json",
+            "digest": digest_object(profile),
+            "version": 1,
+        }
+        api.side_effect = [
+            {"id": 1384446218, "full_name": "owner/repo"},
+            {"id": 2000000001, "number": 123},
+            {"sha": "a" * 40},
+            {
+                "encoding": "base64",
+                "content": base64.b64encode(
+                    json.dumps(profile).encode("utf-8")
+                ).decode("ascii"),
+            },
+        ]
+        ctx = resolve_trusted_binding("owner/repo", value)
+        self.assertEqual(ctx.parent_sha, "a" * 40)
+        self.assertEqual(api.call_count, 4)
+
+    @patch("trusted_writer.github_json")
+    def test_schema_v3_binding_rejects_profile_digest_drift(self, api):
+        profile = {"schema_version": 1, "profile_id": "profile-v1"}
+        value = payload()
+        manifest = value["input"]["manifest"]
+        manifest["schema_version"] = 3
+        manifest["runtime"] = {
+            "adapter": "command",
+            "policy_path": ".game-exp/project-policy.json",
+        }
+        manifest["evaluation_profile"] = {
+            "path": ".game-exp/evaluation-profiles/profile-v1.json",
+            "digest": "sha256:" + "0" * 64,
+            "version": 1,
+        }
+        api.side_effect = [
+            {"id": 1384446218, "full_name": "owner/repo"},
+            {"id": 2000000001, "number": 123},
+            {"sha": "a" * 40},
+            {
+                "encoding": "base64",
+                "content": base64.b64encode(
+                    json.dumps(profile).encode("utf-8")
+                ).decode("ascii"),
+            },
+        ]
+        with self.assertRaises(DomainError) as ctx:
+            resolve_trusted_binding("owner/repo", value)
+        self.assertEqual(ctx.exception.code, "DOMAIN_EVALUATION_PROFILE_CONFLICT")
 
     @patch("trusted_writer.github_json")
     def test_pull_request_cannot_be_bound_as_experiment_issue(self, api):
