@@ -1653,6 +1653,8 @@ class GameExpClient:
         notes: str,
         request_id: str,
         candidate_id: str | None = None,
+        comparison: dict[str, Any] | None = None,
+        actor_claim: str | None = None,
     ) -> dict[str, Any]:
         if candidate_id is None:
             projection = self.experiment_get(experiment_id)
@@ -1667,14 +1669,18 @@ class GameExpClient:
                     "request_id": request_id,
                     "error": "experiment has no current Candidate",
                 }
+        input_value: dict[str, Any] = {
+            "experiment_id": experiment_id,
+            "candidate_id": candidate_id,
+            "outcome": outcome,
+            "notes": notes,
+        }
+        if comparison is not None:
+            input_value["comparison"] = comparison
         return self.submit(
             operation="review.record",
-            input_value={
-                "experiment_id": experiment_id,
-                "candidate_id": candidate_id,
-                "outcome": outcome,
-                "notes": notes,
-            },
+            input_value=input_value,
+            actor_claim=actor_claim,
             request_id=request_id,
         )
 
