@@ -20,12 +20,12 @@ Prototype work may change the underlying creative idea, core loop, or product di
 Evaluation Evidence v1 does not relax the serial exploration default.
 
 - Multiple local implementation variants may be compared inside one prototype-execution workflow when they remain within the same experiment/brief.
-- At the game-exp level, use one incumbent and one challenger. The challenger links to the incumbent with \`manifest.relationships[type=supersedes]\`.
+- At the game-exp level, use one incumbent and one challenger. The challenger links to the incumbent with `manifest.relationships[type=supersedes]`.
 - Attach trusted screening to each Candidate and optional human blind A/B evidence to the challenger's Review.
 - Do not create or infer an authoritative N-way Comparison Set.
 - A later experiment may still replace/reinterpret the incumbent; comparison evidence does not freeze an exploration thread forever.
 
-See \`evaluation.md\`.
+See `evaluation.md`.
 
 ## Current representation
 
