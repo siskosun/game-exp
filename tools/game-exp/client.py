@@ -491,6 +491,23 @@ class GitHubTransport:
             raise ClientError(f"Git ref response must be an object: {ref_path}")
         return value
 
+    def compare_commits(self, base_sha: str, head_sha: str) -> dict[str, Any]:
+        for name, value in (("base_sha", base_sha), ("head_sha", head_sha)):
+            if not re.fullmatch(r"[0-9a-f]{40}", value):
+                raise ClientError(f"{name} must be a 40-character commit SHA")
+        proc = _run(
+            ["gh", "api", f"repos/{self.repo}/compare/{base_sha}...{head_sha}"],
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise ClientError(
+                f"failed comparing Git commits ({proc.returncode}): {proc.stderr}"
+            )
+        value = _json_output(proc)
+        if not isinstance(value, dict):
+            raise ClientError("Git compare response must be an object")
+        return value
+
     def annotated_tag(self, tag_object_sha: str) -> dict[str, Any]:
         if not re.fullmatch(r"[0-9a-f]{40}", tag_object_sha):
             raise ClientError("annotated tag object SHA must be 40 lowercase hex")
@@ -1630,6 +1647,33 @@ class GameExpClient:
                     return True
         return False
 
+    def _observed_source_freshness(
+        self,
+        observed_source_sha: str | None,
+        canonical_source_sha: str,
+    ) -> dict[str, Any]:
+        if observed_source_sha is None:
+            return {"status": "UNKNOWN", "reason": "NOT_REPORTED"}
+        if observed_source_sha == canonical_source_sha:
+            return {"status": "CURRENT", "reason": None}
+        compare = getattr(self.transport, "compare_commits", None)
+        if not callable(compare):
+            return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+        try:
+            result = compare(canonical_source_sha, observed_source_sha)
+        except Exception:
+            return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+        status = result.get("status") if isinstance(result, dict) else None
+        if status == "ahead":
+            return {"status": "CURRENT", "reason": "LOCAL_AHEAD"}
+        if status == "behind":
+            return {"status": "STALE", "reason": "BEHIND"}
+        if status == "diverged":
+            return {"status": "STALE", "reason": "DIVERGED"}
+        if status == "identical":
+            return {"status": "CURRENT", "reason": None}
+        return {"status": "UNKNOWN", "reason": "UNREACHABLE"}
+
     def collaboration_context(
         self,
         experiment_id: str,
@@ -1794,12 +1838,10 @@ class GameExpClient:
                         }
                     )
 
-        if observed_source_sha is None:
-            source_freshness = {"status": "UNKNOWN", "reason": "NOT_REPORTED"}
-        elif observed_source_sha == branch_head_sha:
-            source_freshness = {"status": "CURRENT", "reason": None}
-        else:
-            source_freshness = {"status": "STALE", "reason": "SOURCE_ADVANCED"}
+        source_freshness = self._observed_source_freshness(
+            observed_source_sha,
+            branch_head_sha,
+        )
 
         candidate_freshness = {"status": "NOT_APPLICABLE", "reason": None}
         candidate_id = state.get("current_candidate_id")
