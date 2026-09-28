@@ -17,8 +17,8 @@ REHEARSAL_RE = re.compile(r"^R-([1-9][0-9]*)-([0-9]+)-([1-9][0-9]*)$")
 INTEGRATION_RE = re.compile(r"^I-([1-9][0-9]*)-PR-([1-9][0-9]*)$")
 ARCHIVE_RE = re.compile(r"^A-([1-9][0-9]*)-([1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-CURRENT_MANIFEST_SCHEMA_VERSION = 2
-SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {1, 2}
+CURRENT_MANIFEST_SCHEMA_VERSION = 3
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {1, 2, 3}
 REHEARSAL_REQUIRED_CHECKS = (
     "scope",
     "merge",
@@ -169,6 +169,7 @@ class TrustedCandidateContext:
     retention: dict[str, Any]
     attestation: dict[str, Any]
     current_branch_sha: str | None = None
+    evaluation: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -318,7 +319,7 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
             "created_at",
         },
         where="manifest",
-        optional={"subject", "relationships"},
+        optional={"subject", "relationships", "evaluation_profile"},
     )
     schema_version = manifest["schema_version"]
     if schema_version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
@@ -419,6 +420,53 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
                     "manifest relationships must not contain multiple relationships to the same experiment"
                 )
             seen_targets.add(target)
+
+    evaluation_profile = manifest.get("evaluation_profile")
+    if schema_version == 3:
+        if evaluation_profile is None:
+            raise DomainError(
+                "manifest schema v3 requires evaluation_profile"
+            )
+        profile_ref = _mapping(
+            evaluation_profile,
+            "manifest.evaluation_profile",
+        )
+        _expect_keys(
+            profile_ref,
+            {"path", "digest", "version"},
+            where="manifest.evaluation_profile",
+        )
+        profile_path = _string(
+            profile_ref["path"],
+            "manifest.evaluation_profile.path",
+        )
+        _require_nfc(profile_path, "manifest.evaluation_profile.path")
+        if (
+            "\\" in profile_path
+            or profile_path.startswith("/")
+            or "//" in profile_path
+            or any(part in {"", ".", ".."} for part in profile_path.split("/"))
+            or not profile_path.startswith(".game-exp/evaluation-profiles/")
+            or not profile_path.endswith(".json")
+        ):
+            raise DomainError(
+                "manifest.evaluation_profile.path must be a normalized "
+                ".game-exp/evaluation-profiles/*.json path"
+            )
+        if not isinstance(profile_ref["digest"], str) or not SHA256_RE.fullmatch(
+            profile_ref["digest"]
+        ):
+            raise DomainError(
+                "manifest.evaluation_profile.digest must be sha256:<64 lowercase hex>"
+            )
+        if profile_ref["version"] != 1:
+            raise DomainError(
+                "manifest.evaluation_profile.version must equal 1"
+            )
+    elif evaluation_profile is not None:
+        raise DomainError(
+            "manifest.evaluation_profile requires schema_version 3"
+        )
 
     parent = _mapping(manifest["parent"], "manifest.parent")
     _expect_keys(parent, {"experiment", "commit"}, where="manifest.parent")
@@ -1646,6 +1694,140 @@ def _plan_candidate(
     if attestation["source_sha"] != trusted_candidate.source_sha:
         raise DomainError("Candidate attestation source mismatch", code="DOMAIN_CANDIDATE_CONFLICT")
 
+    profile_ref = _manifest.get("evaluation_profile")
+    trusted_evaluation = trusted_candidate.evaluation
+    normalized_evaluation = None
+    if profile_ref is None:
+        if trusted_evaluation is not None:
+            raise DomainError(
+                "Candidate evaluation is not bound by the Manifest",
+                code="DOMAIN_CANDIDATE_CONFLICT",
+            )
+    else:
+        if not isinstance(trusted_evaluation, dict):
+            raise DomainError(
+                "schema v3 Candidate requires trusted evaluation evidence",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        _expect_keys(
+            trusted_evaluation,
+            {
+                "profile_id",
+                "profile_digest",
+                "result_digest",
+                "bundle_digest",
+                "bundle_asset_name",
+                "screening",
+                "source",
+                "run_mode",
+                "trace_digest",
+                "step_mode",
+                "requirements",
+            },
+            where="Candidate evaluation",
+        )
+        if trusted_evaluation["profile_digest"] != profile_ref.get("digest"):
+            raise DomainError(
+                "Candidate evaluation profile digest mismatch",
+                code="DOMAIN_CANDIDATE_CONFLICT",
+            )
+        for field in ("result_digest", "bundle_digest"):
+            value = trusted_evaluation[field]
+            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+                raise DomainError(
+                    f"Candidate evaluation {field} must be sha256:<64 lowercase hex>"
+                )
+        if trusted_evaluation["bundle_asset_name"] != "evaluation-output.tgz":
+            raise DomainError(
+                "Candidate evaluation bundle asset name mismatch",
+                code="DOMAIN_CANDIDATE_CONFLICT",
+            )
+        if trusted_evaluation["screening"] not in {
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "INCONCLUSIVE",
+        }:
+            raise DomainError("Candidate evaluation screening is invalid")
+        if trusted_evaluation["source"] != "TRUSTED_OBSERVED":
+            raise DomainError(
+                "Candidate evaluation is not trusted observed evidence",
+                code="DOMAIN_PREREQUISITE_MISSING",
+            )
+        if trusted_evaluation["run_mode"] not in {
+            "TRUSTED_REPLAY",
+            "TRUSTED_CHECK",
+        }:
+            raise DomainError("Candidate evaluation run_mode is invalid")
+        trace_digest = trusted_evaluation["trace_digest"]
+        if trace_digest is not None and (
+            not isinstance(trace_digest, str)
+            or not SHA256_RE.fullmatch(trace_digest)
+        ):
+            raise DomainError("Candidate evaluation trace_digest is invalid")
+        if trusted_evaluation["step_mode"] not in {
+            "SCENE_CONTROLLED",
+            "REALTIME_PHYSICS_WAIT",
+            "NOT_APPLICABLE",
+        }:
+            raise DomainError("Candidate evaluation step_mode is invalid")
+        requirements = trusted_evaluation["requirements"]
+        if not isinstance(requirements, list) or not requirements:
+            raise DomainError("Candidate evaluation requirements must be non-empty")
+        seen_requirement_ids: set[str] = set()
+        normalized_requirements: list[dict[str, str]] = []
+        for index, row in enumerate(requirements):
+            if not isinstance(row, dict):
+                raise DomainError(
+                    f"Candidate evaluation requirement {index} must be an object"
+                )
+            _expect_keys(
+                row,
+                {"id", "status", "classification"},
+                where=f"Candidate evaluation requirement {index}",
+            )
+            requirement_id = _string(
+                row["id"],
+                f"Candidate evaluation requirement {index}.id",
+            )
+            if requirement_id in seen_requirement_ids:
+                raise DomainError(
+                    "Candidate evaluation requirement ids must be unique"
+                )
+            seen_requirement_ids.add(requirement_id)
+            if row["status"] not in {
+                "PASS",
+                "FAIL_PRODUCT_DEFECT",
+                "INCONCLUSIVE",
+            }:
+                raise DomainError("Candidate evaluation requirement status is invalid")
+            classification = _string(
+                row["classification"],
+                f"Candidate evaluation requirement {index}.classification",
+            )
+            normalized_requirements.append(
+                {
+                    "id": requirement_id,
+                    "status": row["status"],
+                    "classification": classification,
+                }
+            )
+        normalized_evaluation = {
+            "profile_id": _string(
+                trusted_evaluation["profile_id"],
+                "Candidate evaluation.profile_id",
+            ),
+            "profile_digest": trusted_evaluation["profile_digest"],
+            "result_digest": trusted_evaluation["result_digest"],
+            "bundle_digest": trusted_evaluation["bundle_digest"],
+            "bundle_asset_name": "evaluation-output.tgz",
+            "screening": trusted_evaluation["screening"],
+            "source": "TRUSTED_OBSERVED",
+            "run_mode": trusted_evaluation["run_mode"],
+            "trace_digest": trace_digest,
+            "step_mode": trusted_evaluation["step_mode"],
+            "requirements": normalized_requirements,
+        }
+
     candidate_path = (
         f"experiments/{experiment_id}/candidates/{trusted_candidate.candidate_id}.json"
     )
@@ -1666,6 +1848,7 @@ def _plan_candidate(
         "checks": normalized_checks,
         "retention": retention,
         "attestation": attestation,
+        **({"evaluation": normalized_evaluation} if normalized_evaluation is not None else {}),
     }
     next_state = dict(state)
     current_seq = next_state.get("candidate_sequence", 0)
