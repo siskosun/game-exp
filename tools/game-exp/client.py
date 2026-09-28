@@ -991,6 +991,8 @@ class GameExpClient:
             "features": {
                 "board": True,
                 "board_presentation_v3": True,
+                "board_presentation_v4": True,
+                "strict_chinese_board_copy": True,
                 "natural_chinese_board": True,
                 "request_recovery": True,
                 "async_execution_claims": True,
