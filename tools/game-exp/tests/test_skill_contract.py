@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "0.18.7")
+        self.assertEqual(manifest["version"], "0.18.8")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -431,6 +431,39 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Lifecycle alone is insufficient",
         ):
             self.assertIn(phrase, board)
+
+    def test_iteration_routing_defaults_to_revision_without_silent_new_experiment(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        workflow = (
+            PLUGIN / "skills" / "game-exp" / "references" / "workflow.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "Default to a **revision of the current experiment**",
+            "Do not ask the user to choose between internal labels",
+            "ask for confirmation before Bind/Initialize",
+            "Revision classification may be automatic; new-experiment creation must not be silent",
+            "prior current Review binding",
+        ):
+            self.assertIn(phrase, skill)
+
+        for phrase in (
+            "same-experiment revision",
+            "new Candidate",
+            "ask before creating the new Issue/Bind/Initialize operation",
+            "one question about the actual design intent",
+        ):
+            self.assertIn(phrase, workflow)
+
+        for phrase in (
+            "Iteration routing policy v1",
+            "features.iteration_routing_v1=true",
+            "A Harness may infer that a request crosses an experiment boundary",
+        ):
+            self.assertIn(phrase, contract)
 
     def test_plugin_contains_exactly_one_skill_entrypoint(self):
         entrypoints = list(PLUGIN.glob("skills/**/SKILL.md"))

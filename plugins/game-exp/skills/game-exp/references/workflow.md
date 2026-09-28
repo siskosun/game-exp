@@ -18,6 +18,25 @@ Additional paths:
 
 `INTEGRATED` and `ARCHIVED` are reserved for dedicated trusted operations, not generic lifecycle decisions.
 
+## Iteration routing
+
+Classify a requested change to an existing experiment before creating another experiment.
+
+The default route is **same-experiment revision** when these remain materially unchanged:
+
+- hypothesis;
+- success/kill criteria;
+- core mechanic;
+- intended player experience.
+
+Bug fixes, polish, balancing, feel tuning, implementation repair, incomplete Agent output, and playtest-driven improvements to the same design belong to the existing experiment. In `ACTIVE` or `REVIEW`, continue on the existing canonical `exp/<issue>` branch. After substantive source changes, build a new Candidate. Candidate registration replaces the current Candidate and clears the previous current Review binding, so changed code requires fresh human evaluation.
+
+A possible **new experiment** exists when at least one experiment boundary changes materially: hypothesis, success criteria, core mechanic, or intended player experience. The Agent may identify this automatically but must ask before creating the new Issue/Bind/Initialize operation. Do not interrupt every ordinary revision with a confirmation question.
+
+When classification is ambiguous, ask one question about the actual design intent. Prefer "Are we improving the current combat approach, or trying a different core combat approach?" over "Revision or experiment?".
+
+Explicit user classification wins. Existing lifecycle rules remain authoritative; routing policy does not bypass human gates or reopen terminal/selected work.
+
 ## Tool map
 
 | User intent | Preferred MCP tool | Notes |

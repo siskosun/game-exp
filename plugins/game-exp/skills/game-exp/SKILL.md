@@ -165,6 +165,21 @@ For Godot work, hand the returned brief to Godot Prototype Studio. game-exp rema
 - In Codex, use normal repository editing/Git capabilities for source changes.
 - If the host cannot edit the source repository, stop at the source-editing step and report that capability gap; do not bypass the protected workflow or broaden game-exp write authority to compensate.
 
+## Route an iteration: revision or new experiment
+
+Before creating a new Issue, experiment, or branch for a user-requested change to an existing experiment/prototype, classify the change semantically.
+
+- Default to a **revision of the current experiment** when the core hypothesis, success/kill criteria, core mechanic, and target player experience remain materially the same. Typical revisions include bug fixes, visual/UI polish, feel tuning, balancing, implementation-quality repair, incomplete Agent work, and playtest-driven improvement of the same solution.
+- A revision is not a new game-exp branch. In `ACTIVE` or `REVIEW`, keep the same canonical `exp/<issue>` branch, edit the implementation there, and build a new Candidate after substantive changes. Candidate registration automatically makes the new Candidate current and invalidates the prior current Review binding; never carry an earlier human Review forward to changed code.
+- Do not ask the user to choose between internal labels such as "revision" and "experiment" on every iteration. When the request is clearly a revision, state the routing briefly and proceed without confirmation.
+- Treat a change as a **possible new experiment** when it materially changes the hypothesis, success criteria, core mechanic, or intended player experience. Explain the concrete boundary change and ask for confirmation before Bind/Initialize. Never silently create a new experiment from an inferred boundary change.
+- If the boundary is genuinely ambiguous, ask one natural-language question about the design intent needed to distinguish "improve the same approach" from "try a different approach". Do not ask a generic taxonomy question.
+- Explicit user intent overrides automatic classification.
+- Revision classification may be automatic; new-experiment creation must not be silent.
+- Existing lifecycle gates still apply. A `PROMISING` experiment must be explicitly returned to `ACTIVE` before same-experiment implementation revision. Do not silently reopen `SELECTED`, `INTEGRATED`, or `ARCHIVED` work.
+
+Read `references/workflow.md` for the cross-interface routing contract.
+
 ## Create and implement a new experiment
 
 1. Read the current repository's self-describing experiment contract through `game_exp_experiment_template` or CLI `experiment-template`. If neither query surface is available but the host can read GitHub, use this repository's checked-in `.game-exp/project-policy.json` together with `plugins/game-exp/skills/game-exp/references/public-contract.md`; do not fetch another repository. Treat the repository-local policy, recommended Manifest schema, runtime defaults, review default, and field-resolution guidance as the source for this repository. Do not use another repository's Manifest as a required template.

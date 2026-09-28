@@ -61,14 +61,14 @@ class HarnessInstallerTests(unittest.TestCase):
                 ).install()
 
             self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["version"], "0.18.7")
+            self.assertEqual(result["version"], "0.18.8")
             self.assertEqual(result["updated_harnesses"], ["codex"])
             self.assertFalse(result["shared_runtime"])
             runtime = home / ".game-exp" / "runtimes" / "codex"
             self.assertEqual(pathlib.Path(result["runtime_dir"]).resolve(), runtime.resolve())
             self.assertEqual(
                 (runtime / "VERSION.txt").read_text(encoding="utf-8").strip(),
-                "0.18.7",
+                "0.18.8",
             )
             provenance = json.loads(
                 (runtime / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
@@ -78,7 +78,7 @@ class HarnessInstallerTests(unittest.TestCase):
                 {
                     "schema_version": 1,
                     "source": "https://github.com/siskosun/game-exp",
-                    "version": "0.18.7",
+                    "version": "0.18.8",
                     "harness": "codex",
                 },
             )
@@ -108,7 +108,7 @@ class HarnessInstallerTests(unittest.TestCase):
 
             current = HarnessInstaller(ROOT, home, harness="codex").plan()
             self.assertEqual(current["install_state"], "CURRENT")
-            self.assertEqual(current["installed_version"], "0.18.7")
+            self.assertEqual(current["installed_version"], "0.18.8")
             self.assertFalse(current["would_update_other_harnesses"])
 
     def test_downgrade_requires_explicit_override(self):
@@ -135,7 +135,7 @@ class HarnessInstallerTests(unittest.TestCase):
             )
             with mock.patch("install_harnesses.shutil.which", return_value="uv"):
                 result = rollback.install()
-            self.assertEqual(result["version"], "0.18.7")
+            self.assertEqual(result["version"], "0.18.8")
 
     def test_single_harness_detects_but_preserves_legacy_shared_install(self):
         with tempfile.TemporaryDirectory() as td:
@@ -193,7 +193,7 @@ class HarnessInstallerTests(unittest.TestCase):
                 result = install_many(ROOT, home, SUPPORTED_HARNESSES)
 
             self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["version"], "0.18.7")
+            self.assertEqual(result["version"], "0.18.8")
             self.assertEqual(result["updated_harnesses"], list(SUPPORTED_HARNESSES))
             runtime_paths = {
                 pathlib.Path(row["runtime_dir"]).resolve()
@@ -229,7 +229,7 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(result["runtime_update_mode"], "filewise-fallback")
             self.assertEqual(
                 (installer.runtime_dir / "VERSION.txt").read_text(encoding="utf-8").strip(),
-                "0.18.7",
+                "0.18.8",
             )
 
     def test_runtime_install_handles_file_locked_against_replace(self):
