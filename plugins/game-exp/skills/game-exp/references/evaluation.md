@@ -57,7 +57,7 @@ Project policy schema v3 adds one protected command:
 ```json
 {
   "evaluation": {
-    "argv": ["python", ".game-exp/evaluate.py"],
+    "argv": ["python", "control/.game-exp/evaluation/evaluate.py"],
     "output_dir": ".game-exp/evaluation-output"
   }
 }
@@ -67,9 +67,11 @@ The evaluation argv must execute a runner from `control/.game-exp/evaluation/`. 
 
 The fixed output directory is deliberate.
 
-Before invoking the evaluation command the trusted Candidate workflow removes that directory. The project command then creates fresh output for the exact Candidate source. This prevents a committed prewritten result file from being accepted merely because it exists.
+The Candidate build job freezes `candidate.tgz` before evaluation. A separate trusted Ubuntu evaluation job then downloads only that frozen archive, checks out the evaluator/control files from the protected workflow source, fetches the exact Profile by Candidate source SHA, removes the fixed output directory, and runs the protected evaluator in a fresh workspace.
 
-The command runs on the trusted Ubuntu Candidate workflow. Non-Node adapters must provision everything they need through their declared install command; game-exp does not install Godot or learn project-specific controls.
+The experiment source checkout is not reused by the evaluation job. The evaluator receives the extracted Candidate root and Profile through environment variables. A committed prewritten `result.json` therefore cannot become trusted merely because it exists in the experiment branch.
+
+Non-Node evaluation runners must provision every runtime they need on `ubuntu-latest` from their protected evaluator path. game-exp does not install Godot or learn project-specific controls.
 
 Project policy v1/v2 remains supported. Those repositories continue using Manifest schema v1/v2 and have no Evaluation Evidence v1 requirement.
 
@@ -81,20 +83,9 @@ When Evaluation Profile is enabled, the project evaluation command writes:
 
 plus any referenced logs/snapshots/traces/captures.
 
-The build job packages this directory as `evaluation-output.tgz`.
+The trusted evaluation job packages this directory as `evaluation-output.tgz`, safely re-opens the bundle, recomputes the Profile/result/evidence digests, and derives the tri-state screening result. It has no experiment source checkout; it operates on the already frozen Candidate archive plus protected evaluator code.
 
-A separate trusted observation job:
-
-1. has no experiment source checkout;
-2. downloads the evaluation bundle;
-3. fetches the Profile from the exact Candidate source SHA;
-4. recomputes the Profile digest;
-5. safely extracts the bundle;
-6. validates `result.json`;
-7. recomputes every referenced evidence digest;
-8. derives the tri-state screening result.
-
-Only that observation produces `TRUSTED_OBSERVED` evaluation evidence.
+Only this clean evaluation boundary produces `TRUSTED_OBSERVED` evaluation evidence. The existing Candidate `observe` job remains responsible for independent archive-structure observation.
 
 The immutable Candidate release retains:
 
