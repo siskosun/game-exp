@@ -253,7 +253,7 @@ def game_exp_board(
     lifecycle: str | None = None,
     attention_only: bool = False,
 ) -> dict[str, Any]:
-    """Return a Chinese-ready Board from one pinned Ledger snapshot.\n\n    For normal Chinese UI, render the returned `display` block as the primary\n    presentation contract. Do not translate raw field names, append machine\n    enums such as PROJECT_READY/ADMIN/PASS, or translate `doctor` as\n    `医生检查`. Raw `project`/`repository`/`statistics` fields are for\n    logic and diagnostics; `display.rows_zh` and `display.trust_summary_zh`\n    are the user-facing copy.\n    """
+    """Return a Chinese-ready Board from one pinned Ledger snapshot.\n\n    For normal Chinese UI, render the returned `display` block as the primary\n    presentation contract. Presentation v4 sets `strict_primary_copy=true`\n    and publishes `forbidden_primary_tokens`; do not reconstruct copy from\n    raw fields, append enums such as PROJECT_READY/ADMIN/PASS, or translate\n    `doctor` as `医生检查`. Raw `project`/`repository`/`statistics` fields are\n    logic/diagnostics only. Use `display.rows_zh`,\n    `display.trust_summary_zh`, or `display.summary_text_zh`.\n    """
     return _client(repo).board(
         query=query,
         subject_id=subject_id,

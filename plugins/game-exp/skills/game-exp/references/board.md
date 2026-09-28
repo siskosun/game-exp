@@ -157,7 +157,7 @@ Do not fabricate timestamps for timeline events. Events without an authoritative
 
 All system-generated panel entries must use natural Chinese as the primary text: view names, section names, lifecycle labels, health labels, next actions, relationship labels, activity labels, repository trust checks, and permission/status summaries.
 
-For ordinary Board rendering, do not expose or parenthesize raw machine enums. `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, `WARN`, and similar codes are machine-facing values and may be shown only when the user explicitly asks for diagnostics. A host must not reconstruct the normal summary from raw fields when `display.presentation_version >= 3`; use `display.rows_zh`, `display.trust_summary_zh`, or `display.summary_text_zh` instead.
+For ordinary Board rendering, do not expose or parenthesize raw machine enums. `PROJECT_READY`, `ADMIN`, `WRITE`, `PASS`, `FAIL`, `WARN`, and similar codes are machine-facing values and may be shown only when the user explicitly asks for diagnostics. A host must not reconstruct the normal summary from raw fields when `display.presentation_version >= 4`; use `display.rows_zh`, `display.trust_summary_zh`, or `display.summary_text_zh` instead. Treat `display.render_contract.strict_primary_copy=true` and `forbidden_primary_tokens` as normative: those tokens must not appear in ordinary Chinese panel copy.
 
 Do not mechanically translate internal English identifiers. Required presentation mappings include:
 
