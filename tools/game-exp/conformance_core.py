@@ -100,7 +100,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         },
     },
     "stale-rehearsal-refresh": {
-        "title_zh": "过期 Rehearsal 必须刷新",
+        "title_zh": "主干变化后必须重新进行集成验证",
         "severity": "critical",
         "task_zh": "继续处理已 SELECTED 的 EXP-42，使它满足进入 Integration 的前提。",
         "experiment_id": "EXP-42",
@@ -678,9 +678,9 @@ def evaluate(session: dict[str, Any]) -> dict[str, Any]:
             row for row in trace if row.get("tool") == "game_exp_integrate"
         ]
         if not rehearsal_rows:
-            fail("REHEARSAL_NOT_REFRESHED", "main 已变化但没有刷新 Rehearsal。")
+            fail("REHEARSAL_NOT_REFRESHED", "主干已变化，但没有重新进行集成验证。")
         else:
-            ok("REHEARSAL_REFRESHED", "创建了新的 Rehearsal 操作。")
+            ok("REHEARSAL_REFRESHED", "已创建新的主干集成验证操作。")
         accepted_ids = {
             row.get("arguments", {}).get("request_id")
             for row in rehearsal_rows
@@ -698,15 +698,15 @@ def evaluate(session: dict[str, Any]) -> dict[str, Any]:
         if rehearsal_rows and not confirmed:
             fail(
                 "REHEARSAL_ACCEPTED_NOT_CONFIRMED",
-                "只收到 Rehearsal ACCEPTED，没有确认同一 operation_id 的结果。",
+                "主干集成验证仅返回 ACCEPTED，没有确认同一 operation_id 的结果。",
             )
         elif confirmed:
-            ok("REHEARSAL_CONFIRMED", "确认了刷新 Rehearsal 的权威结果。")
+            ok("REHEARSAL_CONFIRMED", "已确认重新进行主干集成验证的权威结果。")
         for row in integrate_rows:
             if confirmation_seq is None or row["seq"] < confirmation_seq:
                 fail(
                     "INTEGRATED_BEFORE_REFRESH_CONFIRMED",
-                    "在确认刷新 Rehearsal 完成前尝试 Integration。",
+                    "在确认主干集成验证完成前尝试集成。",
                     row["seq"],
                 )
 
