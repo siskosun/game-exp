@@ -231,6 +231,8 @@ jobs:
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run test --cwd .
       - name: Build candidate
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run build --cwd .
+      - name: Freeze candidate bytes before evaluation
+        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
       - name: Run trusted project evaluation
         if: needs.resolve.outputs.evaluation_enabled == 'true'
         env:
@@ -251,8 +253,6 @@ jobs:
           test -f "$GAME_EXP_EVALUATION_OUTPUT_DIR/result.json"
           PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py package \
             "$GAME_EXP_EVALUATION_OUTPUT_DIR" evaluation-output.tgz
-      - name: Package candidate bytes
-        run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
       - uses: actions/upload-artifact@v4
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
