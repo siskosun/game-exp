@@ -258,9 +258,10 @@ def ruleset_satisfies(actual: dict[str, Any], minimum: dict[str, Any]) -> bool:
 def strengthen_ruleset(actual: dict[str, Any], minimum: dict[str, Any]) -> dict[str, Any]:
     # Preserve additional restrictive rules and stronger review settings while
     # correcting any weak minimum required by game-exp.
-    value = dict(actual)
-    for key in ("name", "target", "enforcement", "conditions", "bypass_actors"):
-        value[key] = minimum[key]
+    value = {
+        key: minimum[key]
+        for key in ("name", "target", "enforcement", "conditions", "bypass_actors")
+    }
 
     current_rules = [
         dict(row)
