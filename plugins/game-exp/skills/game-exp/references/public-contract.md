@@ -279,3 +279,14 @@ A2A may later transport the same task/artifact semantics if Godot Prototype Stud
 ### Board presentation v6
 
 Chinese primary UI copy uses `主干集成验证` for protocol `Rehearsal`, because the operation validates the candidate's integration result against the latest main branch. Experiment detail surfaces expose `evidence_zh.rows_zh` with fixed Chinese labels for 候选版本、人工评审、主干集成验证、集成、归档. Raw `rehearsal_id` remains a protocol and diagnostics field.
+
+## Iteration routing policy v1
+
+Iteration routing is a cross-Harness semantic policy, not a new lifecycle state or authority source.
+
+`game_exp_capabilities` exposes `features.iteration_routing_v1=true` and an `iteration_routing` descriptor. Clients should default an existing-experiment change to `REVISION` when hypothesis, success criteria, core mechanic, and target player experience remain materially unchanged. A revision reuses the existing experiment and canonical branch; after substantive changes it produces a new Candidate, and an earlier Review does not carry forward to the changed Candidate.
+
+A Harness may infer that a request crosses an experiment boundary, but it must get user confirmation before creating a new experiment. Clear revisions proceed without a taxonomy confirmation. Ambiguous cases should ask one design-intent question rather than requiring the user to understand game-exp's internal classification.
+
+This policy does not mutate lifecycle state, loosen human gates, or authorize reopening `SELECTED`, `INTEGRATED`, or `ARCHIVED` work.
+
