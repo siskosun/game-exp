@@ -989,6 +989,8 @@ def _plan_work_release(
     next_state["work_sequence"] = sequence + 1
     next_state["active_work_claim_ids"] = [item for item in active_ids if item != claim_id]
     next_state["last_work_release_id"] = request_id
+    if normalized_handoff is not None:
+        next_state["last_work_handoff_release_id"] = request_id
 
     return DomainPlan(
         status="APPLIED",
