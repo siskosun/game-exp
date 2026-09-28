@@ -254,6 +254,29 @@ class WorkCoordinationTests(unittest.TestCase):
         self.assertTrue(claim["coordination_required"])
         self.assertEqual(claim["overlap_with"], ["req_work_1"])
 
+    def test_expired_claim_does_not_participate_in_new_overlap(self):
+        original = self.work
+        self.work = TrustedWorkContext(
+            experiment_id="EXP-77",
+            branch_ref="refs/heads/exp/77",
+            branch_head_sha="b" * 40,
+            observed_at="2026-09-28T12:00:00+00:00",
+            lease_expires_at="2026-09-28T11:00:00+00:00",
+        )
+        first = self.claim("req_work_expired")
+        self.apply(first)
+        self.work = original
+        second = self.claim(
+            "req_work_after_expiry",
+            actor=self.other,
+            paths=["games/player/movement"],
+        )
+        claim = second.writes[
+            "experiments/EXP-77/work-claims/req_work_after_expiry.json"
+        ]
+        self.assertFalse(claim["coordination_required"])
+        self.assertEqual(claim["overlap_with"], [])
+
     def test_unknown_scope_overlaps_conservatively(self):
         first = self.claim("req_work_1", paths=[])
         self.apply(first)
