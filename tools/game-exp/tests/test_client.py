@@ -1213,6 +1213,29 @@ class ClientTests(unittest.TestCase):
         for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
             self.assertNotIn(forbidden, visible)
 
+    def test_surface_hint_is_compact_for_normal_progress(self):
+        hint = GameExpClient._board_surface_hint(
+            {"required": False, "reason": None, "action_zh": None},
+            "IMPLEMENT_OR_REVIEW",
+        )
+        self.assertEqual(hint["mode"], "COMPACT_RESULT")
+        self.assertFalse(hint["surface_when_relevant"])
+        self.assertFalse(hint["authoritative"])
+
+    def test_surface_hint_uses_contextual_panel_for_human_gate(self):
+        hint = GameExpClient._board_surface_hint(
+            {
+                "required": True,
+                "reason": "HUMAN_REVIEW",
+                "action_zh": "提交人工评审结果（通过 / 未通过）",
+            },
+            "HUMAN_REVIEW",
+        )
+        self.assertEqual(hint["mode"], "CONTEXTUAL_PANEL")
+        self.assertTrue(hint["surface_when_relevant"])
+        self.assertEqual(hint["reason"], "HUMAN_REVIEW")
+        self.assertFalse(hint["authoritative"])
+
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
         transport = FakeTransport()
         transport.ruleset_details = lambda: {}
