@@ -14,6 +14,8 @@ Show five logical views:
 
 Use one pinned protected experiment-record snapshot for every view in the same response.
 
+In the 1.0 default MCP surface, `game_exp_board` is always available; advanced focused-panel tools are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. If those tools are not registered, use Board focus plus `game_exp_experiment_get` rather than treating the missing tool as a capability failure.
+
 ## Shared header
 
 Prefer the ready-to-render `display` block returned by `game_exp_board`. It is the cross-Harness Chinese presentation contract and must be rendered before a host invents its own summary.
@@ -42,6 +44,23 @@ Do not append machine codes to these values. In particular, normal rendering mus
 The experiment views are pinned to `snapshot_head`. Repository visibility, access and trust checks are current repository state at call time; do not present them as historical experiment-record state.
 
 If `project.readiness=PROJECT_READY`, the repository bootstrap is complete. Never infer an older private-repository Ruleset blocker from chat history, cached preflight output, or a previous Board. Never recommend `project-init` in that state.
+
+## 上浮策略
+
+Board 是决策界面，不是每次 Agent 完成工作的固定结束页。1.0 的默认展示策略是：
+
+- 普通实现/修订完成，且当前没有需要人处理的事项：返回紧凑结果，不自动打开完整 Board；
+- 当前实验出现人工评审、晋级/选择、归档方式、恢复、健康异常或依赖复核等需要处理事项：允许宿主主动上浮该实验的局部面板；
+- 用户明确要求“打开面板 / 看所有实验 / 看分支”时：打开完整 Board。
+
+实验行的 `surface_hint` 是只读展示提示：
+
+- `COMPACT_RESULT`：正常完成反馈，不主动打断；
+- `CONTEXTUAL_PANEL`：有当前人类动作或异常需要处理，宿主可以上浮对应局部面板；
+- `surface_when_relevant=true` 只表示“现在值得主动呈现”，不是生命周期命令，也不授予任何操作权限；
+- `surface_hint.authoritative=false` 必须保持为 false。
+
+触发依据是“用户现在是否需要做什么”，不是“Agent 刚刚做完了什么”。完整 Board 始终由用户显式打开，除非宿主本身有独立的 UI 导航规则。
 
 ## 聚焦筛选
 

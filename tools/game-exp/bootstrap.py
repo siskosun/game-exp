@@ -37,6 +37,8 @@ PRODUCTION_TOOLS = (
     "execution_guard.py",
     "evaluation_evidence.py",
     "install_harnesses.py",
+    "trust_policy.py",
+    "ledger_snapshot.py",
     "mcp_server.py",
     "project_policy.py",
     "project_setup.py",
@@ -287,7 +289,7 @@ class Bootstrapper:
         block = (
             f"{mcp_header}\n"
             'command = "uv"\n'
-            'args = ["run", "--with", "mcp>=2,<3", "python", '
+            'args = ["run", "--with", "mcp==2.2.0", "python", '
             '"tools/game-exp/mcp_server.py"]\n'
             'enabled = true\n'
             f'env = {{ GAME_EXP_REPO = "{self.repo}" }}\n\n'

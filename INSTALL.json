@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "game-exp",
-  "version": "0.21.0",
+  "version": "1.0.0",
   "source_of_truth": "https://github.com/siskosun/game-exp",
   "policy": {
     "default_update_scope": "current_harness_only",
@@ -94,7 +94,8 @@
     "若源版本低于已安装版本，默认拒绝降级；仅显式回滚时使用 --allow-downgrade。",
     "检测到 0.17.x 及更早的共享安装时，单 Harness 升级只报告并保留旧共享副本，不会删除其他 Harness 可能仍在使用的文件。",
     "只有显式 --harness all --cleanup-legacy-shared 才会在三个独立运行时安装成功后删除旧 ~/.agents 共享 runtime/Skill。",
-    "可运行 distribution_check.py 验证版本、来源、Harness 隔离升级和源文件完整性未漂移。"
+    "可运行 distribution_check.py 验证版本、来源、Harness 隔离升级和源文件完整性未漂移。",
+    "1.0 默认 MCP 工具面为 23 个日常/恢复工具；高级预检、细分面板、通知和通用提交入口需设置 GAME_EXP_ENABLE_ADVANCED_TOOLS=1。"
   ],
   "explicit_all_check": [
     "python",

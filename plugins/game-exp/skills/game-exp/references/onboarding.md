@@ -25,16 +25,16 @@ Do not repeatedly force onboarding after the repository already has experiments.
 ## Six-step flow
 
 1. `连接检查`
-   - if the Board already returns `project.readiness=PROJECT_READY`, treat this step as complete and continue to step 2;
-   - otherwise confirm repo-level `game_exp_doctor` is PASS; if not, route to `references/project-setup.md`;
-   - run `game_exp_access_check` and classify access as `NO_ACCESS`, `READ_ONLY`, `WRITE`, or `ADMIN`;
+   - start with `game_exp_status`; it is the compact 1.0 handshake for exact repository identity, Ledger head, access, runtime version, repository version, and protocol versions;
+   - if `version_state` is not `MATCH`, align the current Harness/runtime before any mutation;
+   - classify `status.access.status` as `NO_ACCESS`, `READ_ONLY`, `WRITE`, or `ADMIN`;
    - `NO_ACCESS`: explain that the repository cannot be read and stop;
-   - `READ_ONLY`: allow Board viewing but disable creating or advancing experiments; ask for repository write permission or another repository;
-   - `WRITE`: allow normal game-exp use and label admin-only checks as partial when unavailable;
+   - `READ_ONLY`: allow Board viewing but disable creating or advancing experiments;
+   - `WRITE`: allow normal experiment work but label admin-only Doctor coverage as partial;
    - `ADMIN`: allow normal use with full repository-level inspection coverage;
-   - then run repo-level `game_exp_doctor` without `experiment_id`;
-   - explain any partial coverage;
-   - do not continue past a hard trust failure.
+   - if the Board already returns `project.readiness=PROJECT_READY`, treat trust setup as complete and continue to step 2;
+   - otherwise run repo-level `game_exp_doctor` without `experiment_id`; on FAIL route to `references/project-setup.md`;
+   - explain UNKNOWN/partial coverage and do not continue past a hard trust failure.
 
 2. `描述第一个实验`
    - ask for or infer: target prototype/subject, intended change, and desired player outcome;

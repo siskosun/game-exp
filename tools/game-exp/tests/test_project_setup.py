@@ -206,14 +206,16 @@ class ProjectSetupTests(unittest.TestCase):
         }
         with (
             patch("project_setup._deploy_keys", return_value=[key]),
+            patch("project_setup._secret_names", return_value=set()),
             patch(
-                "project_setup._secret_names",
+                "project_setup._environment_secret_names",
                 return_value={project_setup.WRITER_SECRET},
             ),
             patch("project_setup._generate_writer_keypair") as generate,
         ):
             result = project_setup._ensure_writer_credentials("owner/repo")
         self.assertFalse(result["changed"])
+        self.assertEqual(result["secret_scope"], "environment")
         generate.assert_not_called()
 
     def test_writer_credentials_refuse_other_write_deploy_keys(self):
@@ -223,28 +225,76 @@ class ProjectSetupTests(unittest.TestCase):
                 return_value=[{"id": 3, "title": "other", "read_only": False}],
             ),
             patch("project_setup._secret_names", return_value=set()),
+            patch("project_setup._environment_secret_names", return_value=set()),
         ):
             with self.assertRaises(project_setup.ProjectSetupError):
                 project_setup._ensure_writer_credentials("owner/repo")
 
-    def test_rulesets_existing_mismatch_fails_closed(self):
-        existing = [{"id": 11, "name": "game-exp ledger", "enforcement": "active"}]
-        with (
-            patch(
-                "project_setup._ruleset_probe",
-                return_value={"status": "PASS", "available": True, "rulesets": existing},
-            ),
-            patch(
-                "project_setup._gh_api",
-                return_value=completed(
-                    stdout='{"id":11,"name":"game-exp ledger","target":"branch",'
-                    '"enforcement":"active","bypass_actors":[],"conditions":{},'
-                    '"rules":[]}'
-                ),
-            ),
+    def test_ruleset_templates_separate_immutable_rules_from_writer_bypass(self):
+        templates = {
+            row["name"]: row
+            for row in project_setup.ruleset_templates("single-principal")
+        }
+        for name in (
+            "game-exp ledger immutable",
+            "game-exp experiment immutable",
+            "game-exp immutable refs immutable",
         ):
-            with self.assertRaises(project_setup.ProjectSetupError):
-                project_setup._ensure_rulesets("owner/repo")
+            self.assertEqual(templates[name]["bypass_actors"], [])
+        for name in (
+            "game-exp ledger writer",
+            "game-exp experiment lifecycle",
+            "game-exp immutable refs creation",
+        ):
+            self.assertEqual(
+                templates[name]["bypass_actors"],
+                [
+                    {
+                        "actor_id": None,
+                        "actor_type": "DeployKey",
+                        "bypass_mode": "always",
+                    }
+                ],
+            )
+
+    def test_multi_principal_main_requires_independent_review(self):
+        templates = {
+            row["name"]: row
+            for row in project_setup.ruleset_templates("multi-principal")
+        }
+        rules = templates["game-exp protected main"]["rules"]
+        pr = next(row for row in rules if row["type"] == "pull_request")
+        self.assertEqual(pr["parameters"]["required_approving_review_count"], 1)
+        self.assertTrue(pr["parameters"]["require_last_push_approval"])
+
+    def test_writer_environment_is_main_only(self):
+        calls = []
+        responses = [
+            completed(stdout='{}'),
+            completed(stdout='{"branch_policies":[]}'),
+            completed(stdout='{}'),
+            completed(
+                stdout='{"branch_policies":[{"id":1,"name":"main","type":"branch"}]}'
+            ),
+        ]
+
+        def fake_api(repo, suffix, **kwargs):
+            calls.append((suffix, kwargs.get("method", "GET"), kwargs.get("body")))
+            return responses.pop(0)
+
+        with patch("project_setup._gh_api", side_effect=fake_api):
+            result = project_setup._ensure_writer_environment("owner/repo")
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["branch_policies"], ["main"])
+        self.assertIn(
+            (
+                "environments/game-exp-trusted-writer/deployment-branch-policies",
+                "POST",
+                {"name": "main", "type": "branch"},
+            ),
+            calls,
+        )
+
 
     def test_provision_stops_before_mutation_when_preflight_blocks(self):
         blocked = {
@@ -271,7 +321,12 @@ class ProjectSetupTests(unittest.TestCase):
                     "ready_to_provision": True,
                 },
             ),
+            patch("project_setup._resolve_trust_mode", return_value="single-principal"),
             patch("project_setup._ensure_ledger", return_value={"status": "PASS"}),
+            patch(
+                "project_setup._ensure_writer_environment",
+                return_value={"status": "PASS"},
+            ),
             patch(
                 "project_setup._ensure_writer_credentials",
                 return_value={"status": "PASS"},
@@ -300,6 +355,7 @@ class ProjectSetupTests(unittest.TestCase):
                 "checks": [{"name": "rulesets", "status": "FAIL"}],
             }
             result = project_setup.provision("owner/repo")
+        self.assertEqual(result["trust_mode"], "single-principal")
         self.assertEqual(result["status"], "FAIL")
         self.assertFalse(result["complete"])
 

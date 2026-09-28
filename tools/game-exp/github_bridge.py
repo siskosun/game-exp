@@ -673,6 +673,55 @@ def _reply_body(
     )
 
 
+def validate_event(args: argparse.Namespace) -> dict[str, Any]:
+    event = json.loads(Path(args.event_path).read_text(encoding="utf-8"))
+    comment = event.get("comment") or {}
+    issue = event.get("issue") or {}
+    sender = event.get("sender") or {}
+    if "pull_request" in issue:
+        raise BridgeError("game-exp bridge accepts Issue comments, not PR comments")
+    body = comment.get("body")
+    comment_user = (comment.get("user") or {}).get("login")
+    actor_login = sender.get("login")
+    issue_number = str(issue.get("number"))
+    comment_id = str(comment.get("id"))
+    association = comment.get("author_association")
+    if association not in {"OWNER", "MEMBER", "COLLABORATOR"}:
+        raise BridgeError(
+            f"author_association {association!r} is not eligible for bridge execution"
+        )
+    if not isinstance(body, str):
+        raise BridgeError("Issue comment body is unavailable")
+    if comment_user != actor_login or not isinstance(actor_login, str):
+        raise BridgeError("Issue comment actor identity mismatch")
+    command = parse_command(body)
+    validate_issue_binding(command, issue_number)
+    permission = verify_actor(args.repo, actor_login)
+    result = {
+        "status": "PASS",
+        "actor_login": actor_login,
+        "issue_number": issue_number,
+        "comment_id": comment_id,
+        "request_id": command["request_id"],
+        "command_digest": digest_object(command),
+        "permission": permission,
+        "author_association": association,
+    }
+    if getattr(args, "github_output", None):
+        with open(args.github_output, "a", encoding="utf-8") as out:
+            for key in (
+                "actor_login",
+                "issue_number",
+                "comment_id",
+                "request_id",
+                "command_digest",
+                "permission",
+                "author_association",
+            ):
+                out.write(f"{key}={result[key]}\n")
+    return result
+
+
 def run_event(args: argparse.Namespace) -> dict[str, Any]:
     event = json.loads(Path(args.event_path).read_text(encoding="utf-8"))
     comment = event.get("comment") or {}
@@ -806,12 +855,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True)
     ap.add_argument("--event-path", required=True)
-    ap.add_argument("--ssh-key", required=True)
+    ap.add_argument("--ssh-key")
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--run-attempt", required=True)
     ap.add_argument("--workflow-source-sha", required=True)
+    ap.add_argument("--validate-only", action="store_true")
+    ap.add_argument("--github-output")
     args = ap.parse_args()
-    result = run_event(args)
+    if args.validate_only:
+        result = validate_event(args)
+    else:
+        if not isinstance(args.ssh_key, str) or not args.ssh_key:
+            raise BridgeError("--ssh-key is required for bridge execution")
+        result = run_event(args)
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

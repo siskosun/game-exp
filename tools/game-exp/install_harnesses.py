@@ -408,7 +408,7 @@ class HarnessInstaller:
             "args": [
                 "run",
                 "--with",
-                "mcp>=2,<3",
+                "mcp==2.2.0",
                 "python",
                 str(self.mcp_script),
             ],

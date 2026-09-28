@@ -303,24 +303,14 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(
             names,
             {
-                "game_exp_conformance_suite",
-                "game_exp_conformance_start",
-                "game_exp_conformance_compare",
-                "game_exp_conformance_result",
-                "game_exp_project_preflight",
                 "game_exp_project_init",
                 "game_exp_status",
-                "game_exp_access_check",
-                "game_exp_capabilities",
                 "game_exp_experiment_template",
                 "game_exp_doctor",
                 "game_exp_experiment_get",
                 "game_exp_board",
-                "game_exp_experiment_panel",
-                "game_exp_subject_panel",
                 "game_exp_prototype_handoff",
                 "game_exp_collaboration_context",
-                "game_exp_notifications",
                 "game_exp_work_claim",
                 "game_exp_work_release",
                 "game_exp_experiment_bind",
@@ -335,11 +325,24 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_archive",
                 "game_exp_archive_abort",
                 "game_exp_operation_get",
-                "game_exp_request_get",
                 "game_exp_operation_resume",
-                "game_exp_request_submit",
             },
         )
+        self.assertEqual(len(names), 23)
+        for hidden in (
+            "game_exp_project_preflight",
+            "game_exp_experiment_panel",
+            "game_exp_subject_panel",
+            "game_exp_notifications",
+            "game_exp_request_submit",
+            "game_exp_access_check",
+            "game_exp_capabilities",
+            "game_exp_request_get",
+            "game_exp_conformance_suite",
+        ):
+            self.assertNotIn(hidden, names)
+            self.assertTrue(callable(getattr(mcp_server, hidden)))
+
 
     def test_conformance_mcp_uses_same_normal_tool_surface(self):
         with tempfile.TemporaryDirectory() as td:
@@ -411,42 +414,27 @@ class MCPServerTests(unittest.TestCase):
 
     def test_tool_schemas_are_explicit(self):
         tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
-        submit = tools["game_exp_request_submit"].input_schema
-        self.assertIn("operation", submit["properties"])
-        self.assertIn("input", submit["properties"])
-        self.assertIn("operation", submit["required"])
-        self.assertIn("input", submit["required"])
-        self.assertIn("request_id", submit["required"])
+        review = tools["game_exp_review_record"].input_schema
+        self.assertIn("candidate_id", review["required"])
+        self.assertIn("request_id", review["required"])
+
 
     def test_tool_annotations_distinguish_reads_from_submit(self):
         tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
         for name in (
-            "game_exp_project_preflight",
             "game_exp_status",
-            "game_exp_access_check",
-            "game_exp_capabilities",
             "game_exp_doctor",
             "game_exp_experiment_get",
             "game_exp_board",
-            "game_exp_experiment_panel",
-            "game_exp_subject_panel",
             "game_exp_prototype_handoff",
             "game_exp_collaboration_context",
-            "game_exp_notifications",
             "game_exp_operation_get",
-            "game_exp_request_get",
         ):
             ann = tools[name].annotations
             self.assertTrue(ann.read_only_hint)
             self.assertFalse(ann.destructive_hint)
             self.assertTrue(ann.idempotent_hint)
             self.assertTrue(ann.open_world_hint)
-
-        submit = tools["game_exp_request_submit"].annotations
-        self.assertFalse(submit.read_only_hint)
-        self.assertFalse(submit.destructive_hint)
-        self.assertTrue(submit.idempotent_hint)
-        self.assertTrue(submit.open_world_hint)
 
         abandon = tools["game_exp_abandon"].annotations
         self.assertFalse(abandon.read_only_hint)
@@ -458,10 +446,6 @@ class MCPServerTests(unittest.TestCase):
         self.assertTrue(archive.destructive_hint)
         self.assertTrue(archive.idempotent_hint)
 
-        resume = tools["game_exp_operation_resume"].annotations
-        self.assertFalse(resume.read_only_hint)
-        self.assertFalse(resume.destructive_hint)
-        self.assertTrue(resume.idempotent_hint)
 
     def test_project_init_rejects_shared_http(self):
         transport = MagicMock()
@@ -498,7 +482,11 @@ class MCPServerTests(unittest.TestCase):
             result = mcp_server.game_exp_project_init("owner/repo")
         self.assertEqual(result["status"], "PASS")
         self.assertTrue(result["complete"])
-        provision.assert_called_once_with("owner/repo", run_selftest=True)
+        provision.assert_called_once_with(
+            "owner/repo",
+            run_selftest=True,
+            trust_mode="auto",
+        )
 
     @patch("mcp_server._client", return_value=FakeClient())
     def test_doctor_can_request_archive_health_for_experiment(self, _):
@@ -648,16 +636,18 @@ class MCPServerTests(unittest.TestCase):
         )
 
     @patch("mcp_server._client", return_value=FakeClient())
-    def test_review_defaults_to_current_candidate(self, _):
+    def test_review_requires_explicit_candidate_identity(self, _):
         result = mcp_server.game_exp_review_record(
             experiment_id="EXP-21",
             outcome="PASS",
             notes="human playtest",
             request_id="req_review_21",
+            candidate_id="C-21-123-1",
             repo="owner/repo",
         )
         self.assertEqual(result["status"], "ACCEPTED")
         self.assertEqual(result["operation"], "review.record")
+        self.assertEqual(result["candidate_id"], "C-21-123-1")
 
     @patch("mcp_server._client", return_value=FakeClient())
     def test_decision_defaults_to_current_previous_decision(self, _):

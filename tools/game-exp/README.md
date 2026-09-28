@@ -18,7 +18,7 @@ trusted lifecycle worker
 protected game-exp/ledger
 ```
 
-GitHub Rulesets and the dedicated Deploy Key remain the write authority.
+GitHub Rulesets, the main-only `game-exp-trusted-writer` Environment, and the dedicated Deploy Key form the write authority.
 
 ## Result states
 
@@ -43,15 +43,10 @@ python tools/game-exp/cli.py --repo owner/repo --json capabilities
 Submit a request:
 
 ```powershell
-@'
-{
-  "hypothesis": "three roles improve readability"
-}
-'@ | Set-Content -Encoding utf8 $env:TEMP\game-exp-input.json
+python tools/game-exp/cli.py --repo owner/repo --json experiment-template
 
-python tools/game-exp/cli.py --repo owner/repo --json request experiment.create `
-  --request-id req-example-1 `
-  --input-file $env:TEMP\game-exp-input.json
+# Use the returned Manifest with experiment.bind through the documented
+# high-level workflow/MCP/Bridge path; unknown low-level operation names fail closed.
 ```
 
 The command returns a stable `request_id`. If the workflow result is uncertain:
@@ -111,7 +106,7 @@ The bootstrap copies the production game-exp tools, lifecycle workflows, Skill/P
 
 It is fail-closed: a different existing managed game-exp file or conflicting Codex game-exp section stops the install before writes. Existing unrelated marketplace plugins are preserved, and an existing valid project policy is preserved.
 
-The bootstrap deliberately does not create or upload the Trusted Writer private key, repository secret, Rulesets, or Immutable Releases settings. After committing the generated files, configure those repository controls and run:
+The bootstrap deliberately does not create or upload the Trusted Writer private key, Environment secret, Rulesets, or Immutable Releases settings. After committing the generated files, configure those repository controls and run:
 
 ```powershell
 python tools/game-exp/cli.py --repo owner/name --json doctor
@@ -205,6 +200,8 @@ Harness supports it) so the running process picks up the new version.
 ## MCP hosts: Codex and ChatGPT Web
 
 The adapter uses the official Python MCP SDK v2 and delegates to the same validated Client / Trusted Domain Core. MCP never gets direct Git authority. The same tool surface supports local stdio for Codex and Streamable HTTP for ChatGPT Web.
+
+1.0 registers a compact default MCP surface (23 tools): normal lifecycle, Board, collaboration, trusted project init, operation lookup and safe resume. Secondary diagnostics/projections are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`; legacy aliases use `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools remain isolated behind conformance mode. This reduces model tool-selection noise without deleting the underlying APIs.
 
 Normal Harness use should prefer domain tools:
 
@@ -302,7 +299,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `0.20.0`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.0.0`.
 
 ### Windows UTF-8 compatibility
 
@@ -468,7 +465,7 @@ python tools/game-exp/cli.py --repo owner/repo --json project-preflight
 python tools/game-exp/cli.py --repo owner/repo --json project-init
 ```
 
-`project-init` completes Ledger initialization, Trusted Writer repository credentials, Immutable Releases, hardened Actions defaults, the four verified rulesets, Trusted Writer self-test, and a final repo-level Doctor. It succeeds only when Doctor is PASS.
+`project-init` completes Ledger initialization, Trusted Writer repository credentials, Immutable Releases, hardened Actions defaults, the seven verified 1.0 Rulesets, Trusted Writer self-test, and a final repo-level Doctor. It succeeds only when Doctor is PASS.
 
 Private repositories whose GitHub plan does not support repository rulesets fail at preflight with `RULESETS_PLAN_UNSUPPORTED`; game-exp does not silently weaken the trust model or make a repository public.
 

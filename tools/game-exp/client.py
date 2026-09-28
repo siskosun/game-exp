@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_policy import POLICY_PATH, ProjectPolicyError, policy_digest, validate_policy
+from ledger_snapshot import LedgerSnapshotLoader, SnapshotError
 from protocol_core import (
     ASYNC_EXECUTION_ACTIONS,
     build_operation_payload,
@@ -18,6 +19,13 @@ from protocol_core import (
     encode_payload_b64,
     new_request_id,
     validate_request_id,
+)
+
+from trust_policy import (
+    WRITER_ENVIRONMENT,
+    WRITER_KEY_TITLE,
+    WRITER_SECRET,
+    validate_rulesets,
 )
 
 RUN_URL_RE = re.compile(r"/actions/runs/(\d+)(?:$|[/?#])")
@@ -84,11 +92,56 @@ def _run(
     return proc
 
 
+def _run_read(
+    args: list[str],
+    *,
+    check: bool = True,
+    timeout: float = 30.0,
+    attempts: int = 3,
+) -> subprocess.CompletedProcess[str]:
+    delays = (0.35, 0.9)
+    last: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(attempts):
+        try:
+            proc = _run(args, check=False, timeout=timeout)
+        except TransportUncertainError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(delays[min(attempt, len(delays) - 1)])
+            continue
+        last = proc
+        if proc.returncode == 0:
+            return proc
+        if attempt + 1 < attempts:
+            time.sleep(delays[min(attempt, len(delays) - 1)])
+    assert last is not None
+    if check:
+        raise TransportUncertainError(
+            f"idempotent read failed after {attempts} attempts "
+            f"({last.returncode}): {' '.join(args[:3])}\n{last.stderr[-1200:]}"
+        )
+    return last
+
+
 def _json_output(proc: subprocess.CompletedProcess[str]) -> Any:
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
         raise ClientError(f"command returned invalid JSON: {proc.stdout!r}") from exc
+
+
+def _runtime_version() -> str:
+    marker = Path(__file__).resolve().parents[2] / "VERSION.txt"
+    try:
+        value = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "UNKNOWN"
+    return value if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value) else "UNKNOWN"
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", value)
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 def _journal_root() -> Path:
@@ -107,6 +160,7 @@ def _journal_root() -> Path:
 class GitHubTransport:
     def __init__(self, repo: str | None = None):
         self.repo = repo or self._resolve_repo()
+        self._ledger_snapshots = LedgerSnapshotLoader(self.repo)
 
     def _resolve_repo(self) -> str:
         proc = _run(
@@ -118,7 +172,7 @@ class GitHubTransport:
         return repo
 
     def ledger_head(self) -> str:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -135,30 +189,10 @@ class GitHubTransport:
     def ledger_paths(self, ref: str) -> list[str]:
         if not re.fullmatch(r"[0-9a-f]{40}", ref):
             raise ClientError("Ledger tree ref must be a 40-character commit SHA")
-        proc = _run(
-            [
-                "gh",
-                "api",
-                f"repos/{self.repo}/git/trees/{ref}?recursive=1",
-            ]
-        )
-        value = _json_output(proc)
-        if not isinstance(value, dict):
-            raise ClientError("Ledger tree response must be an object")
-        if value.get("truncated") is True:
-            raise ClientError("Ledger recursive tree response is truncated")
-        tree = value.get("tree")
-        if not isinstance(tree, list):
-            raise ClientError("Ledger tree response is missing tree entries")
-        paths: list[str] = []
-        for row in tree:
-            if (
-                isinstance(row, dict)
-                and row.get("type") == "blob"
-                and isinstance(row.get("path"), str)
-            ):
-                paths.append(row["path"])
-        return sorted(paths)
+        try:
+            return self._ledger_snapshots.load(ref).paths
+        except SnapshotError as exc:
+            raise TransportUncertainError(str(exc)) from exc
 
     def dispatch_writer(
         self,
@@ -414,7 +448,7 @@ class GitHubTransport:
             if not isinstance(ref, str) or not ref:
                 raise ClientError("repository JSON ref must be a non-empty string")
             endpoint += f"?ref={ref}"
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -428,7 +462,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading repository JSON {path} ({proc.returncode}): {proc.stderr}"
             )
         try:
@@ -445,11 +479,21 @@ class GitHubTransport:
         *,
         ref: str | None = None,
     ) -> dict[str, Any] | None:
-        ref_value = ref or "game-exp%2Fledger"
         if ref is not None and not re.fullmatch(r"[0-9a-f]{40}", ref):
             raise ClientError("Ledger JSON ref must be a 40-character commit SHA")
+        if ref is not None:
+            snapshot = self._ledger_snapshots.cached(ref)
+            if snapshot is not None:
+                if path not in snapshot.objects:
+                    return None
+                value = snapshot.objects[path]
+                if not isinstance(value, dict):
+                    raise ClientError(f"Ledger JSON must be an object at {path}")
+                return value
+
+        ref_value = ref or "game-exp%2Fledger"
         endpoint = f"repos/{self.repo}/contents/{path}?ref={ref_value}"
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -463,7 +507,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Ledger JSON {path} ({proc.returncode}): {proc.stderr}"
             )
         try:
@@ -475,7 +519,7 @@ class GitHubTransport:
         return value
 
     def git_ref(self, ref_path: str) -> dict[str, Any] | None:
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/git/ref/{ref_path}"],
             check=False,
         )
@@ -483,7 +527,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Git ref {ref_path} ({proc.returncode}): {proc.stderr}"
             )
         value = _json_output(proc)
@@ -495,12 +539,12 @@ class GitHubTransport:
         for name, value in (("base_sha", base_sha), ("head_sha", head_sha)):
             if not re.fullmatch(r"[0-9a-f]{40}", value):
                 raise ClientError(f"{name} must be a 40-character commit SHA")
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/compare/{base_sha}...{head_sha}"],
             check=False,
         )
         if proc.returncode != 0:
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed comparing Git commits ({proc.returncode}): {proc.stderr}"
             )
         value = _json_output(proc)
@@ -511,7 +555,7 @@ class GitHubTransport:
     def annotated_tag(self, tag_object_sha: str) -> dict[str, Any]:
         if not re.fullmatch(r"[0-9a-f]{40}", tag_object_sha):
             raise ClientError("annotated tag object SHA must be 40 lowercase hex")
-        proc = _run(
+        proc = _run_read(
             ["gh", "api", f"repos/{self.repo}/git/tags/{tag_object_sha}"],
         )
         value = _json_output(proc)
@@ -525,7 +569,7 @@ class GitHubTransport:
             f"repos/{self.repo}/contents/operations/{request_id}.json"
             "?ref=game-exp%2Fledger"
         )
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -539,7 +583,7 @@ class GitHubTransport:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             if "404" in text or "not found" in text:
                 return None
-            raise ClientError(
+            raise TransportUncertainError(
                 f"failed reading Ledger request record ({proc.returncode}): {proc.stderr}"
             )
         try:
@@ -551,7 +595,7 @@ class GitHubTransport:
         match = RUN_URL_RE.search(workflow_url)
         if not match:
             return None
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "run",
@@ -587,21 +631,82 @@ class GitHubTransport:
         return proc.stdout + "\n" + proc.stderr
 
     def rulesets(self) -> list[dict[str, Any]]:
-        proc = _run(["gh", "api", f"repos/{self.repo}/rulesets"])
+        proc = _run_read(["gh", "api", f"repos/{self.repo}/rulesets"])
         data = _json_output(proc)
         if not isinstance(data, list):
             raise ClientError("GitHub rulesets response is not a list")
         return data
 
+    def ruleset_details(self) -> dict[str, dict[str, Any]]:
+        result: dict[str, dict[str, Any]] = {}
+        for row in self.rulesets():
+            if not isinstance(row, dict):
+                continue
+            name = row.get("name")
+            rule_id = row.get("id")
+            if not isinstance(name, str) or not isinstance(rule_id, int):
+                continue
+            proc = _run_read(
+                ["gh", "api", f"repos/{self.repo}/rulesets/{rule_id}"],
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise TransportUncertainError(
+                    f"cannot read ruleset details for {name!r}: {proc.stderr[-800:]}"
+                )
+            value = _json_output(proc)
+            if isinstance(value, dict):
+                result[name] = value
+        return result
+
+    def environment_branch_policies(self, environment: str) -> list[dict[str, Any]] | None:
+        proc = _run_read(
+            [
+                "gh",
+                "api",
+                f"repos/{self.repo}/environments/{environment}/deployment-branch-policies?per_page=100",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        data = _json_output(proc)
+        rows = data.get("branch_policies") if isinstance(data, dict) else None
+        return rows if isinstance(rows, list) else None
+
+    def environment_secret_names(self, environment: str) -> set[str] | None:
+        proc = _run_read(
+            [
+                "gh",
+                "secret",
+                "list",
+                "--env",
+                environment,
+                "--repo",
+                self.repo,
+                "--json",
+                "name",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        data = _json_output(proc)
+        return {
+            row["name"]
+            for row in data
+            if isinstance(row, dict) and isinstance(row.get("name"), str)
+        }
+
     def deploy_keys(self) -> list[dict[str, Any]] | None:
-        proc = _run(["gh", "api", f"repos/{self.repo}/keys"], check=False)
+        proc = _run_read(["gh", "api", f"repos/{self.repo}/keys"], check=False)
         if proc.returncode != 0:
             return None
         data = _json_output(proc)
         return data if isinstance(data, list) else None
 
     def secret_names(self) -> set[str] | None:
-        proc = _run(
+        proc = _run_read(
             ["gh", "secret", "list", "--repo", self.repo, "--json", "name"],
             check=False,
         )
@@ -611,7 +716,7 @@ class GitHubTransport:
         return {row["name"] for row in data if isinstance(row, dict) and "name" in row}
 
     def immutable_releases(self) -> dict[str, Any] | None:
-        proc = _run(
+        proc = _run_read(
             [
                 "gh",
                 "api",
@@ -626,8 +731,39 @@ class GitHubTransport:
         data = _json_output(proc)
         return data if isinstance(data, dict) else None
 
+    def write_principals(self) -> list[str] | None:
+        proc = _run_read(
+            [
+                "gh",
+                "api",
+                f"repos/{self.repo}/collaborators?affiliation=all&per_page=100",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        rows = _json_output(proc)
+        if not isinstance(rows, list):
+            return None
+        principals: list[str] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            permissions = row.get("permissions")
+            can_write = bool(
+                isinstance(permissions, dict)
+                and (
+                    permissions.get("push")
+                    or permissions.get("maintain")
+                    or permissions.get("admin")
+                )
+            )
+            if can_write and isinstance(row.get("login"), str):
+                principals.append(row["login"])
+        return sorted(set(principals))
+
     def repository_access(self) -> dict[str, Any]:
-        proc = _run(["gh", "api", f"repos/{self.repo}"], check=False)
+        proc = _run_read(["gh", "api", f"repos/{self.repo}"], check=False)
         if proc.returncode != 0:
             text = (proc.stdout + "\n" + proc.stderr).lower()
             reason = "repository_not_accessible"
@@ -756,6 +892,16 @@ class GitHubTransport:
 class GameExpClient:
     def __init__(self, transport: GitHubTransport):
         self.transport = transport
+        self._repo_doctor_cache: tuple[float, dict[str, Any]] | None = None
+
+    def _repo_doctor_cached(self, *, ttl_seconds: float = 30.0) -> dict[str, Any]:
+        now = time.monotonic()
+        cached = self._repo_doctor_cache
+        if cached is not None and now - cached[0] <= ttl_seconds:
+            return cached[1]
+        value = self.doctor()
+        self._repo_doctor_cache = (now, value)
+        return value
 
     def access_check(self) -> dict[str, Any]:
         access = self.transport.repository_access()
@@ -807,7 +953,7 @@ class GameExpClient:
         )
 
         try:
-            doctor = self.doctor()
+            doctor = self._repo_doctor_cached()
         except Exception as exc:
             doctor = {
                 "status": "UNKNOWN",
@@ -1038,6 +1184,7 @@ class GameExpClient:
                 "manifest_schema_v2": True,
                 "manifest_schema_v3": True,
                 "evaluation_evidence_v1": True,
+                "contextual_surface_v1": True,
                 "iteration_routing_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
@@ -1488,6 +1635,51 @@ class GameExpClient:
             return []
         return rows if isinstance(rows, list) else []
 
+    def _write_version_guard(self) -> dict[str, Any] | None:
+        runtime_version = _runtime_version()
+        try:
+            plugin = self.transport.repository_json("plugins/game-exp/plugin.json")
+        except TransportUncertainError as exc:
+            return {
+                "status": "UNKNOWN",
+                "code": "VERSION_UNVERIFIED",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "retryable": True,
+                "error": str(exc),
+            }
+        repository_version = (
+            plugin.get("version")
+            if isinstance(plugin, dict) and isinstance(plugin.get("version"), str)
+            else None
+        )
+        runtime_tuple = _version_tuple(runtime_version)
+        repository_tuple = _version_tuple(repository_version or "")
+        if runtime_tuple is None or repository_tuple is None:
+            return {
+                "status": "REJECTED",
+                "code": "VERSION_UNVERIFIED",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "repository_version": repository_version,
+                "message_zh": "无法确认 game-exp 运行时与仓库版本；写操作已阻止。",
+            }
+        if runtime_tuple != repository_tuple:
+            return {
+                "status": "REJECTED",
+                "code": "VERSION_MISMATCH",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "repository_version": repository_version,
+                "required_action": (
+                    "UPGRADE_CURRENT_HARNESS"
+                    if runtime_tuple < repository_tuple
+                    else "UPGRADE_REPOSITORY_OR_USE_MATCHING_RUNTIME"
+                ),
+                "message_zh": "game-exp 运行时与仓库版本不一致；写操作已阻止。",
+            }
+        return None
+
     def submit(
         self,
         *,
@@ -1497,6 +1689,9 @@ class GameExpClient:
         actor_claim: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
+        version_block = self._write_version_guard()
+        if version_block is not None:
+            return version_block
         rid = validate_request_id(request_id or new_request_id())
         payload = build_operation_payload(
             operation,
@@ -1653,23 +1848,10 @@ class GameExpClient:
         outcome: str,
         notes: str,
         request_id: str,
-        candidate_id: str | None = None,
+        candidate_id: str,
         comparison: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
-        if candidate_id is None:
-            projection = self.experiment_get(experiment_id)
-            if projection.get("status") != "PASS":
-                return projection
-            candidate_id = projection.get("state", {}).get("current_candidate_id")
-            if not isinstance(candidate_id, str) or not candidate_id:
-                return {
-                    "status": "REJECTED",
-                    "repo": self.transport.repo,
-                    "experiment_id": experiment_id,
-                    "request_id": request_id,
-                    "error": "experiment has no current Candidate",
-                }
         input_value: dict[str, Any] = {
             "experiment_id": experiment_id,
             "candidate_id": candidate_id,
@@ -2612,6 +2794,27 @@ class GameExpClient:
             "action_zh": None,
         }
 
+    @staticmethod
+    def _board_surface_hint(
+        attention: dict[str, Any],
+        next_gate: str,
+    ) -> dict[str, Any]:
+        if attention.get("required") is True:
+            return {
+                "mode": "CONTEXTUAL_PANEL",
+                "surface_when_relevant": True,
+                "reason": attention.get("reason") or next_gate,
+                "message_zh": attention.get("action_zh"),
+                "authoritative": False,
+            }
+        return {
+            "mode": "COMPACT_RESULT",
+            "surface_when_relevant": False,
+            "reason": next_gate,
+            "message_zh": GameExpClient._board_next_gate_zh(next_gate),
+            "authoritative": False,
+        }
+
     def _board_activity(
         self,
         *,
@@ -3300,6 +3503,10 @@ class GameExpClient:
                 item["display"]["attention_section"] = "依赖需复核"
                 item["display"]["attention_reason"] = "实验依赖需要复核"
                 item["display"]["attention_action"] = "确认依赖语义后继续；不会自动淘汰当前实验"
+            item["surface_hint"] = self._board_surface_hint(
+                item.get("attention") or {},
+                str(item.get("next_gate") or "UNKNOWN"),
+            )
 
         for item in items:
             item["card_zh"] = self._board_experiment_card_zh(item)
@@ -4351,6 +4558,7 @@ class GameExpClient:
                 "next_gate": item.get("next_gate"),
                 "next_action_zh": item.get("display", {}).get("next_gate"),
                 "attention": item.get("attention"),
+                "surface_hint": item.get("surface_hint"),
                 "initiator": item.get("initiator"),
                 "contributors": item.get("contributors") or [],
                 "contributors_complete": item.get("contributors_complete"),
@@ -4438,6 +4646,7 @@ class GameExpClient:
                 "next_gate": row.get("next_gate"),
                 "next_action_zh": row.get("display", {}).get("next_gate"),
                 "attention": row.get("attention"),
+                "surface_hint": row.get("surface_hint"),
                 "initiator": row.get("initiator"),
                 "contributors": row.get("contributors") or [],
                 "contributors_source": row.get("contributors_source"),
@@ -5378,10 +5587,91 @@ class GameExpClient:
         }
 
     def status(self) -> dict[str, Any]:
+        runtime_version = _runtime_version()
+        try:
+            ledger_head = self.transport.ledger_head()
+        except TransportUncertainError as exc:
+            return {
+                "status": "UNKNOWN",
+                "code": "LEDGER_HEAD_UNAVAILABLE",
+                "repo": self.transport.repo,
+                "runtime_version": runtime_version,
+                "error": str(exc),
+                "retryable": True,
+            }
+
+        try:
+            access = self.transport.repository_access()
+        except TransportUncertainError as exc:
+            access = {
+                "status": "UNKNOWN",
+                "can_read": True,
+                "can_write": False,
+                "can_admin": False,
+                "reason": str(exc),
+            }
+
+        repository_version = None
+        try:
+            plugin = self.transport.repository_json("plugins/game-exp/plugin.json")
+        except TransportUncertainError:
+            plugin = None
+        if isinstance(plugin, dict) and isinstance(plugin.get("version"), str):
+            repository_version = plugin["version"]
+
+        runtime_tuple = _version_tuple(runtime_version)
+        repository_tuple = _version_tuple(repository_version or "")
+        if runtime_tuple is None or repository_tuple is None:
+            version_state = "UNKNOWN"
+            version_action = "VERIFY_INSTALLATION"
+        elif runtime_tuple == repository_tuple:
+            version_state = "MATCH"
+            version_action = "NONE"
+        elif runtime_tuple < repository_tuple:
+            version_state = "RUNTIME_OLDER"
+            version_action = "UPGRADE_CURRENT_HARNESS"
+        else:
+            version_state = "REPOSITORY_OLDER"
+            version_action = "UPGRADE_REPOSITORY_OR_USE_MATCHING_RUNTIME"
+
+        access_status = str(access.get("status") or "UNKNOWN")
+        overall = (
+            "PASS"
+            if access_status in {"READ_ONLY", "WRITE", "ADMIN"}
+            and version_state == "MATCH"
+            else "WARN"
+            if access_status in {"READ_ONLY", "WRITE", "ADMIN"}
+            else "UNKNOWN"
+        )
         return {
-            "status": "PASS",
+            "status": overall,
             "repo": self.transport.repo,
-            "ledger_head": self.transport.ledger_head(),
+            "ledger_head": ledger_head,
+            "runtime_version": runtime_version,
+            "repository_version": repository_version,
+            "version_state": version_state,
+            "version_action": version_action,
+            "access": {
+                "status": access_status,
+                "can_read": bool(access.get("can_read")),
+                "can_write": bool(access.get("can_write")),
+                "can_admin": bool(access.get("can_admin")),
+            },
+            "protocol": {
+                "manifest_schema_versions": contract_descriptor().get(
+                    "manifest_schema_versions"
+                ),
+                "project_policy_schema_versions": contract_descriptor().get(
+                    "project_policy_schema_versions"
+                ),
+            },
+            "message_zh": (
+                "game-exp 运行时与仓库版本一致。"
+                if version_state == "MATCH"
+                else "game-exp 运行时与仓库版本不一致；先完成版本对齐再执行写操作。"
+                if version_state in {"RUNTIME_OLDER", "REPOSITORY_OLDER"}
+                else "暂时无法确认 game-exp 运行时与仓库版本是否一致。"
+            ),
         }
 
     def archive_health(self, experiment_id: str) -> dict[str, Any]:
@@ -5556,21 +5846,53 @@ class GameExpClient:
         except Exception as exc:
             add("ledger_ref", "FAIL", str(exc))
 
+        trust_mode = None
+        trust_mode_source = "ruleset"
         try:
-            rules = self.transport.rulesets()
-            active_names = {
-                row.get("name")
-                for row in rules
-                if row.get("enforcement") == "active"
-            }
-            required = {
-                "game-exp ledger",
-                "game-exp experiment branches",
-                "game-exp immutable refs",
-                "game-exp protected main",
-            }
-            missing = sorted(required - active_names)
-            add("rulesets", "PASS" if not missing else "FAIL", {"missing": missing})
+            access_snapshot = self.transport.repository_access()
+            owner_type = access_snapshot.get("owner_type")
+            principals = self.transport.write_principals()
+            expected_mode = None
+            if owner_type == "Organization":
+                expected_mode = "multi-principal"
+                trust_mode_source = "repository_owner"
+            elif principals is not None:
+                expected_mode = (
+                    "multi-principal" if len(principals) > 1 else "single-principal"
+                )
+                trust_mode_source = "write_principals"
+
+            details = self.transport.ruleset_details()
+            rule_check = validate_rulesets(details, expected_mode=expected_mode)
+            trust_mode = rule_check.get("trust_mode")
+            rule_check["trust_mode_source"] = trust_mode_source
+            rule_check["write_principal_count"] = (
+                len(principals) if principals is not None else None
+            )
+            add(
+                "rulesets",
+                rule_check["status"],
+                rule_check,
+            )
+            if expected_mode is None:
+                add(
+                    "trust_mode_verification",
+                    "UNKNOWN",
+                    {
+                        "code": "TRUST_MODE_NOT_INDEPENDENTLY_VERIFIED",
+                        "configured_mode": trust_mode,
+                    },
+                )
+            else:
+                add(
+                    "trust_mode_verification",
+                    "PASS",
+                    {
+                        "mode": expected_mode,
+                        "source": trust_mode_source,
+                        "write_principals": principals,
+                    },
+                )
         except Exception as exc:
             detail = str(exc)
             lowered = detail.lower()
@@ -5593,12 +5915,38 @@ class GameExpClient:
             else:
                 add("rulesets", "UNKNOWN", detail)
 
+        policies = self.transport.environment_branch_policies(WRITER_ENVIRONMENT)
+        if policies is None:
+            add(
+                "trusted_writer_environment",
+                "UNKNOWN",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "code": "ENVIRONMENT_UNREADABLE",
+                },
+            )
+        else:
+            normalized = sorted(
+                (row.get("name"), row.get("type") or "branch")
+                for row in policies
+                if isinstance(row, dict)
+            )
+            add(
+                "trusted_writer_environment",
+                "PASS" if normalized == [("main", "branch")] else "FAIL",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "branch_policies": normalized,
+                    "required": [("main", "branch")],
+                },
+            )
+
         keys = self.transport.deploy_keys()
         if keys is None:
             add("trusted_writer_deploy_key", "UNKNOWN", "cannot read deploy keys")
         else:
             write_keys = [k for k in keys if not k.get("read_only", True)]
-            exact = [k for k in write_keys if k.get("title") == "game-exp trusted writer"]
+            exact = [k for k in write_keys if k.get("title") == WRITER_KEY_TITLE]
             add(
                 "trusted_writer_deploy_key",
                 "PASS" if len(exact) == 1 and len(write_keys) == 1 else "FAIL",
@@ -5609,14 +5957,30 @@ class GameExpClient:
                 },
             )
 
-        secrets = self.transport.secret_names()
-        if secrets is None:
-            add("trusted_writer_secret", "UNKNOWN", "cannot list repository secrets")
-        else:
+        env_secrets = self.transport.environment_secret_names(WRITER_ENVIRONMENT)
+        repo_secrets = self.transport.secret_names()
+        if env_secrets is None or repo_secrets is None:
             add(
                 "trusted_writer_secret",
-                "PASS" if "GAME_EXP_WRITER_KEY" in secrets else "FAIL",
-                None,
+                "UNKNOWN",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "environment_secret_visible": env_secrets is not None,
+                    "repository_secret_visible": repo_secrets is not None,
+                },
+            )
+        else:
+            env_present = WRITER_SECRET in env_secrets
+            legacy_repo_present = WRITER_SECRET in repo_secrets
+            add(
+                "trusted_writer_secret",
+                "PASS" if env_present and not legacy_repo_present else "FAIL",
+                {
+                    "environment": WRITER_ENVIRONMENT,
+                    "environment_secret_present": env_present,
+                    "legacy_repository_secret_present": legacy_repo_present,
+                    "required_scope": "environment",
+                },
             )
 
         immutable = self.transport.immutable_releases()
@@ -5666,5 +6030,6 @@ class GameExpClient:
             "status": overall,
             "repo": self.transport.repo,
             "experiment_id": experiment_id,
+            "trust_mode": trust_mode,
             "checks": checks,
         }

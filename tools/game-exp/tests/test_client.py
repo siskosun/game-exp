@@ -9,8 +9,14 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))
 
-from client import ClientError, GameExpClient, TransportUncertainError  # noqa: E402
+from client import (  # noqa: E402
+    ClientError,
+    GameExpClient,
+    TransportUncertainError,
+    _runtime_version,
+)
 from protocol_core import digest_object  # noqa: E402
+from trust_policy import ruleset_templates  # noqa: E402
 
 
 class FakeTransport:
@@ -48,6 +54,9 @@ class FakeTransport:
             {"status": "behind"},
         )
 
+    def write_principals(self):
+        return ["owner"]
+
     def repository_access(self):
         return {
             "status": "WRITE",
@@ -64,6 +73,8 @@ class FakeTransport:
         }
 
     def repository_json(self, path, ref=None):
+        if path == "plugins/game-exp/plugin.json":
+            return {"version": _runtime_version()}
         if path == ".game-exp/project-policy.json":
             return {
                 "schema_version": 2,
@@ -197,11 +208,23 @@ class FakeTransport:
     def rulesets(self):
         return self._rules
 
+    def ruleset_details(self):
+        return {
+            row["name"]: row
+            for row in ruleset_templates("single-principal")
+        }
+
+    def environment_branch_policies(self, environment):
+        return [{"id": 1, "name": "main", "type": "branch"}]
+
+    def environment_secret_names(self, environment):
+        return {"GAME_EXP_WRITER_KEY"}
+
     def deploy_keys(self):
         return [{"title": "game-exp trusted writer", "read_only": False}]
 
     def secret_names(self):
-        return {"GAME_EXP_WRITER_KEY"}
+        return set()
 
     def immutable_releases(self):
         return {"enabled": True, "enforced_by_owner": False}
@@ -519,11 +542,55 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "CONFLICT")
         self.assertEqual(result["conflict_type"], "LOCAL_REQUEST_ID_CONFLICT")
 
-    def test_status_is_explicit_pass(self):
+    def test_status_is_compact_version_and_access_handshake(self):
         transport = FakeTransport()
         result = GameExpClient(transport).status()
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
+        self.assertEqual(result["runtime_version"], _runtime_version())
+        self.assertEqual(result["repository_version"], _runtime_version())
+        self.assertEqual(result["version_state"], "MATCH")
+        self.assertEqual(result["access"]["status"], "WRITE")
+
+    def test_write_is_blocked_when_runtime_and_repository_versions_differ(self):
+        transport = FakeTransport()
+        original = transport.repository_json
+
+        def repository_json(path, ref=None):
+            if path == "plugins/game-exp/plugin.json":
+                return {"version": "9.0.0"}
+            return original(path, ref=ref)
+
+        transport.repository_json = repository_json
+        result = GameExpClient(transport).submit(
+            operation="experiment.bind",
+            input_value={"manifest": {"operation_id": "req_version_guard"}},
+            request_id="req_version_guard",
+        )
+        self.assertEqual(result["status"], "REJECTED")
+        self.assertEqual(result["code"], "VERSION_MISMATCH")
+        self.assertEqual(result["required_action"], "UPGRADE_CURRENT_HARNESS")
+        self.assertEqual(transport.dispatched, [])
+
+    def test_write_is_unknown_when_version_cannot_be_verified(self):
+        transport = FakeTransport()
+        original = transport.repository_json
+
+        def repository_json(path, ref=None):
+            if path == "plugins/game-exp/plugin.json":
+                raise TransportUncertainError("temporary API failure")
+            return original(path, ref=ref)
+
+        transport.repository_json = repository_json
+        result = GameExpClient(transport).submit(
+            operation="experiment.bind",
+            input_value={"manifest": {"operation_id": "req_version_unknown"}},
+            request_id="req_version_unknown",
+        )
+        self.assertEqual(result["status"], "UNKNOWN")
+        self.assertEqual(result["code"], "VERSION_UNVERIFIED")
+        self.assertTrue(result["retryable"])
+        self.assertEqual(transport.dispatched, [])
 
     def test_access_check_reports_write_and_read_only(self):
         transport = FakeTransport()
@@ -1186,9 +1253,44 @@ class ClientTests(unittest.TestCase):
         for forbidden in display["render_contract"]["forbidden_primary_tokens"]:
             self.assertNotIn(forbidden, visible)
 
+    def test_board_doctor_cache_reuses_recent_repo_health(self):
+        client = GameExpClient(FakeTransport())
+        with patch.object(
+            client,
+            "doctor",
+            return_value={"status": "PASS", "checks": []},
+        ) as doctor:
+            first = client._repo_doctor_cached()
+            second = client._repo_doctor_cached()
+        self.assertIs(first, second)
+        doctor.assert_called_once_with()
+
+    def test_surface_hint_is_compact_for_normal_progress(self):
+        hint = GameExpClient._board_surface_hint(
+            {"required": False, "reason": None, "action_zh": None},
+            "IMPLEMENT_OR_REVIEW",
+        )
+        self.assertEqual(hint["mode"], "COMPACT_RESULT")
+        self.assertFalse(hint["surface_when_relevant"])
+        self.assertFalse(hint["authoritative"])
+
+    def test_surface_hint_uses_contextual_panel_for_human_gate(self):
+        hint = GameExpClient._board_surface_hint(
+            {
+                "required": True,
+                "reason": "HUMAN_REVIEW",
+                "action_zh": "提交人工评审结果（通过 / 未通过）",
+            },
+            "HUMAN_REVIEW",
+        )
+        self.assertEqual(hint["mode"], "CONTEXTUAL_PANEL")
+        self.assertTrue(hint["surface_when_relevant"])
+        self.assertEqual(hint["reason"], "HUMAN_REVIEW")
+        self.assertFalse(hint["authoritative"])
+
     def test_empty_board_failed_doctor_routes_to_project_repair(self):
         transport = FakeTransport()
-        transport._rules = []
+        transport.ruleset_details = lambda: {}
         result = GameExpClient(transport).board()
 
         self.assertEqual(result["project"]["readiness"], "PROJECT_INCOMPLETE")
@@ -1600,7 +1702,7 @@ class ClientTests(unittest.TestCase):
                 "HTTP 403: Upgrade to GitHub Pro or make this repository public "
                 "to enable this feature."
             )
-        transport.rulesets = blocked_rulesets
+        transport.ruleset_details = blocked_rulesets
         result = GameExpClient(transport).doctor()
         self.assertEqual(result["status"], "FAIL")
         rulesets = next(row for row in result["checks"] if row["name"] == "rulesets")

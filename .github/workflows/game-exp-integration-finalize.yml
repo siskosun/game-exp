@@ -38,7 +38,7 @@ jobs:
       actor_login: ${{ steps.guard.outputs.actor_login }}
     steps:
       - name: Checkout request-id guard
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -47,7 +47,7 @@ jobs:
             tools/game-exp/workflow_guard.py
             tools/game-exp/protocol_core.py
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Select the first run for this request id
@@ -69,10 +69,11 @@ jobs:
     needs: dedupe
     if: needs.dedupe.outputs.primary == 'true'
     runs-on: ubuntu-latest
+    environment: game-exp-trusted-writer
     timeout-minutes: 10
     steps:
       - name: Checkout trusted integration control
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -85,7 +86,7 @@ jobs:
             tools/game-exp/protocol_core.py
           sparse-checkout-cone-mode: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -168,7 +169,7 @@ jobs:
           assert x.get("domain_status") == "APPLIED", x
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: game-exp-integration-finalize-${{ github.run_id }}

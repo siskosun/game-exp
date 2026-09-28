@@ -13,16 +13,20 @@ from pathlib import Path
 from typing import Any
 
 from client import GameExpClient, GitHubTransport
+from trust_policy import (
+    LEGACY_RULESET_NAMES,
+    RULESET_NAMES,
+    TRUST_MODES,
+    WRITER_ENVIRONMENT,
+    WRITER_KEY_TITLE,
+    WRITER_SECRET,
+    ruleset_semantics,
+    ruleset_satisfies,
+    ruleset_templates,
+    strengthen_ruleset,
+)
 
 API_VERSION = "2022-11-28"
-WRITER_KEY_TITLE = "game-exp trusted writer"
-WRITER_SECRET = "GAME_EXP_WRITER_KEY"
-REQUIRED_RULESET_NAMES = (
-    "game-exp ledger",
-    "game-exp experiment branches",
-    "game-exp immutable refs",
-    "game-exp protected main",
-)
 
 
 class ProjectSetupError(RuntimeError):
@@ -333,6 +337,158 @@ def _secret_names(repo: str) -> set[str]:
     }
 
 
+def _environment_secret_names(repo: str) -> set[str]:
+    proc = _run(
+        [
+            "gh",
+            "secret",
+            "list",
+            "--env",
+            WRITER_ENVIRONMENT,
+            "--repo",
+            repo,
+            "--json",
+            "name",
+        ],
+        check=False,
+    )
+    if proc.returncode != 0:
+        return set()
+    data = _json(proc)
+    if not isinstance(data, list):
+        raise ProjectSetupError("environment secret response must be a list")
+    return {
+        row["name"]
+        for row in data
+        if isinstance(row, dict) and isinstance(row.get("name"), str)
+    }
+
+
+def _ensure_writer_environment(repo: str) -> dict[str, Any]:
+    desired = {
+        "wait_timer": 0,
+        "prevent_self_review": False,
+        "deployment_branch_policy": {
+            "protected_branches": False,
+            "custom_branch_policies": True,
+        },
+    }
+    _gh_api(
+        repo,
+        f"environments/{WRITER_ENVIRONMENT}",
+        method="PUT",
+        body=desired,
+    )
+    policies_proc = _gh_api(
+        repo,
+        f"environments/{WRITER_ENVIRONMENT}/deployment-branch-policies?per_page=100",
+        check=False,
+    )
+    if policies_proc.returncode != 0:
+        raise ProjectSetupError("cannot read Trusted Writer environment branch policies")
+    payload = _json(policies_proc)
+    policies = payload.get("branch_policies") if isinstance(payload, dict) else None
+    if not isinstance(policies, list):
+        raise ProjectSetupError("environment branch policy response is invalid")
+
+    main_seen = False
+    removed: list[str] = []
+    for row in policies:
+        if not isinstance(row, dict):
+            continue
+        policy_id = row.get("id")
+        name = row.get("name")
+        policy_type = row.get("type") or "branch"
+        if name == "main" and policy_type == "branch":
+            main_seen = True
+            continue
+        if isinstance(policy_id, int):
+            _gh_api(
+                repo,
+                f"environments/{WRITER_ENVIRONMENT}/deployment-branch-policies/{policy_id}",
+                method="DELETE",
+            )
+            removed.append(str(name))
+    if not main_seen:
+        _gh_api(
+            repo,
+            f"environments/{WRITER_ENVIRONMENT}/deployment-branch-policies",
+            method="POST",
+            body={"name": "main", "type": "branch"},
+        )
+
+    verify = _json(
+        _gh_api(
+            repo,
+            f"environments/{WRITER_ENVIRONMENT}/deployment-branch-policies?per_page=100",
+        )
+    )
+    verified = verify.get("branch_policies") if isinstance(verify, dict) else None
+    active = [
+        (row.get("name"), row.get("type") or "branch")
+        for row in (verified or [])
+        if isinstance(row, dict)
+    ]
+    if active != [("main", "branch")]:
+        raise ProjectSetupError(
+            "Trusted Writer environment must allow deployments from main only"
+        )
+    return {
+        "status": "PASS",
+        "environment": WRITER_ENVIRONMENT,
+        "branch_policies": ["main"],
+        "removed_policies": removed,
+    }
+
+
+def _write_principals(repo: str) -> list[str] | None:
+    proc = _gh_api(
+        repo,
+        "collaborators?affiliation=all&per_page=100",
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    rows = _json(proc)
+    if not isinstance(rows, list):
+        return None
+    result: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        permissions = row.get("permissions")
+        can_write = bool(
+            isinstance(permissions, dict)
+            and (
+                permissions.get("push")
+                or permissions.get("maintain")
+                or permissions.get("admin")
+            )
+        )
+        if can_write and isinstance(row.get("login"), str):
+            result.append(row["login"])
+    return sorted(set(result))
+
+
+def _resolve_trust_mode(repo: str, requested: str) -> str:
+    if requested in TRUST_MODES:
+        return requested
+    if requested != "auto":
+        raise ProjectSetupError(
+            "trust_mode must be auto, single-principal, or multi-principal"
+        )
+    metadata = _repo_metadata(repo)
+    owner = metadata.get("owner") if isinstance(metadata, dict) else None
+    if isinstance(owner, dict) and owner.get("type") == "Organization":
+        return "multi-principal"
+    principals = _write_principals(repo)
+    if principals is None:
+        raise ProjectSetupError(
+            "cannot determine repository write principals; rerun with an explicit trust_mode"
+        )
+    return "multi-principal" if len(principals) > 1 else "single-principal"
+
+
 def _delete_deploy_key(repo: str, key_id: int) -> None:
     _gh_api(repo, f"keys/{key_id}", method="DELETE")
 
@@ -413,15 +569,8 @@ def _ensure_writer_credentials(repo: str) -> dict[str, Any]:
     keys = _deploy_keys(repo)
     write_keys = [row for row in keys if not row.get("read_only", True)]
     matching = [row for row in write_keys if row.get("title") == WRITER_KEY_TITLE]
-    secrets = _secret_names(repo)
-
-    if len(write_keys) == 1 and len(matching) == 1 and WRITER_SECRET in secrets:
-        return {
-            "status": "PASS",
-            "changed": False,
-            "deploy_key_id": matching[0].get("id"),
-            "secret": WRITER_SECRET,
-        }
+    repo_secrets = _secret_names(repo)
+    env_secrets = _environment_secret_names(repo)
 
     unrelated = [row for row in write_keys if row.get("title") != WRITER_KEY_TITLE]
     if unrelated:
@@ -432,13 +581,39 @@ def _ensure_writer_credentials(repo: str) -> dict[str, Any]:
     if len(matching) > 1:
         raise ProjectSetupError("multiple game-exp Trusted Writer deploy keys exist")
 
-    private, public = _generate_writer_keypair()
+    if (
+        len(write_keys) == 1
+        and len(matching) == 1
+        and WRITER_SECRET in env_secrets
+    ):
+        changed = False
+        if WRITER_SECRET in repo_secrets:
+            deleted = _run(
+                ["gh", "secret", "delete", WRITER_SECRET, "--repo", repo],
+                check=False,
+            )
+            if deleted.returncode != 0:
+                raise ProjectSetupError(
+                    "Trusted Writer environment secret is healthy but the legacy "
+                    "repository secret could not be removed"
+                )
+            changed = True
+        return {
+            "status": "PASS",
+            "changed": changed,
+            "deploy_key_id": matching[0].get("id"),
+            "secret": WRITER_SECRET,
+            "secret_scope": "environment",
+            "environment": WRITER_ENVIRONMENT,
+        }
 
+    private, public = _generate_writer_keypair()
+    old_key_id = None
     if matching:
-        key_id = matching[0].get("id")
-        if not isinstance(key_id, int):
+        old_key_id = matching[0].get("id")
+        if not isinstance(old_key_id, int):
             raise ProjectSetupError("existing Trusted Writer deploy key id is invalid")
-        _delete_deploy_key(repo, key_id)
+        _delete_deploy_key(repo, old_key_id)
 
     created = _json(
         _gh_api(
@@ -457,7 +632,16 @@ def _ensure_writer_credentials(repo: str) -> dict[str, Any]:
         raise ProjectSetupError("Trusted Writer deploy key creation did not return an id")
 
     secret_proc = _run(
-        ["gh", "secret", "set", WRITER_SECRET, "--repo", repo],
+        [
+            "gh",
+            "secret",
+            "set",
+            WRITER_SECRET,
+            "--env",
+            WRITER_ENVIRONMENT,
+            "--repo",
+            repo,
+        ],
         check=False,
         input_bytes=private.encode("utf-8"),
         timeout=60,
@@ -465,147 +649,52 @@ def _ensure_writer_credentials(repo: str) -> dict[str, Any]:
     if secret_proc.returncode != 0:
         _delete_deploy_key(repo, created_id)
         raise ProjectSetupError(
-            "failed setting Trusted Writer secret; newly created deploy key was rolled back: "
-            + secret_proc.stderr[-1200:]
+            "failed setting Trusted Writer Environment secret; newly created deploy key "
+            "was rolled back: " + secret_proc.stderr[-1200:]
         )
+
+    if WRITER_SECRET in repo_secrets:
+        deleted = _run(
+            ["gh", "secret", "delete", WRITER_SECRET, "--repo", repo],
+            check=False,
+        )
+        if deleted.returncode != 0:
+            raise ProjectSetupError(
+                "environment secret was created but legacy repository secret removal failed"
+            )
 
     keys_after = _deploy_keys(repo)
     write_after = [row for row in keys_after if not row.get("read_only", True)]
     exact_after = [
         row for row in write_after if row.get("title") == WRITER_KEY_TITLE
     ]
-    secrets_after = _secret_names(repo)
-    if len(write_after) != 1 or len(exact_after) != 1 or WRITER_SECRET not in secrets_after:
+    env_after = _environment_secret_names(repo)
+    repo_after = _secret_names(repo)
+    if (
+        len(write_after) != 1
+        or len(exact_after) != 1
+        or WRITER_SECRET not in env_after
+        or WRITER_SECRET in repo_after
+    ):
         raise ProjectSetupError("Trusted Writer credential verification failed")
     return {
         "status": "PASS",
         "changed": True,
         "deploy_key_id": exact_after[0].get("id"),
         "secret": WRITER_SECRET,
+        "secret_scope": "environment",
+        "environment": WRITER_ENVIRONMENT,
     }
 
 
-RULESET_TEMPLATES: tuple[dict[str, Any], ...] = (
-    {
-        "name": "game-exp ledger",
-        "target": "branch",
-        "enforcement": "active",
-        "bypass_actors": [
-            {"actor_id": None, "actor_type": "DeployKey", "bypass_mode": "always"}
-        ],
-        "conditions": {
-            "ref_name": {
-                "exclude": [],
-                "include": ["refs/heads/game-exp/ledger"],
-            }
-        },
-        "rules": [
-            {"type": "update", "parameters": {"update_allows_fetch_and_merge": False}},
-            {"type": "deletion"},
-            {"type": "non_fast_forward"},
-            {"type": "creation"},
-        ],
-    },
-    {
-        "name": "game-exp experiment branches",
-        "target": "branch",
-        "enforcement": "active",
-        "bypass_actors": [
-            {"actor_id": None, "actor_type": "DeployKey", "bypass_mode": "always"}
-        ],
-        "conditions": {
-            "ref_name": {
-                "exclude": [],
-                "include": ["refs/heads/exp/*"],
-            }
-        },
-        "rules": [
-            {"type": "deletion"},
-            {"type": "non_fast_forward"},
-            {"type": "creation"},
-        ],
-    },
-    {
-        "name": "game-exp immutable refs",
-        "target": "tag",
-        "enforcement": "active",
-        "bypass_actors": [
-            {"actor_id": None, "actor_type": "DeployKey", "bypass_mode": "always"}
-        ],
-        "conditions": {
-            "ref_name": {
-                "exclude": [],
-                "include": [
-                    "refs/tags/exp-base/*",
-                    "refs/tags/exp-final/*",
-                    "refs/tags/exp-candidate/**/*",
-                    "refs/tags/exp-rehearsal/**/*",
-                ],
-            }
-        },
-        "rules": [
-            {"type": "creation"},
-            {"type": "update", "parameters": {"update_allows_fetch_and_merge": False}},
-            {"type": "deletion"},
-            {"type": "non_fast_forward"},
-        ],
-    },
-    {
-        "name": "game-exp protected main",
-        "target": "branch",
-        "enforcement": "active",
-        "bypass_actors": [],
-        "conditions": {
-            "ref_name": {
-                "exclude": [],
-                "include": ["refs/heads/main"],
-            }
-        },
-        "rules": [
-            {
-                "type": "pull_request",
-                "parameters": {
-                    "required_approving_review_count": 0,
-                    "dismiss_stale_reviews_on_push": False,
-                    "required_reviewers": [],
-                    "require_code_owner_review": False,
-                    "require_last_push_approval": False,
-                    "required_review_thread_resolution": False,
-                    "require_extra_approval_for_unattributed_changes": True,
-                    "allowed_merge_methods": ["merge", "squash", "rebase"],
-                },
-            },
-            {"type": "deletion"},
-            {"type": "non_fast_forward"},
-        ],
-    },
-)
+RULESET_TEMPLATES = ruleset_templates("single-principal")
 
 
 def _ruleset_semantics(value: dict[str, Any]) -> dict[str, Any]:
-    rules: list[Any] = []
-    for raw_rule in value.get("rules") or []:
-        if not isinstance(raw_rule, dict):
-            rules.append(raw_rule)
-            continue
-        rule = dict(raw_rule)
-        if rule.get("type") == "update":
-            parameters = dict(rule.get("parameters") or {})
-            parameters.setdefault("update_allows_fetch_and_merge", False)
-            rule["parameters"] = parameters
-        rules.append(rule)
-
-    return {
-        "name": value.get("name"),
-        "target": value.get("target"),
-        "enforcement": value.get("enforcement"),
-        "bypass_actors": value.get("bypass_actors"),
-        "conditions": value.get("conditions"),
-        "rules": rules,
-    }
+    return ruleset_semantics(value)
 
 
-def _ensure_rulesets(repo: str) -> dict[str, Any]:
+def _ensure_rulesets(repo: str, trust_mode: str) -> dict[str, Any]:
     probe = _ruleset_probe(repo)
     if probe["status"] != "PASS":
         raise ProjectSetupError(
@@ -616,9 +705,10 @@ def _ensure_rulesets(repo: str) -> dict[str, Any]:
         for row in probe.get("rulesets", [])
         if isinstance(row, dict) and isinstance(row.get("name"), str)
     }
-    changed: list[str] = []
+    created: list[str] = []
+    updated: list[str] = []
     ids: dict[str, int] = {}
-    for template in RULESET_TEMPLATES:
+    for template in ruleset_templates(trust_mode):
         name = template["name"]
         existing = current.get(name)
         if existing is not None:
@@ -626,26 +716,64 @@ def _ensure_rulesets(repo: str) -> dict[str, Any]:
             if not isinstance(rule_id, int):
                 raise ProjectSetupError(f"existing ruleset {name!r} has no valid id")
             full = _json(_gh_api(repo, f"rulesets/{rule_id}"))
-            if _ruleset_semantics(full) != _ruleset_semantics(template):
-                raise ProjectSetupError(
-                    f"existing ruleset {name!r} differs from the verified game-exp template"
+            if not ruleset_satisfies(full, template):
+                repaired = strengthen_ruleset(full, template)
+                changed = _json(
+                    _gh_api(
+                        repo,
+                        f"rulesets/{rule_id}",
+                        method="PUT",
+                        body=repaired,
+                    )
                 )
+                if not isinstance(changed, dict):
+                    raise ProjectSetupError(f"ruleset {name!r} update failed")
+                updated.append(name)
             ids[name] = rule_id
             continue
 
-        created = _json(
+        created_row = _json(
             _gh_api(repo, "rulesets", method="POST", body=template)
         )
-        rule_id = created.get("id")
+        rule_id = created_row.get("id")
         if not isinstance(rule_id, int):
             raise ProjectSetupError(f"ruleset {name!r} creation did not return an id")
         ids[name] = rule_id
-        changed.append(name)
+        created.append(name)
+
+    removed_legacy: list[str] = []
+    for legacy_name in sorted(LEGACY_RULESET_NAMES):
+        existing = current.get(legacy_name)
+        if existing is None or legacy_name in RULESET_NAMES:
+            continue
+        rule_id = existing.get("id")
+        if isinstance(rule_id, int):
+            _gh_api(repo, f"rulesets/{rule_id}", method="DELETE")
+            removed_legacy.append(legacy_name)
+
+    verify_probe = _ruleset_probe(repo)
+    verify_rows = {
+        row.get("name"): row
+        for row in verify_probe.get("rulesets", [])
+        if isinstance(row, dict) and isinstance(row.get("name"), str)
+    }
+    for template in ruleset_templates(trust_mode):
+        name = template["name"]
+        summary = verify_rows.get(name)
+        if not isinstance(summary, dict) or not isinstance(summary.get("id"), int):
+            raise ProjectSetupError(f"ruleset {name!r} missing after provisioning")
+        full = _json(_gh_api(repo, f"rulesets/{summary['id']}"))
+        if not ruleset_satisfies(full, template):
+            raise ProjectSetupError(f"ruleset {name!r} failed semantic verification")
+
     return {
         "status": "PASS",
-        "changed": bool(changed),
-        "created": changed,
+        "changed": bool(created or updated or removed_legacy),
+        "created": created,
+        "updated": updated,
+        "removed_legacy": removed_legacy,
         "ids": ids,
+        "trust_mode": trust_mode,
     }
 
 
@@ -797,7 +925,12 @@ def _run_selftest(repo: str) -> dict[str, Any]:
     }
 
 
-def provision(repo: str, *, run_selftest: bool = True) -> dict[str, Any]:
+def provision(
+    repo: str,
+    *,
+    run_selftest: bool = True,
+    trust_mode: str = "auto",
+) -> dict[str, Any]:
     gate = preflight(repo)
     if gate["status"] != "PASS":
         return {
@@ -807,6 +940,7 @@ def provision(repo: str, *, run_selftest: bool = True) -> dict[str, Any]:
             "preflight": gate,
         }
 
+    resolved_trust_mode = _resolve_trust_mode(repo, trust_mode)
     steps: list[dict[str, Any]] = []
 
     def step(name: str, func):
@@ -815,10 +949,11 @@ def provision(repo: str, *, run_selftest: bool = True) -> dict[str, Any]:
         return result
 
     step("ledger_ref", lambda: _ensure_ledger(repo))
+    step("trusted_writer_environment", lambda: _ensure_writer_environment(repo))
     step("trusted_writer", lambda: _ensure_writer_credentials(repo))
     step("immutable_releases", lambda: _ensure_immutable_releases(repo))
     step("repository_baseline", lambda: _ensure_repository_baseline(repo))
-    step("rulesets", lambda: _ensure_rulesets(repo))
+    step("rulesets", lambda: _ensure_rulesets(repo, resolved_trust_mode))
     if run_selftest:
         step("trusted_writer_selftest", lambda: _run_selftest(repo))
 
@@ -828,6 +963,7 @@ def provision(repo: str, *, run_selftest: bool = True) -> dict[str, Any]:
         "status": "PASS" if complete else "FAIL",
         "repo": repo,
         "complete": complete,
+        "trust_mode": resolved_trust_mode,
         "steps": steps,
         "doctor": doctor,
     }

@@ -96,9 +96,11 @@ GAME_EXP_CONFORMANCE_SESSION=<path-to-session.json>
 
 Then use:
 
-- `game_exp_conformance_start`
-- the normal `game_exp_*` tools;
-- `game_exp_conformance_result`.
+- `game_exp_conformance_suite` to inspect the fixed suite;
+- `game_exp_conformance_start` to create a synthetic case;
+- the normal `game_exp_*` tools against that case;
+- `game_exp_conformance_result` to evaluate one case;
+- `game_exp_conformance_compare` to compare baseline/candidate reports.
 
 When the conformance session environment variable is set, lifecycle tools are synthetic and do not contact GitHub. Results include `conformance_simulation=true`.
 

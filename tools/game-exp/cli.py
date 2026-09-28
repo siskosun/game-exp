@@ -6,7 +6,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from client import ClientError, GameExpClient, GitHubTransport
+from client import (
+    ClientError,
+    GameExpClient,
+    GitHubTransport,
+    TransportUncertainError,
+)
 from conformance_core import (
     ConformanceClient,
     aggregate as conformance_aggregate,
@@ -108,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-selftest",
         action="store_true",
         help="diagnostic only; a skipped self-test can never count as complete setup",
+    )
+    project_init.add_argument(
+        "--trust-mode",
+        choices=("auto", "single-principal", "multi-principal"),
+        default="auto",
+        help="repository trust policy mode",
     )
 
     sub.add_parser(
@@ -244,7 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("experiment_id")
     review.add_argument("--outcome", choices=("PASS", "FAIL"), required=True)
     review.add_argument("--notes", required=True)
-    review.add_argument("--candidate-id")
+    review.add_argument("--candidate-id", required=True)
     review.add_argument("--comparison-json")
     review.add_argument("--request-id", required=True)
     review.add_argument("--actor-claim")
@@ -405,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
                     result = project_provision(
                         repo,
                         run_selftest=not args.skip_selftest,
+                        trust_mode=args.trust_mode,
                     )
                     if args.skip_selftest and result.get("status") == "PASS":
                         result["status"] = "INCOMPLETE"
@@ -621,6 +633,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ap.error("unknown command")
             return 2
+    except TransportUncertainError as exc:
+        result = {
+            "status": "UNKNOWN",
+            "code": "TRANSPORT_UNCERTAIN",
+            "error": str(exc),
+            "retryable": True,
+        }
+        _print_result(result, as_json=args.json)
+        return 1
     except (ProtocolError, ClientError, OSError, ValueError, json.JSONDecodeError) as exc:
         result = {
             "status": "REJECTED",

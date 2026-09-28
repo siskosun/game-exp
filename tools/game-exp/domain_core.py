@@ -3172,7 +3172,10 @@ def plan_domain_mutation(
             trusted_rehearsal=trusted_rehearsal,
         )
     if operation != "experiment.bind":
-        return DomainPlan(status="REQUEST_ONLY", experiment_id=None, writes={})
+        raise DomainError(
+            f"unsupported domain operation: {operation}",
+            code="DOMAIN_OPERATION_UNSUPPORTED",
+        )
 
     input_value = _mapping(payload.get("input"), "operation.input")
     _expect_keys(input_value, {"manifest"}, where="operation.input")
