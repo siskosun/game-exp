@@ -54,6 +54,9 @@ class FakeTransport:
             {"status": "behind"},
         )
 
+    def write_principals(self):
+        return ["owner"]
+
     def repository_access(self):
         return {
             "status": "WRITE",
