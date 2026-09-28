@@ -72,6 +72,7 @@ Project validation policy is repository-local and independent from Manifest sche
 - Project policy schema v1 remains compatible and is limited to the legacy `node-npm` shape.
 - Project policy schema v2 keeps install/test/build as argv arrays and makes the adapter generic.
 - Project policy schema v3 adds one protected `evaluation` argv command plus the fixed `.game-exp/evaluation-output` directory. Use it only when the repository is ready to participate in Evaluation Evidence v1.
+- The evaluation argv must execute a runner from `control/.game-exp/evaluation/`, checked out from the protected workflow source rather than the experiment branch.
 - For `node-npm`, schema v2/v3 requires an exact `toolchain.node_version`. Trusted workflows use that value with `actions/setup-node`; they no longer require a repository `.node-version` file.
 - For adapters other than `node-npm`, `toolchain` is currently empty and game-exp performs no implicit runtime installation. Declared argv commands must be self-contained on the trusted `ubuntu-latest` runner.
 
