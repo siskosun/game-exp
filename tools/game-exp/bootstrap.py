@@ -287,7 +287,7 @@ class Bootstrapper:
         block = (
             f"{mcp_header}\n"
             'command = "uv"\n'
-            'args = ["run", "--with", "mcp>=2,<3", "python", '
+            'args = ["run", "--with", "mcp==2.2.0", "python", '
             '"tools/game-exp/mcp_server.py"]\n'
             'enabled = true\n'
             f'env = {{ GAME_EXP_REPO = "{self.repo}" }}\n\n'
