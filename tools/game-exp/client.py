@@ -1292,6 +1292,8 @@ class GameExpClient:
             "shareable_playable_delivery": {
                 "schema_version": 1,
                 "provider": "github-pages",
+                "deployment_mode": "actions-workflow",
+                "managed_workflow": ".github/workflows/game-exp-pages.yml",
                 "auto_preference_scope": "public_repository_handoff_only",
                 "immutable_version_key": "result_source_sha",
                 "version_path": "play/<result_source_sha>/",
@@ -4662,6 +4664,8 @@ class GameExpClient:
                     and board.get("repository", {}).get("private") is False
                 ),
                 "preferred_provider": "github-pages",
+                "deployment_mode": "actions-workflow",
+                "managed_workflow": ".github/workflows/game-exp-pages.yml",
                 "immutable_version_key": "result_source_sha",
                 "path_scheme": "play/<result_source_sha>/",
                 "requires_deployment_verification": True,
@@ -4673,8 +4677,8 @@ class GameExpClient:
                     "MISSING",
                 ],
                 "note_zh": (
-                    "公开仓库优先由原型执行器发布不可变的 GitHub Pages 试玩地址；"
-                    "只有部署内容和真实浏览器试玩都验证后，才回填 verified=true 的 SHAREABLE_URL。"
+                    "公开仓库优先由原型执行器写入不可变试玩版本，并通过 game-exp 管理的 GitHub Actions Pages 工作流部署；"
+                    "只有工作流部署和真实浏览器试玩都验证后，才回填 verified=true 的 SHAREABLE_URL。"
                 ),
             },
             "return_contract": {

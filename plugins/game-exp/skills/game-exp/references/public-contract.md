@@ -489,10 +489,10 @@ This contract does not add a lifecycle state, shared-memory service, CRDT layer,
 For a public repository:
 
 - `delivery_request.prefer_shareable_url=true`;
-- preferred provider is `github-pages`;
+- preferred provider is `github-pages` with `deployment_mode=actions-workflow` and managed workflow `.github/workflows/game-exp-pages.yml`;
 - immutable version identity is the exact `result_source_sha`;
 - the intended stable path is `play/<result_source_sha>/`;
-- the prototype executor owns publishing and browser/player verification;
+- the prototype executor owns immutable `gh-pages` storage, dispatches the managed Pages workflow, and owns browser/player verification;
 - game-exp never becomes the hosting service and never treats successful deployment as Review/PROMISING/SELECTED evidence.
 
 A previous Candidate may regain a direct playable link when its `source_sha` matches a historical participant-reported `work.release.delivery.playable` with `kind=SHAREABLE_URL` and `verified=true`. Otherwise the existing retained Candidate artifact fallback remains unchanged.

@@ -116,6 +116,23 @@ class WorkflowInvariantTests(unittest.TestCase):
             self.assertIn("ref: ${{ github.workflow_sha }}", block)
             self.assertIn("persist-credentials: false", block)
 
+    def test_pages_deploy_is_static_only_and_separate_from_trusted_writer(self):
+        path = WORKFLOW_DIR / "game-exp-pages.yml"
+        text = path.read_text(encoding="utf-8")
+        blocks = job_blocks(text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("contents: read", text)
+        self.assertIn("pages: write", text)
+        self.assertIn("id-token: write", text)
+        self.assertIn("environment:", text)
+        self.assertIn("name: github-pages", text)
+        self.assertIn("ref: gh-pages", text)
+        self.assertIn("persist-credentials: false", text)
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertNotIn("secrets.GAME_EXP_WRITER_KEY", text)
+        self.assertNotRegex(text, r"(?m)^\s*-?\s*run:")
+        self.assertEqual(set(blocks), {"deploy"})
+
     def test_trusted_writer_selftest_keeps_environment_protection(self):
         path = WORKFLOW_DIR / "game-exp-trusted-writer-selftest.yml"
         blocks = job_blocks(path.read_text(encoding="utf-8"))

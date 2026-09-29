@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 - 2026-09-29
+
+- Replace the legacy GitHub Pages build queue with a game-exp-managed GitHub Actions Pages deployment workflow.
+- Bootstrap now installs `.github/workflows/game-exp-pages.yml` into target repositories with SHA-pinned checkout/configure/upload/deploy actions.
+- Prototype executors keep immutable static versions on `gh-pages`, dispatch the managed workflow from the default branch, bind to the exact version-key run, and verify the served marker/page before reporting deployment success.
+- The Pages workflow has only `contents: read`, `pages: write`, and `id-token: write`; it never references the Trusted Writer secret or executes code from `gh-pages`.
+- Existing legacy Pages configuration is migrated automatically only when it is the publisher-owned `gh-pages` source; unrelated Pages configurations remain untouched.
+
 ## 1.2.0 - 2026-09-29
 
 - Add shareable playable delivery v1 without moving hosting or lifecycle authority into game-exp.

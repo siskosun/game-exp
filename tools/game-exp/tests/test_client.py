@@ -549,10 +549,10 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
         self.assertEqual(result["runtime_version"], _runtime_version())
-        self.assertEqual(result["runtime_identity"]["version"], "1.2.0")
+        self.assertEqual(result["runtime_identity"]["version"], "1.2.1")
         self.assertEqual(
             result["runtime_identity"]["build_identity"],
-            "version:1.2.0",
+            "version:1.2.1",
         )
         self.assertEqual(result["repository_version"], _runtime_version())
         self.assertEqual(result["version_state"], "MATCH")
@@ -1112,6 +1112,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(
             handoff["delivery_request"]["preferred_provider"],
             "github-pages",
+        )
+        self.assertEqual(
+            handoff["delivery_request"]["deployment_mode"],
+            "actions-workflow",
+        )
+        self.assertEqual(
+            handoff["delivery_request"]["managed_workflow"],
+            ".github/workflows/game-exp-pages.yml",
         )
         self.assertEqual(
             handoff["delivery_request"]["immutable_version_key"],
@@ -1922,8 +1930,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["contract"]["version"], "1.0")
         runtime_identity = result["runtime_identity"]
-        self.assertEqual(runtime_identity["version"], "1.2.0")
-        self.assertEqual(runtime_identity["build_identity"], "version:1.2.0")
+        self.assertEqual(runtime_identity["version"], "1.2.1")
+        self.assertEqual(runtime_identity["build_identity"], "version:1.2.1")
         self.assertEqual(runtime_identity["build_identity_kind"], "version-only")
         self.assertIsNone(runtime_identity["source_digest"])
         self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2, 3])
@@ -1947,6 +1955,11 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["shareable_playable_delivery_v1"])
         shareable = result["shareable_playable_delivery"]
         self.assertEqual(shareable["provider"], "github-pages")
+        self.assertEqual(shareable["deployment_mode"], "actions-workflow")
+        self.assertEqual(
+            shareable["managed_workflow"],
+            ".github/workflows/game-exp-pages.yml",
+        )
         self.assertEqual(shareable["immutable_version_key"], "result_source_sha")
         self.assertTrue(shareable["executor_owns_publish"])
         self.assertFalse(shareable["game_exp_hosts_playable"])

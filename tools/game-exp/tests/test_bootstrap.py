@@ -55,6 +55,10 @@ class BootstrapTests(unittest.TestCase):
             plan = Bootstrapper(source, target, "acme/game").plan()
             target_resolved = target.resolve()
             by_rel = {p.path.relative_to(target_resolved).as_posix(): p.content for p in plan}
+            self.assertIn(
+                ".github/workflows/game-exp-pages.yml",
+                by_rel,
+            )
             config = by_rel[".codex/config.toml"].decode()
             self.assertIn('GAME_EXP_REPO = "acme/game"', config)
             plugin = json.loads(by_rel["plugins/game-exp/plugin.json"])
