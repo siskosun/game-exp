@@ -1033,6 +1033,11 @@ class ClientTests(unittest.TestCase):
         self.assertIn("source_sha", handoff["return_contract"]["required"])
         self.assertIn("artifacts", handoff["return_contract"]["required"])
         self.assertIn("build_identity", handoff["return_contract"]["required"])
+        self.assertIn("iteration_delivery", handoff["return_contract"]["required"])
+        self.assertEqual(
+            handoff["return_contract"]["iteration_delivery"]["persist_via"],
+            "work.release.delivery",
+        )
 
         self.assertEqual(
             result["focus"],
@@ -1846,6 +1851,18 @@ class ClientTests(unittest.TestCase):
         self.assertFalse(evaluation["persistent_comparison_set"])
         self.assertEqual(evaluation["small_candidate_ranking"], "PAIRWISE_NO_ELO")
         self.assertTrue(result["features"]["iteration_routing_v1"])
+        self.assertTrue(result["features"]["iteration_delivery_card_v1"])
+        delivery = result["iteration_delivery_card"]
+        self.assertEqual(delivery["schema_version"], 1)
+        self.assertEqual(
+            delivery["delivery_persisted_via"],
+            "work.release.delivery",
+        )
+        self.assertTrue(delivery["quick_actions_are_intents"])
+        self.assertFalse(delivery["card_mutates_lifecycle"])
+        self.assertFalse(delivery["keep_version_means_selected"])
+        self.assertTrue(delivery["human_review_authority_preserved"])
+        self.assertTrue(delivery["selection_prerequisites_preserved"])
         self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v2"])
