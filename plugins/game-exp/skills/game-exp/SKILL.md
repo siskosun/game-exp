@@ -72,6 +72,8 @@ Use `game_exp_board` for the default Board. If advanced focused-panel tools are 
 
 Chinese is the default presentation. Use the emitted `display` contract rather than retranslating raw fields. Normal views are `总览`, `待处理`, `原型`, `分支图`, `归档`. Keep system-generated panel entries in natural Chinese. `health=FAIL` blocks normal lifecycle work.
 
+For ordinary users, keep the mental model deliberately small: **原型 → 修改 → 试玩 → 继续修改 / 保留这版 / 就选这版 / 放弃**. Protocol terms such as Ledger, Binding, Candidate, Review, Rehearsal, PROMISING, SELECTED, lifecycle, request ids, and protected refs are internal/diagnostic vocabulary. Do not teach or expose them in routine completion messages, Board primary copy, delivery cards, onboarding, or normal error recovery unless the user explicitly asks for protocol/debug detail. Translate user intent into the trusted lifecycle internally; do not require the user to name the internal transition.
+
 Keep stable `subject` identity and `relationships` separate from scope. Distinguish `发起人` from display-only `代码贡献者`. If inline UI is available, follow `references/chat-ui.md`; otherwise use the text fallback. ChatGPT Work, Codex, and other hosts share the same read-only Board semantics.
 
 ## Route an iteration: revision or new experiment
@@ -80,7 +82,7 @@ Default to a **revision of the current experiment** when hypothesis, success/kil
 
 Do not ask the user to choose between internal labels on every iteration. Revision classification may be automatic; new-experiment creation must not be silent. If the boundary changes materially, explain the concrete change and ask for confirmation before Bind/Initialize.
 
-After substantive revision, create a new Candidate. The prior current Review binding does not carry forward to that new Candidate.
+After substantive revision, create a new Candidate internally. In normal user-facing copy call it the refreshed/current **试玩版本**. The prior current Review binding does not carry forward to that new Candidate.
 
 For a public repository, `game_exp_prototype_handoff` may set `delivery_request.prefer_shareable_url=true`. That is a delivery preference, not lifecycle authority: the selected prototype executor stores immutable static bytes on `gh-pages`, dispatches the managed `.github/workflows/game-exp-pages.yml` Actions deployment, and must verify both that workflow deployment and the actual browser/player path before returning a verified `SHAREABLE_URL`. game-exp never hosts the playable itself.
 
@@ -92,7 +94,7 @@ Before editing an existing experiment, read `game_exp_collaboration_context`, th
 
 Release with `game_exp_work_release`: `COMPLETED`, `ABANDONED`, or `HANDED_OFF`. Handoff text is participant-reported context, not authority. Unpublished local edits are not recoverable through game-exp.
 
-After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; an advanced `experiment_panel.delivery_card` is the same projection when that tool is enabled. Present the card instead of dumping the full Board. The card is an intent surface only: `保留这版` never means SELECTED; `A/B 对比试玩` opens a blind comparison between the exact current Candidate and its authoritative immediate previous Candidate when both have verified shareable playables; `我试玩通过了` records PASS only when the exact current Candidate is already waiting for human Review; `就选这版` preserves Rehearsal/selection prerequisites. A/B preference is HUMAN_REPORTED evidence and never substitutes for an explicit Review PASS/FAIL.
+After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; an advanced `experiment_panel.delivery_card` is the same projection when that tool is enabled. Present the card instead of dumping the full Board. The card is an intent surface only. Internally, `保留这版` never means SELECTED; `A/B 对比试玩` binds the exact current Candidate and its authoritative immediate previous Candidate; `我试玩通过了` records PASS only for the exact current version waiting for the user's result; `就选这版` preserves Rehearsal/selection prerequisites. In primary UI copy, describe these simply as keeping, comparing, passing, selecting, and automatically checking whether the version can merge into the main version. Do not expose Candidate/Review/Rehearsal/PROMISING/SELECTED unless diagnostics are requested.
 
 ## Prototype implementation handoff
 
