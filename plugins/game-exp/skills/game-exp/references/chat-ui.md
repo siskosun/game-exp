@@ -104,6 +104,35 @@ Show in this order:
 
 The primary labels must be Chinese. Raw enums and ids may appear as secondary diagnostic detail.
 
+## Iteration delivery card
+
+After a completed implementation iteration, prefer `experiment_panel.delivery_card` as the user-facing completion surface before opening the full Board.
+
+Render, in order:
+
+1. `本次改了什么` from `changes_zh`;
+2. one primary playable action from `playable.action_zh`;
+3. `与上一版相比` from `comparison`;
+4. `这次重点感受` from `focus_points_zh`;
+5. enabled natural-language actions from `quick_actions`.
+
+Playable semantics are explicit:
+
+- `SHAREABLE_URL`: verified clickable URL, intended to work across devices;
+- `LOCAL_URL`: verified clickable URL only for the current device/network environment;
+- `ARTIFACT_ONLY`: no direct playable link; offer the retained Candidate artifact;
+- `MISSING`: say `试玩入口未生成`; never invent a URL.
+
+The card is read-only and `authoritative=false`. Its quick actions are user-intent shortcuts, not a second state machine:
+
+- `继续微调`: continue the same experiment; return to ACTIVE when the current lifecycle allows it, then claim source work;
+- `保留这版`: no lifecycle mutation; retain the version only;
+- `我试玩通过了`: an explicit human PASS statement only when the exact current Candidate is waiting for Review;
+- `就选这版`: explicit selection intent, but run/refresh required Rehearsal before SELECTED;
+- `回到上一版`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
+
+If an action is disabled, do not silently reinterpret it. Explain the missing prerequisite in normal language.
+
 ## Interaction boundary
 
 The inline UI may perform only local presentation actions by itself:
