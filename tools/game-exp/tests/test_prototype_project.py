@@ -100,7 +100,7 @@ class PrototypeProjectTests(unittest.TestCase):
             )
             commands = [call.args[0] for call in run.call_args_list]
             repo_create = next(argv for argv in commands if argv[:3] == ["gh", "repo", "create"])
-            self.assertIn("--private", repo_create)
+            self.assertIn("--public", repo_create)
             self.assertNotIn("--private", repo_create)
 
     def test_private_visibility_remains_explicit_compatibility_option(self):
@@ -132,7 +132,8 @@ class PrototypeProjectTests(unittest.TestCase):
                 )
             commands = [call.args[0] for call in run.call_args_list]
             repo_create = next(argv for argv in commands if argv[:3] == ["gh", "repo", "create"])
-            self.assertIn("--public", repo_create)
+            self.assertIn("--private", repo_create)
+            self.assertNotIn("--public", repo_create)
 
     def test_existing_remote_repository_is_never_overwritten(self):
         with (
