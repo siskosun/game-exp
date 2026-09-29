@@ -103,9 +103,12 @@ class WorkflowInvariantTests(unittest.TestCase):
             validate,
             r"^    environment:\s*game-exp-trusted-writer\s*$",
         )
-        self.assertRegex(
-            execute,
-            r"^    environment:\s*game-exp-trusted-writer\s*$",
+        self.assertIsNotNone(
+            re.search(
+                r"^    environment:\s*game-exp-trusted-writer\s*$",
+                execute,
+                re.MULTILINE,
+            )
         )
         self.assertIn("secrets.GAME_EXP_WRITER_KEY", execute)
 
@@ -123,9 +126,12 @@ class WorkflowInvariantTests(unittest.TestCase):
         ]
         self.assertEqual(len(protected), 1)
         _name, block = protected[0]
-        self.assertRegex(
-            block,
-            r"^    environment:\s*game-exp-trusted-writer\s*$",
+        self.assertIsNotNone(
+            re.search(
+                r"^    environment:\s*game-exp-trusted-writer\s*$",
+                block,
+                re.MULTILINE,
+            )
         )
         self.assertIn("persist-credentials: false", block)
 
