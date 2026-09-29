@@ -3397,6 +3397,7 @@ class GameExpClient:
                 "integration_id": state.get("current_integration_id"),
                 "archive_id": state.get("current_archive_id"),
                 "archive_lock": state.get("archive_lock"),
+                "last_work_release_id": state.get("last_work_release_id"),
                 "parent_sha": (
                     binding.get("parent_sha")
                     if isinstance(binding, dict)
