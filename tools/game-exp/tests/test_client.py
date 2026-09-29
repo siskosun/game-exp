@@ -1160,7 +1160,8 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(actions["保留这版"]["enabled"])
         self.assertTrue(actions["我试玩通过了"]["enabled"])
         self.assertFalse(actions["就选这版"]["enabled"])
-        self.assertTrue(actions["回到上一版"]["enabled"])
+        self.assertTrue(actions["打开上一版候选包"]["enabled"])
+        self.assertTrue(actions["用上一版源码继续修改"]["enabled"])
         self.assertTrue(
             delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
         )
