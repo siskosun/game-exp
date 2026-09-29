@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 - 2026-09-29
+
+- Change the default game-exp install/upgrade source from the current checkout to the latest published, non-prerelease semantic-version GitHub Release.
+- Treat `main` and arbitrary working trees as development-only install sources; they require explicit `--channel development`.
+- Add `--release vX.Y.Z` for an explicit published stable Release, preserving the existing `--allow-downgrade` guard for rollbacks.
+- Download the selected Release tag source archive, apply the existing hardened archive extraction limits, and verify `VERSION.txt`, plugin metadata, `INSTALL.json`, and canonical source before installation.
+- Record `source_channel`, `source_ref`, `release_url`, and managed-runtime digest in install provenance schema v3.
+- Keep GPS/H5 companion synchronization on their latest semantic-version tags and keep Harness isolation/transaction rollback unchanged.
+- Add distribution gates so future changes cannot silently restore `main` as the default installation source.
+
 ## 1.3.0 - 2026-09-29
 
 - Add blind same-experiment revision A/B for the exact current Candidate versus the authoritative immediate previous Candidate.
