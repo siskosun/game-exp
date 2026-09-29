@@ -307,6 +307,25 @@ If an active experiment depends on an experiment that becomes REJECTED or ARCHIV
 
 A later contract version may introduce explicit dependency predicates such as “integrated capability”, “immutable source snapshot”, or “continued upstream delivery” if real usage requires them.
 
+## New prototype project creation
+
+`game_exp_project_create` is the local-stdio/CLI convenience surface for a brand-new prototype when no repository exists yet.
+
+It may create a local Git working tree and a GitHub repository, install the current game-exp managed files, seed a tagged GPS/H5 starter, push `main`, and invoke the same project-init trust provisioning used by existing repositories.
+
+Contract:
+
+- stack is explicit: `godot` or `h5`;
+- default repository visibility is `private`;
+- existing local directories and existing GitHub repositories are never overwritten;
+- H5 defaults to the PROBE starter unless the caller explicitly asks for SLICE;
+- public visibility is explicit and is never selected automatically to bypass a GitHub plan limitation;
+- repository creation is durable: if later trust provisioning fails, the retained repository is returned with an actionable resume step instead of being deleted/recreated;
+- `PROJECT_READY` requires normal project-init completion, Trusted Writer self-test, and Doctor PASS;
+- shared/streamable HTTP MCP must reject project creation because the workflow requires local filesystem/GitHub-admin operations.
+
+Project creation does not itself create or approve an experiment. After `PROJECT_READY`, continue first-experiment onboarding with the user's original prototype goal.
+
 ## Prototype handoff
 
 `game_exp_prototype_handoff` emits Handoff schema v2 for a specialized prototype executor. It preserves the schema version and adds executor metadata without changing lifecycle authority.
