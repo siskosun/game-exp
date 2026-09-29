@@ -327,8 +327,11 @@ class HarnessInstaller:
             (stage / "INSTALL_SOURCE.json").write_text(
                 json.dumps(
                     {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "source": CANONICAL_SOURCE,
+                        "source_channel": self.source_channel,
+                        "source_ref": self.source_ref,
+                        "release_url": self.release_url,
                         "version": self.version,
                         "harness": self.harness,
                         "source_digest": source_digest,
@@ -362,8 +365,11 @@ class HarnessInstaller:
         expected_digest = _managed_digest(self.source_root)
         actual_digest = _managed_digest(root)
         if provenance != {
-            "schema_version": 2,
+            "schema_version": 3,
             "source": CANONICAL_SOURCE,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "version": self.version,
             "harness": self.harness,
             "source_digest": expected_digest,
@@ -529,6 +535,9 @@ class HarnessInstaller:
             "status": "PASS",
             "harness": self.harness,
             "source": CANONICAL_SOURCE,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "source_version": self.version,
             "source_digest": source_digest,
             "installed_version": installed,
@@ -663,6 +672,9 @@ class HarnessInstaller:
         return {
             "status": "PASS",
             "version": self.version,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "harness": self.harness,
             "updated_harnesses": [self.harness],
             "runtime_dir": str(self.runtime_dir),
@@ -717,6 +729,9 @@ def install_many(
     *,
     allow_downgrade: bool = False,
     cleanup_legacy_shared: bool = False,
+    source_channel: str = "development",
+    source_ref: str = "working-tree",
+    release_url: str | None = None,
 ) -> dict[str, Any]:
     installers = [
         HarnessInstaller(
@@ -724,6 +739,9 @@ def install_many(
             home,
             harness=harness,
             allow_downgrade=allow_downgrade,
+            source_channel=source_channel,
+            source_ref=source_ref,
+            release_url=release_url,
         )
         for harness in harnesses
     ]
@@ -782,6 +800,9 @@ def install_many(
     return {
         "status": "PASS",
         "version": next(iter(versions)),
+        "source_channel": source_channel,
+        "source_ref": source_ref,
+        "release_url": release_url,
         "harness": "all",
         "updated_harnesses": list(harnesses),
         "results": results,
