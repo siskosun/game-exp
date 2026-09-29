@@ -169,6 +169,8 @@ class ReviewTests(unittest.TestCase):
         candidate_id="C-42-123456-1",
         outcome="PASS",
         notes="The tested Candidate meets the review protocol.",
+        comparison=None,
+        revision_comparison=None,
         actor=None,
     ):
         payload = build_operation_payload(
@@ -178,6 +180,12 @@ class ReviewTests(unittest.TestCase):
                 "candidate_id": candidate_id,
                 "outcome": outcome,
                 "notes": notes,
+                **({"comparison": comparison} if comparison is not None else {}),
+                **(
+                    {"revision_comparison": revision_comparison}
+                    if revision_comparison is not None
+                    else {}
+                ),
             },
             actor_claim="human-reviewer",
         )
@@ -206,6 +214,146 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(state["current_review_id"], "req_review_1")
         self.assertEqual(state["current_review_candidate_id"], "C-42-123456-1")
         self.assertEqual(state["review_sequence"], 1)
+
+    def test_revision_comparison_binds_immediate_previous_candidate(self):
+        second_context = self.candidate_context(run_id="123457")
+        payload = build_operation_payload(
+            "candidate.register",
+            {"experiment_id": "EXP-42"},
+        )
+        second = plan_domain_mutation(
+            repo_dir=self.root,
+            payload=payload,
+            request_id="req_candidate_2",
+            payload_digest=digest_object(payload),
+            repository_full_name="owner/repo",
+            trusted_candidate=second_context,
+        )
+        self.apply(second)
+
+        revision = {
+            "previous_candidate_id": "C-42-123456-1",
+            "previous_artifact_digest": "sha256:" + "c" * 64,
+            "blind": True,
+            "presentation_order": "CURRENT_PREVIOUS",
+            "choice": "B_MUCH_BETTER",
+            "notes": "Version B felt clearly better in the blind comparison.",
+        }
+        _payload, plan = self.review(
+            request_id="req_review_revision",
+            candidate_id="C-42-123457-1",
+            revision_comparison=revision,
+        )
+        review = plan.writes[
+            "experiments/EXP-42/reviews/req_review_revision.json"
+        ]
+        recorded = review["revision_comparison"]
+        self.assertEqual(recorded["comparison_type"], "REVISION")
+        self.assertEqual(
+            recorded["previous_candidate_id"],
+            "C-42-123456-1",
+        )
+        self.assertEqual(
+            recorded["current_candidate_id"],
+            "C-42-123457-1",
+        )
+        self.assertEqual(recorded["choice"], "B_MUCH_BETTER")
+        self.assertEqual(recorded["verdict"], "CURRENT_MUCH_WORSE")
+        self.assertEqual(recorded["evidence_source"], "HUMAN_REPORTED")
+        self.assertEqual(review["outcome"], "PASS")
+        self.assertEqual(
+            plan.writes["experiments/EXP-42/state.json"]["current_review_id"],
+            "req_review_revision",
+        )
+
+    def test_revision_comparison_rejects_non_immediate_history(self):
+        for run_id, request_id in (
+            ("123457", "req_candidate_2"),
+            ("123458", "req_candidate_3"),
+        ):
+            context = self.candidate_context(run_id=run_id)
+            payload = build_operation_payload(
+                "candidate.register",
+                {"experiment_id": "EXP-42"},
+            )
+            plan = plan_domain_mutation(
+                repo_dir=self.root,
+                payload=payload,
+                request_id=request_id,
+                payload_digest=digest_object(payload),
+                repository_full_name="owner/repo",
+                trusted_candidate=context,
+            )
+            self.apply(plan)
+
+        with self.assertRaises(DomainError) as ctx:
+            self.review(
+                request_id="req_review_wrong_previous",
+                candidate_id="C-42-123458-1",
+                revision_comparison={
+                    "previous_candidate_id": "C-42-123456-1",
+                    "previous_artifact_digest": "sha256:" + "c" * 64,
+                    "blind": True,
+                    "presentation_order": "PREVIOUS_CURRENT",
+                    "choice": "B_SLIGHTLY_BETTER",
+                    "notes": "Tried to skip the immediate previous Candidate.",
+                },
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_REVIEW_CONFLICT")
+        self.assertIn("immediate previous", str(ctx.exception))
+
+    def test_revision_comparison_maps_blind_slot_choice_to_current_verdict(self):
+        second_context = self.candidate_context(run_id="123457")
+        payload = build_operation_payload(
+            "candidate.register",
+            {"experiment_id": "EXP-42"},
+        )
+        second = plan_domain_mutation(
+            repo_dir=self.root,
+            payload=payload,
+            request_id="req_candidate_2",
+            payload_digest=digest_object(payload),
+            repository_full_name="owner/repo",
+            trusted_candidate=second_context,
+        )
+        self.apply(second)
+
+        cases = (
+            ("CURRENT_PREVIOUS", "A_MUCH_BETTER", "CURRENT_MUCH_BETTER"),
+            ("CURRENT_PREVIOUS", "B_SLIGHTLY_BETTER", "CURRENT_SLIGHTLY_WORSE"),
+            ("PREVIOUS_CURRENT", "A_SLIGHTLY_BETTER", "CURRENT_SLIGHTLY_WORSE"),
+            ("PREVIOUS_CURRENT", "B_MUCH_BETTER", "CURRENT_MUCH_BETTER"),
+            ("PREVIOUS_CURRENT", "NO_CLEAR_DIFFERENCE", "NO_CLEAR_DIFFERENCE"),
+            ("CURRENT_PREVIOUS", "INCONCLUSIVE", "INCONCLUSIVE"),
+        )
+        for index, (order, choice, expected) in enumerate(cases, start=1):
+            _payload, plan = self.review(
+                request_id=f"req_review_map_{index}",
+                candidate_id="C-42-123457-1",
+                revision_comparison={
+                    "previous_candidate_id": "C-42-123456-1",
+                    "previous_artifact_digest": "sha256:" + "c" * 64,
+                    "blind": True,
+                    "presentation_order": order,
+                    "choice": choice,
+                    "notes": f"mapping case {index}",
+                },
+            )
+            self.assertEqual(
+                plan.writes[
+                    f"experiments/EXP-42/reviews/req_review_map_{index}.json"
+                ]["revision_comparison"]["verdict"],
+                expected,
+            )
+
+    def test_review_rejects_two_comparison_modes_at_once(self):
+        with self.assertRaises(DomainError) as ctx:
+            self.review(
+                comparison={"unexpected": "cross-experiment"},
+                revision_comparison={"unexpected": "revision"},
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_REVIEW_CONFLICT")
+        self.assertIn("not both", str(ctx.exception))
 
     def test_review_requires_trusted_actor(self):
         payload = build_operation_payload(
