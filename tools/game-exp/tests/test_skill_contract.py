@@ -398,7 +398,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "## Harness conformance screening",
             "eligible_for_real_repo_test=true",
             "same `suite_digest`",
-            "optional conformance tools",
+            "conformance-only tools require their dedicated conformance mode/flag",
         ):
             self.assertIn(phrase, skill)
         for phrase in (
