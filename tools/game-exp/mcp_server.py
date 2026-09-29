@@ -173,7 +173,7 @@ def game_exp_project_preflight(repo: str | None = None) -> dict[str, Any]:
 def game_exp_project_create(
     name: str,
     stack: str,
-    visibility: str = "private",
+    visibility: str = "public",
     owner: str | None = None,
     directory: str | None = None,
     h5_mode: str = "probe",
