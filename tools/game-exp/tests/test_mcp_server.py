@@ -141,6 +141,7 @@ class FakeClient:
             "request_id": kwargs["request_id"],
             "claim_id": kwargs["claim_id"],
             "outcome": kwargs["outcome"],
+            "delivery": kwargs.get("delivery"),
         }
 
     def notification_feed(self, **kwargs):
@@ -606,16 +607,28 @@ class MCPServerTests(unittest.TestCase):
             repo="owner/repo",
         )
         self.assertEqual(claim["status"], "ACCEPTED")
+        delivery = {
+            "changes": ["Changed timing"],
+            "playable": {
+                "kind": "MISSING",
+                "verified": False,
+            },
+            "focus_points": ["Timing"],
+            "producer": "h5-game-prototype-agent",
+        }
         release = mcp_server.game_exp_work_release(
             "EXP-21",
             "req_work_21",
-            "ABANDONED",
-            "No longer needed.",
+            "COMPLETED",
+            "Finished.",
             "req_release_21",
+            result_source_sha="b" * 40,
+            delivery=delivery,
             repo="owner/repo",
         )
         self.assertEqual(release["claim_id"], "req_work_21")
-        self.assertEqual(release["outcome"], "ABANDONED")
+        self.assertEqual(release["outcome"], "COMPLETED")
+        self.assertEqual(release["delivery"], delivery)
 
     @patch("mcp_server._client", return_value=FakeClient())
     def test_experiment_projection_delegates_to_client(self, _):
