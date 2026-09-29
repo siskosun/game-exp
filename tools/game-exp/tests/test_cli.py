@@ -29,6 +29,7 @@ class CLIRoutingTests(unittest.TestCase):
         client.experiment_get.return_value = {"status": "PASS", "state": {"current_candidate_id": "C-21-1-1", "last_decision_id": "req_prev"}}
         client.notification_feed.return_value = {"status": "PASS", "notifications": []}
         client.prototype_handoff.return_value = {"status": "PASS"}
+        client.bind.return_value = {"status": "ACCEPTED"}
         client.operation_get.return_value = {"status": "COMMITTED"}
         client.resume_execution.return_value = {"status": "ACCEPTED"}
         client.integrate.return_value = {"status": "ACCEPTED"}
