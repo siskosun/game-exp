@@ -170,6 +170,69 @@ class GitHubBridgeTests(unittest.TestCase):
         self.assertEqual(payload["operation"], "work.release")
         self.assertNotIn("result_source_sha", payload["input"])
 
+    def test_parse_review_accepts_revision_comparison(self):
+        revision = {
+            "previous_candidate_id": "C-50-122-1",
+            "previous_artifact_digest": "sha256:" + "0" * 64,
+            "blind": True,
+            "presentation_order": "CURRENT_PREVIOUS",
+            "choice": "A_SLIGHTLY_BETTER",
+            "notes": "A felt slightly better.",
+        }
+        command = github_bridge.parse_command(
+            self.command(
+                {
+                    "schema_version": 1,
+                    "request_id": "req_review_50",
+                    "action": "review_record",
+                    "experiment_id": "EXP-50",
+                    "candidate_id": "C-50-123-1",
+                    "outcome": "PASS",
+                    "notes": "Human review.",
+                    "revision_comparison": revision,
+                }
+            )
+        )
+        self.assertEqual(command["revision_comparison"], revision)
+
+    @patch("github_bridge.submit_writer")
+    def test_review_forwards_revision_comparison_to_trusted_writer(
+        self,
+        submit_writer,
+    ):
+        submit_writer.return_value = {"status": "COMMITTED"}
+        revision = {
+            "previous_candidate_id": "C-50-122-1",
+            "previous_artifact_digest": "sha256:" + "0" * 64,
+            "blind": True,
+            "presentation_order": "PREVIOUS_CURRENT",
+            "choice": "B_MUCH_BETTER",
+            "notes": "B was clearly better.",
+        }
+        result = github_bridge.execute_action(
+            {
+                "schema_version": 1,
+                "request_id": "req_review_50",
+                "action": "review_record",
+                "experiment_id": "EXP-50",
+                "candidate_id": "C-50-123-1",
+                "outcome": "PASS",
+                "notes": "Human review.",
+                "revision_comparison": revision,
+            },
+            repo="owner/repo",
+            actor_login="alice",
+            comment_id="125",
+            ssh_key="/tmp/key",
+            run_id="458",
+            run_attempt="1",
+            workflow_source_sha="a" * 40,
+        )
+        self.assertEqual(result["status"], "COMMITTED")
+        payload = submit_writer.call_args.args[2]
+        self.assertEqual(payload["operation"], "review.record")
+        self.assertEqual(payload["input"]["revision_comparison"], revision)
+
     @patch("github_bridge._claim_async_execution")
     @patch("github_bridge._dispatch_workflow")
     def test_rehearse_routes_to_existing_trusted_workflow(self, dispatch, claim):
