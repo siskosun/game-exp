@@ -50,7 +50,7 @@ If `project.readiness=PROJECT_READY`, the repository bootstrap is complete. Neve
 Board 是决策界面，不是每次 Agent 完成工作的固定结束页。1.0 的默认展示策略是：
 
 - 普通实现/修订完成，且当前没有需要人处理的事项：返回紧凑结果，不自动打开完整 Board；
-- 当前实验出现人工评审、晋级/选择、归档方式、恢复、健康异常或依赖复核等需要处理事项：允许宿主主动上浮该实验的局部面板；
+- 当前实验出现需要试玩、选择版本、完成归档、恢复、记录异常或依赖复核等需要处理事项：允许宿主主动上浮该实验的局部面板；
 - 用户明确要求“打开面板 / 看所有实验 / 看分支”时：打开完整 Board。
 
 实验行的 `surface_hint` 是只读展示提示：
@@ -87,7 +87,7 @@ Order:
 2. `当前进行`: use `views.overview.active_ids`, excluding experiments already shown under `需要处理`.
 3. One-line archived summary using `views.overview.archived_count`.
 
-Do not dump Candidate/Rehearsal/Integration IDs in the default overview unless they explain the next action.
+Do not dump Candidate/Rehearsal/Integration IDs in the default overview. Treat them as diagnostic identifiers; only show them when the user explicitly asks for protocol/debug detail.
 
 ## 待处理
 
@@ -97,16 +97,16 @@ Render sections in this order when non-empty:
 
 1. `异常`
 2. `需要恢复`
-3. `需要你评审`
-4. `需要你决策`
-5. `需要选择归档方式`
+3. `需要你试玩`
+4. `需要你选择`
+5. `需要你完成归档`
 
 Each experiment entry should show:
 
 - 实验编号
 - 原型/主体
 - 实验标题
-- 发起人（来自可信 binding actor；legacy 记录可能缺失）
+- 发起人（来自可信实验登记；历史记录可能缺失）
 - 代码贡献者（来自 GitHub commit contributor 信息，仅协作展示，不作为权限依据）
 - 当前阶段
 - 为什么需要处理
@@ -216,7 +216,7 @@ When the user opens one experiment, use `game_exp_experiment_panel` when availab
 2. `假设与判定`: use `judgement.hypothesis`, `judgement.success_criteria`, and `judgement.kill_criteria`.
 3. `活动时间线`: use the experiment `activity` array. Render `label_zh` and `detail_zh`; show `occurred_at` only when the Ledger-derived record contains a trustworthy timestamp.
 4. `关系`: show outgoing and incoming experiment relations with Chinese relation labels.
-5. `代码与证据`: branch / Candidate / Rehearsal / PR / Archive records on demand.
+5. `代码与证据`: branch / Candidate / Rehearsal / PR / Archive records only on demand. In the default view, label Candidate as `试玩版本`, Review as `试玩结果`, and Rehearsal as `合入前检查`.
 
 Relationship labels:
 
@@ -243,7 +243,13 @@ Do not mechanically translate internal English identifiers. Required presentatio
 - Deploy Key -> `部署密钥`
 - Secret -> `私钥` or the more specific Chinese label already emitted by `display`
 - Immutable Releases -> `发布保护`
-- PASS / FAIL Review -> `通过 / 未通过人工评审`
+- Candidate -> `试玩版本`
+- Review -> `试玩结果`
+- PASS / FAIL Review -> `试玩通过 / 试玩未通过`
+- Rehearsal -> `合入前检查`
+- Binding -> `实验登记`
+- PROMISING -> `待选择`
+- SELECTED -> `已选定`
 
 Literal identifiers that are part of the repository itself, such as `owner/repo`, branch names such as `main`, commit hashes, experiment ids, and product names such as `game-exp` / GitHub, may remain unchanged.
 
@@ -259,13 +265,13 @@ Show experiment, subject/prototype, title, Archive id, Integration id, and final
 
 Lifecycle:
 
-- `ACTIVE` -> `进行中`
-- `REVIEW` -> `评审中`
+- `ACTIVE` -> `修改中`
+- `REVIEW` -> `待试玩`
 - `PROMISING` -> `待选择`
 - `SELECTED` -> `已选定`
-- `INTEGRATED` -> `已集成`
-- `REJECTED` -> `已拒绝`
-- `ABANDONED` -> `已终止`
+- `INTEGRATED` -> `已合入主版本`
+- `REJECTED` -> `未采用`
+- `ABANDONED` -> `已放弃`
 - `ARCHIVED` -> `已归档`
 
 Health:
