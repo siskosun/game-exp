@@ -338,14 +338,47 @@ def create_project(
         ]
         if description:
             command.extend(["--description", description])
-        _run(command, cwd=root, timeout=180)
-        repo_created = True
+        try:
+            _run(command, cwd=root, timeout=180)
+            repo_created = True
+        except PrototypeProjectError as exc:
+            if _repo_exists(repo):
+                repo_created = True
+                return {
+                    "status": "INCOMPLETE",
+                    "complete": False,
+                    "project_readiness": "INCOMPLETE",
+                    "repo": repo,
+                    "repository_url": _repository_url(repo),
+                    "local_path": str(root),
+                    "visibility": visibility,
+                    "stack": stack,
+                    "h5_mode": h5_mode if stack == "h5" else None,
+                    "template": template_info,
+                    "repo_created": True,
+                    "code": "REPOSITORY_PUSH_INCOMPLETE",
+                    "error": str(exc),
+                    "next_step": "REPAIR_REMOTE_PUSH_THEN_PROJECT_INIT",
+                    "next_prompt_zh": (
+                        "GitHub 仓库已经存在，但初始推送没有完整确认。"
+                        "先修复远端推送并确认 main 包含初始化提交，再运行 project-init；"
+                        "不要重新创建仓库。"
+                    ),
+                }
+            raise
 
         setup = project_provision(
             repo,
             run_selftest=run_selftest,
             trust_mode=trust_mode,
         )
+        if not run_selftest and setup.get("status") == "PASS":
+            setup = {
+                **setup,
+                "status": "INCOMPLETE",
+                "complete": False,
+                "reason": "Trusted Writer self-test was skipped",
+            }
         ready = setup.get("status") == "PASS" and setup.get("complete") is True
         return {
             "status": "PASS" if ready else setup.get("status", "INCOMPLETE"),
