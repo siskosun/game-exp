@@ -69,7 +69,9 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.0.0` (companion-sync maintenance fix; version number unchanged).
+Current version: `1.0.0` (maintenance fixes; version number unchanged).
+
+For a brand-new prototype with no existing repository, local CLI/stdio MCP can now use `project-create` to create the GitHub repository, seed the latest tagged Godot/H5 starter, install game-exp, push `main`, and run complete project initialization. New repositories default to private and are never made public automatically to bypass plan limits.
 
 Release history: see `CHANGELOG.md`.
 
