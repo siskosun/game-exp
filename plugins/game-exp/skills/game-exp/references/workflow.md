@@ -76,7 +76,10 @@ See `evaluation.md`.
 | Build repository-local Manifest blueprint | `game_exp_experiment_template` | Read-only; use before first Bind instead of copying another repository's Manifest |
 | Open experiment Board / panel | `game_exp_board` | Read-only consistent Ledger snapshot |
 | Collaboration notification feed | `game_exp_notifications` | Read-only, replayable, external delivery adapters dedupe by event_id |
-| Build implementation brief | `game_exp_prototype_handoff` | Read-only implementation handoff; no lifecycle mutation |\n| Inspect collaboration state | `game_exp_collaboration_context` | Read-only current branch / active work intents / overlap projection |\n| Declare source work | `game_exp_work_claim` | Protected intent bound to current canonical experiment branch SHA |\n| Release source work | `game_exp_work_release` | Close completed or abandoned work intent |
+| Build implementation brief | `game_exp_prototype_handoff` | Read-only implementation handoff; no lifecycle mutation |
+| Inspect collaboration state | `game_exp_collaboration_context` | Read-only current branch / active work intents / overlap projection |
+| Declare source work | `game_exp_work_claim` | Protected intent bound to current canonical experiment branch SHA |
+| Release source work | `game_exp_work_release` | Close completed or abandoned work intent |
 | Inspect experiment | `game_exp_experiment_get` | Read-only authoritative projection |
 | Diagnose trust/archive health | `game_exp_doctor` | Read-only |
 | Bind Manifest | `game_exp_experiment_bind` | Manifest operation id is idempotency key |
