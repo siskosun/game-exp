@@ -359,7 +359,7 @@ def _safe_extract(bundle: pathlib.Path, destination: pathlib.Path) -> None:
             root = destination.resolve()
             if root not in target.parents:
                 raise EvaluationEvidenceError("evaluation bundle member escapes destination")
-        tf.extractall(destination)
+        tf.extractall(destination, filter="data")
 
 
 def package_output(output_dir: pathlib.Path, bundle: pathlib.Path) -> None:
