@@ -111,7 +111,7 @@ For project-policy schema v3, use a content-addressed Evaluation Profile and obt
 
 Trusted evaluation runs against frozen Candidate bytes in a clean trusted job. Keep `TRUSTED_OBSERVED`, `PARTICIPANT_REPORTED`, and `HUMAN_REPORTED` distinct.
 
-Evaluation Evidence v1 still compares a challenger only with its declared `supersedes` incumbent. Separately, same-experiment revision A/B may compare the exact current Candidate with the authoritative immediate previous Candidate when both immutable playables exist. The revision comparison is stored inside the current human Review as `revision_comparison`, binds exact Candidate/artifact identities, and uses blind A/B slot choices. It does not create a persistent Comparison Set, Review outcome, PROMISING, or SELECTED. Do not add Elo for either small 2-candidate decision.
+Evaluation Evidence v1 still compares a challenger only with its declared `supersedes` incumbent using review protocol `incumbent-challenger-blind-ab-v1`. Separately, same-experiment revision A/B may compare the exact current Candidate with the authoritative immediate previous Candidate when both immutable playables exist. The revision comparison is stored inside the current human Review as `revision_comparison`, binds exact Candidate/artifact identities, and uses blind A/B slot choices. It does not create a persistent Comparison Set, Review outcome, PROMISING, or SELECTED. Do not add Elo for either small 2-candidate decision.
 
 ## Review and lifecycle
 
