@@ -1248,6 +1248,7 @@ class GameExpClient:
                 "board_presentation_v4": True,
                 "board_presentation_v5": True,
                 "board_presentation_v6": True,
+                "board_presentation_v7": True,
                 "strict_chinese_board_copy": True,
                 "natural_chinese_board": True,
                 "request_recovery": True,
@@ -2704,13 +2705,13 @@ class GameExpClient:
     @staticmethod
     def _board_lifecycle_zh(lifecycle: str) -> str:
         return {
-            "ACTIVE": "进行中",
-            "REVIEW": "评审中",
+            "ACTIVE": "修改中",
+            "REVIEW": "待试玩",
             "PROMISING": "待选择",
             "SELECTED": "已选定",
-            "INTEGRATED": "已集成",
-            "REJECTED": "已拒绝",
-            "ABANDONED": "已终止",
+            "INTEGRATED": "已合入主版本",
+            "REJECTED": "未采用",
+            "ABANDONED": "已放弃",
             "ARCHIVED": "已归档",
         }.get(lifecycle, lifecycle)
 
@@ -2725,21 +2726,21 @@ class GameExpClient:
     @staticmethod
     def _board_next_gate_zh(next_gate: str) -> str:
         return {
-            "IMPLEMENT_OR_REVIEW": "继续实现 / 进入评审",
-            "CANDIDATE_BUILD": "构建候选版本",
-            "HUMAN_REVIEW": "人工评审",
-            "HUMAN_PROMOTION": "决定是否晋级",
-            "HUMAN_DECISION": "人工决策",
-            "TRUSTED_REHEARSAL": "基于最新主干进行集成验证",
-            "HUMAN_SELECTION_OR_REFRESH_REHEARSAL": "人工选择 / 主干变化后重新验证",
-            "TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL": "集成 / 主干变化后重新验证",
-            "ARCHIVE_OR_RETAIN": "选择归档方式",
-            "ARCHIVE_RECOVERY": "恢复归档",
-            "ARCHIVE": "归档",
-            "TERMINAL_NEW_EXPERIMENT_FOR_NEW_WORK": "已结束；新工作需新建实验",
-            "VERIFY_EXPERIMENT_HEALTH": "核验实验健康",
-            "DO_NOT_USE_RECREATE_EXPERIMENT": "禁止继续；重建实验",
-            "UNKNOWN": "未知",
+            "IMPLEMENT_OR_REVIEW": "继续修改 / 准备试玩",
+            "CANDIDATE_BUILD": "准备试玩版本",
+            "HUMAN_REVIEW": "试玩后选择通过或未通过",
+            "HUMAN_PROMOTION": "保留为待选版本 / 继续修改",
+            "HUMAN_DECISION": "继续修改 / 放弃这版",
+            "TRUSTED_REHEARSAL": "自动检查是否可以合入主版本",
+            "HUMAN_SELECTION_OR_REFRESH_REHEARSAL": "选定这版 / 主版本变化后重新检查",
+            "TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL": "合入主版本 / 主版本变化后重新检查",
+            "ARCHIVE_OR_RETAIN": "完成；选择是否保留开发分支",
+            "ARCHIVE_RECOVERY": "继续完成归档",
+            "ARCHIVE": "归档这个实验",
+            "TERMINAL_NEW_EXPERIMENT_FOR_NEW_WORK": "已结束；新想法请新建实验",
+            "VERIFY_EXPERIMENT_HEALTH": "检查实验记录",
+            "DO_NOT_USE_RECREATE_EXPERIMENT": "记录异常；先修复再继续",
+            "UNKNOWN": "待确认",
         }.get(next_gate, next_gate)
 
     @classmethod
@@ -2945,7 +2946,7 @@ class GameExpClient:
         action_zh = {
             "SHAREABLE_URL": "立即试玩",
             "LOCAL_URL": "在当前设备试玩",
-            "ARTIFACT_ONLY": "下载候选包",
+            "ARTIFACT_ONLY": "下载试玩包",
             "MISSING": "试玩入口未生成",
         }.get(playable_kind, "试玩入口未知")
         scope_zh = {
@@ -2985,19 +2986,19 @@ class GameExpClient:
         previous_open_label_zh = (
             "试玩上一版"
             if previous_shareable_url
-            else "打开上一版候选包"
+            else "打开上一版保留包"
         )
         current_candidate_id = row.get("candidate_id")
         if comparison_available:
             comparison_zh = (
-                f"{previous_candidate_id} → {current_candidate_id or '当前源码'}"
+                "上一版 → 当前版"
             )
             if changes:
                 comparison_zh += "；本轮：" + "；".join(
                     str(value) for value in changes[:3]
                 )
         else:
-            comparison_zh = "暂无可对照的上一候选版本"
+            comparison_zh = "暂无可对照的上一版本"
 
         lifecycle = str(row.get("lifecycle") or "")
         next_gate = str(row.get("next_gate") or "")
@@ -3104,8 +3105,8 @@ class GameExpClient:
                     "notes": "<HUMAN_COMPARISON_NOTES>",
                 },
                 "authority_note_zh": (
-                    "A/B 结果只是人工比较证据；仍需用户明确给出 Review PASS/FAIL，"
-                    "不会自动晋级或选择版本。"
+                    "A/B 结果只用于帮助你比较两个版本；仍需你明确选择通过、未通过或继续修改，"
+                    "不会自动替你选版本。"
                 ),
             }
 
@@ -3123,7 +3124,7 @@ class GameExpClient:
                 "enabled": has_current,
                 "direct_lifecycle_mutation": False,
                 "route": "NO_OP_RETAIN_CURRENT",
-                "note_zh": "只保留当前版本，不等于晋级或选中。",
+                "note_zh": "只保留当前版本，不会自动把它设为最终选择。",
             },
             {
                 "label_zh": "A/B 对比试玩",
@@ -3133,8 +3134,8 @@ class GameExpClient:
                 "route": "OPEN_REVISION_AB_SESSION",
                 "session_id": revision_session.get("session_id"),
                 "note_zh": (
-                    "按版本 A / B 盲测当前候选与紧邻上一候选；"
-                    "比较结果不会自动变更 Review 或生命周期。"
+                    "按版本 A / B 盲测当前版和上一版；"
+                    "比较结果只作参考，不会自动改变实验进展。"
                 ),
             },
             {
@@ -3147,7 +3148,7 @@ class GameExpClient:
                 ),
                 "direct_lifecycle_mutation": False,
                 "route": "RECORD_REVIEW_PASS_FOR_CURRENT_CANDIDATE",
-                "note_zh": "只有当前候选版本明确且正在等待人工评审时才能记录。",
+                "note_zh": "只有当前试玩版本明确且正在等待你的试玩结果时才能记录。",
             },
             {
                 "label_zh": "就选这版",
@@ -3159,7 +3160,7 @@ class GameExpClient:
                 ),
                 "direct_lifecycle_mutation": False,
                 "route": "ENSURE_FRESH_REHEARSAL_THEN_SUBMIT_SELECTED",
-                "note_zh": "这是明确选择意图；仍需满足主干集成验证等现有前置条件。",
+                "note_zh": "这是明确选择意图；系统会自动完成合入主版本前的必要检查。",
             },
             {
                 "label_zh": previous_open_label_zh,
@@ -3175,7 +3176,7 @@ class GameExpClient:
                 "note_zh": (
                     "打开上一版已验证的可分享试玩地址，不修改源码或实验状态。"
                     if previous_shareable_url
-                    else "只打开上一候选版本的保留产物，不修改源码或实验状态。"
+                    else "只打开上一版的保留产物，不修改源码或实验状态。"
                 ),
             },
             {
@@ -3196,8 +3197,8 @@ class GameExpClient:
             "locale": "zh-CN",
             "authoritative": False,
             "authority_note_zh": (
-                "交付卡只整理试玩与反馈入口；Candidate、Review、晋级、选择仍以 "
-                "game-exp 受保护状态和人工决定为准。"
+                "交付卡只整理试玩与反馈入口；是否通过、是否保留为待选版本、"
+                "是否选定，都以你的明确决定为准。"
             ),
             "title_zh": "本轮交付",
             "experiment_id": row.get("experiment_id"),
@@ -3208,10 +3209,10 @@ class GameExpClient:
             ),
             "version_state": version_state,
             "version_state_zh": {
-                "CANDIDATE_BOUND": "本轮源码已生成当前候选版本",
-                "SOURCE_AHEAD_OF_CANDIDATE": "本轮源码已更新，候选版本待重建",
-                "SOURCE_ONLY": "本轮源码已完成，尚未生成候选版本",
-                "CANDIDATE_ONLY": "当前有候选版本，但缺少结构化交付说明",
+                "CANDIDATE_BOUND": "当前试玩版本已就绪",
+                "SOURCE_AHEAD_OF_CANDIDATE": "本轮源码已更新，试玩版本待刷新",
+                "SOURCE_ONLY": "本轮源码已完成，试玩版本待准备",
+                "CANDIDATE_ONLY": "当前有试玩版本，但缺少本轮交付说明",
                 "NO_DELIVERY": "尚无本轮交付记录",
             }.get(version_state, version_state),
             "changes_zh": changes,
@@ -3232,7 +3233,7 @@ class GameExpClient:
                     None
                     if playable_kind == "SHAREABLE_URL"
                     else (
-                        "如需外部测试者直接试玩，由原型执行器发布可分享试玩地址并回填 SHAREABLE_URL。"
+                        "如需外部测试者直接试玩，由原型执行器发布可分享试玩地址。"
                     )
                 ),
                 "game_exp_hosts_playable": False,
@@ -3260,7 +3261,7 @@ class GameExpClient:
                         "kind": "ARTIFACT_ONLY" if previous_release_url else "MISSING",
                         "artifact_url": previous_release_url,
                         "action_zh": (
-                            "打开上一版候选包"
+                            "打开上一版保留包"
                             if previous_release_url
                             else "上一版试玩入口不可用"
                         ),
@@ -3344,20 +3345,20 @@ class GameExpClient:
                 "required": True,
                 "priority": 0,
                 "reason": "HEALTH_FAIL",
-                "reason_zh": "健康异常",
+                "reason_zh": "实验记录异常",
                 "section": "ABNORMAL",
                 "section_zh": "异常",
-                "action_zh": "禁止继续；先处理健康异常",
+                "action_zh": "先修复实验记录异常",
             }
         if health["status"] == "UNKNOWN":
             return {
                 "required": True,
                 "priority": 1,
                 "reason": "HEALTH_UNKNOWN",
-                "reason_zh": "健康状态未知",
+                "reason_zh": "实验记录状态待确认",
                 "section": "ABNORMAL",
                 "section_zh": "异常",
-                "action_zh": "先核验实验健康",
+                "action_zh": "先检查实验记录",
             }
         if next_gate == "ARCHIVE_RECOVERY":
             return {
@@ -3374,10 +3375,10 @@ class GameExpClient:
                 "required": True,
                 "priority": 3,
                 "reason": "HUMAN_REVIEW",
-                "reason_zh": "等待人工评审",
+                "reason_zh": "等待试玩结果",
                 "section": "REVIEW",
-                "section_zh": "需要你评审",
-                "action_zh": "提交人工评审结果（通过 / 未通过）",
+                "section_zh": "需要你试玩",
+                "action_zh": "试玩当前版本，然后选择通过或未通过",
             }
         if next_gate in {
             "HUMAN_PROMOTION",
@@ -3388,9 +3389,9 @@ class GameExpClient:
                 "required": True,
                 "priority": 4,
                 "reason": next_gate,
-                "reason_zh": "等待人工决策",
+                "reason_zh": "等待你的选择",
                 "section": "DECISION",
-                "section_zh": "需要你决策",
+                "section_zh": "需要你选择",
                 "action_zh": GameExpClient._board_next_gate_zh(next_gate),
             }
         if next_gate == "ARCHIVE_OR_RETAIN":
@@ -3398,10 +3399,10 @@ class GameExpClient:
                 "required": True,
                 "priority": 5,
                 "reason": "ARCHIVE_OR_RETAIN",
-                "reason_zh": "等待选择归档方式",
+                "reason_zh": "等待完成归档",
                 "section": "ARCHIVE_CHOICE",
-                "section_zh": "需要选择归档方式",
-                "action_zh": "选择保留或删除实验分支",
+                "section_zh": "需要你完成归档",
+                "action_zh": "选择是否保留开发分支",
             }
         return {
             "required": False,
@@ -3514,12 +3515,12 @@ class GameExpClient:
             "ABANDONED": 90,
         }
         decision_label = {
-            "REVIEW": "进入评审",
-            "ACTIVE": "返回进行中",
-            "PROMISING": "晋级待选择",
-            "SELECTED": "已选定候选",
-            "REJECTED": "已拒绝",
-            "ABANDONED": "已终止实验",
+            "REVIEW": "进入试玩",
+            "ACTIVE": "继续修改",
+            "PROMISING": "进入待选",
+            "SELECTED": "已选定这版",
+            "REJECTED": "未采用",
+            "ABANDONED": "已放弃",
         }
         for index, row in enumerate(decision_rows):
             to_state = row.get("to_state")
@@ -3564,7 +3565,7 @@ class GameExpClient:
             add_event(
                 order=40,
                 code="CANDIDATE_READY",
-                label_zh="候选版本已生成",
+                label_zh="试玩版本已准备",
                 detail_zh=candidate_id,
                 source_kind="candidate",
                 source_id=candidate_id,
@@ -3578,11 +3579,11 @@ class GameExpClient:
                 order=50,
                 code="HUMAN_REVIEW_RECORDED",
                 label_zh=(
-                    "人工评审通过"
+                    "试玩通过"
                     if outcome == "PASS"
-                    else "人工评审未通过"
+                    else "试玩未通过"
                     if outcome == "FAIL"
-                    else "已记录人工评审"
+                    else "已记录试玩结果"
                 ),
                 detail_zh=review.get("notes") if isinstance(review.get("notes"), str) else None,
                 source_kind="review",
@@ -3609,7 +3610,7 @@ class GameExpClient:
             add_event(
                 order=70,
                 code="REHEARSAL_READY",
-                label_zh="主干集成验证完成",
+                label_zh="合入前检查完成",
                 detail_zh=rehearsal_id,
                 source_kind="rehearsal",
                 source_id=rehearsal_id,
@@ -3641,7 +3642,7 @@ class GameExpClient:
             add_event(
                 order=100,
                 code="INTEGRATED",
-                label_zh="已集成",
+                label_zh="已合入主版本",
                 detail_zh=f"PR #{pr_number}" if pr_number else integration_id,
                 occurred_at=occurred_at,
                 source_kind="integration",
@@ -4288,7 +4289,7 @@ class GameExpClient:
         attention_section_order = [
             ("ABNORMAL", "异常"),
             ("RECOVERY", "需要恢复"),
-            ("REVIEW", "需要你评审"),
+            ("REVIEW", "需要你试玩"),
             ("DECISION", "需要你决策"),
             ("ARCHIVE_CHOICE", "需要选择归档方式"),
             ("DEPENDENCY_REVIEW", "依赖需复核"),
@@ -4638,6 +4639,16 @@ class GameExpClient:
             "Doctor",
             "医生检查",
             "Ledger",
+            "Candidate",
+            "Review",
+            "Rehearsal",
+            "Binding",
+            "PROMISING",
+            "SELECTED",
+            "候选版本",
+            "人工评审",
+            "晋级",
+            "生命周期",
             "Rulesets",
             "Deploy Key",
             "Secret",
@@ -4656,7 +4667,7 @@ class GameExpClient:
         ]
         display = {
             "locale": "zh-CN",
-            "presentation_version": 6,
+            "presentation_version": 7,
             "title_zh": title_zh,
             "rows_zh": rows_zh,
             "project_status_zh": project_status_zh,
@@ -4681,7 +4692,12 @@ class GameExpClient:
                 "secret": "私钥",
                 "trusted_writer_secret": "可信写入私钥",
                 "immutable_releases": "发布保护",
-                "rehearsal": "主干集成验证",
+                "candidate": "试玩版本",
+                "review": "试玩结果",
+                "rehearsal": "合入前检查",
+                "binding": "实验登记",
+                "promising": "待选择",
+                "selected": "已选定",
                 "project_ready": "项目已就绪",
                 "admin": "管理员",
                 "pass": "正常",
@@ -4713,7 +4729,7 @@ class GameExpClient:
             "status": "PASS",
             "display": display,
             "presentation": {
-                "contract_version": 6,
+                "contract_version": 7,
                 "primary": "display",
                 "primary_text_path": "display.summary_text_zh",
                 "locale": "zh-CN",
@@ -4962,7 +4978,7 @@ class GameExpClient:
                         "build_id",
                     ]
                 },
-                "note_zh": "专用原型执行器负责实现、运行/浏览器验证与所需试玩发布；返回证据必须绑定源码、构建身份和可访问产物，game-exp 再继续候选版本与人工评审流程。",
+                "note_zh": "专用原型执行器负责实现、运行/浏览器验证与所需试玩发布；返回证据绑定源码、构建身份和可访问产物后，game-exp 再继续准备试玩与记录你的结果。",
             },
         }
 
@@ -5533,7 +5549,7 @@ class GameExpClient:
             "evidence_zh": {
                 "title_zh": "代码与记录",
                 "rows_zh": [
-                    {"key": "candidate_id", "label": "候选版本", "value": row.get("candidate_id")},
+                    {"key": "candidate_id", "label": "试玩版本", "value": row.get("candidate_id")},
                     {
                         "key": "evaluation",
                         "label": "可信筛查",
@@ -5562,13 +5578,13 @@ class GameExpClient:
                     },
                     {
                         "key": "review_id",
-                        "label": "人工评审",
+                        "label": "试玩结果",
                         "value": row.get("review_id"),
                         "outcome": row.get("review_outcome"),
                     },
                     {
                         "key": "rehearsal_id",
-                        "label": "主干集成验证",
+                        "label": "合入前检查",
                         "value": row.get("rehearsal_id"),
                     },
                     {"key": "integration_id", "label": "集成", "value": row.get("integration_id")},
