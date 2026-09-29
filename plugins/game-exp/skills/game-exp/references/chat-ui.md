@@ -129,7 +129,8 @@ The card is read-only and `authoritative=false`. Its quick actions are user-inte
 - `保留这版`: no lifecycle mutation; retain the version only;
 - `我试玩通过了`: an explicit human PASS statement only when the exact current Candidate is waiting for Review;
 - `就选这版`: explicit selection intent, but run/refresh required Rehearsal before SELECTED;
-- `打开上一版候选包`: opens the retained prior Candidate artifact when available; it never edits source;
+- `试玩上一版`: when a historical verified `SHAREABLE_URL` matches the previous Candidate source SHA, open that immutable playable; it never edits source;
+- `打开上一版候选包`: fallback when no historical shareable URL exists but the retained prior Candidate artifact is available;
 - `用上一版源码继续修改`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
 
 If an action is disabled, do not silently reinterpret it. Explain the missing prerequisite in normal language.

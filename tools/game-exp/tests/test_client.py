@@ -549,10 +549,10 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
         self.assertEqual(result["runtime_version"], _runtime_version())
-        self.assertEqual(result["runtime_identity"]["version"], "1.1.0")
+        self.assertEqual(result["runtime_identity"]["version"], "1.2.0")
         self.assertEqual(
             result["runtime_identity"]["build_identity"],
-            "version:1.1.0",
+            "version:1.2.0",
         )
         self.assertEqual(result["repository_version"], _runtime_version())
         self.assertEqual(result["version_state"], "MATCH")
@@ -712,6 +712,8 @@ class ClientTests(unittest.TestCase):
             "experiments/EXP-21/state.json",
             "experiments/EXP-21/manifest.json",
             "experiments/EXP-21/reviews/req_review.json",
+            "experiments/EXP-7/work-releases/req_release_old.json",
+            "experiments/EXP-7/work-releases/req_release_7.json",
             "operations/req_other.json",
         ]
         transport._ledger_json.update(
@@ -776,6 +778,28 @@ class ClientTests(unittest.TestCase):
                     "retention": {
                         "release_url": "https://github.com/owner/repo/releases/tag/candidate-current"
                     },
+                },
+                "experiments/EXP-7/work-releases/req_release_old.json": {
+                    "release_id": "req_release_old",
+                    "outcome": "COMPLETED",
+                    "notes": "Previous shareable build.",
+                    "result_source_sha": "9" * 40,
+                    "delivery": {
+                        "changes": ["上一版"],
+                        "playable": {
+                            "kind": "SHAREABLE_URL",
+                            "verified": True,
+                            "portable": True,
+                            "url": "https://owner.github.io/repo/play/999999/",
+                            "artifact_url": None,
+                            "launch_hint": "immutable Pages build",
+                        },
+                        "focus_points": ["旧版对照"],
+                        "producer": "godot-prototype-studio",
+                        "build_id": "9" * 40,
+                        "previous_candidate_id": None,
+                    },
+                    "delivery_trust": "participant_reported",
                 },
                 "experiments/EXP-7/work-releases/req_release_7.json": {
                     "release_id": "req_release_7",
@@ -887,8 +911,12 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(delivery_card["comparison"]["available"])
         self.assertIn("本轮：缩短角色切换反馈", delivery_card["comparison"]["summary_zh"])
         self.assertEqual(
-            delivery_card["comparison"]["previous_playable"]["artifact_url"],
-            "https://github.com/owner/repo/releases/tag/candidate-old",
+            delivery_card["comparison"]["previous_playable"]["url"],
+            "https://owner.github.io/repo/play/999999/",
+        )
+        self.assertEqual(
+            delivery_card["comparison"]["previous_playable"]["kind"],
+            "SHAREABLE_URL",
         )
         previous_action = next(
             action
@@ -896,7 +924,11 @@ class ClientTests(unittest.TestCase):
             if action["intent"] == "OPEN_PREVIOUS_VERSION"
         )
         self.assertTrue(previous_action["enabled"])
-        self.assertEqual(previous_action["label_zh"], "打开上一版候选包")
+        self.assertEqual(previous_action["label_zh"], "试玩上一版")
+        self.assertEqual(
+            previous_action["url"],
+            "https://owner.github.io/repo/play/999999/",
+        )
         revise_action = next(
             action
             for action in delivery_card["quick_actions"]
@@ -1076,6 +1108,18 @@ class ClientTests(unittest.TestCase):
             handoff["return_contract"]["iteration_delivery"]["persist_via"],
             "work.release.delivery",
         )
+        self.assertTrue(handoff["delivery_request"]["prefer_shareable_url"])
+        self.assertEqual(
+            handoff["delivery_request"]["preferred_provider"],
+            "github-pages",
+        )
+        self.assertEqual(
+            handoff["delivery_request"]["immutable_version_key"],
+            "result_source_sha",
+        )
+        self.assertTrue(
+            handoff["delivery_request"]["requires_browser_playable_verification"]
+        )
 
         self.assertEqual(
             result["focus"],
@@ -1160,7 +1204,7 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(actions["保留这版"]["enabled"])
         self.assertTrue(actions["我试玩通过了"]["enabled"])
         self.assertFalse(actions["就选这版"]["enabled"])
-        self.assertTrue(actions["打开上一版候选包"]["enabled"])
+        self.assertTrue(actions["试玩上一版"]["enabled"])
         self.assertTrue(actions["用上一版源码继续修改"]["enabled"])
         self.assertTrue(
             delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
@@ -1878,8 +1922,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["contract"]["version"], "1.0")
         runtime_identity = result["runtime_identity"]
-        self.assertEqual(runtime_identity["version"], "1.1.0")
-        self.assertEqual(runtime_identity["build_identity"], "version:1.1.0")
+        self.assertEqual(runtime_identity["version"], "1.2.0")
+        self.assertEqual(runtime_identity["build_identity"], "version:1.2.0")
         self.assertEqual(runtime_identity["build_identity_kind"], "version-only")
         self.assertIsNone(runtime_identity["source_digest"])
         self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2, 3])
@@ -1900,6 +1944,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(evaluation["small_candidate_ranking"], "PAIRWISE_NO_ELO")
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["iteration_delivery_card_v1"])
+        self.assertTrue(result["features"]["shareable_playable_delivery_v1"])
+        shareable = result["shareable_playable_delivery"]
+        self.assertEqual(shareable["provider"], "github-pages")
+        self.assertEqual(shareable["immutable_version_key"], "result_source_sha")
+        self.assertTrue(shareable["executor_owns_publish"])
+        self.assertFalse(shareable["game_exp_hosts_playable"])
+        self.assertTrue(shareable["browser_playable_verification_required"])
+        self.assertFalse(shareable["human_lifecycle_authority_changed"])
         delivery = result["iteration_delivery_card"]
         self.assertEqual(delivery["schema_version"], 1)
         self.assertEqual(

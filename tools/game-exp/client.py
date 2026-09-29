@@ -1265,6 +1265,7 @@ class GameExpClient:
                 "contextual_surface_v1": True,
                 "iteration_routing_v1": True,
                 "iteration_delivery_card_v1": True,
+                "shareable_playable_delivery_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
                 "collaboration_coordination_v2": True,
@@ -1287,6 +1288,19 @@ class GameExpClient:
                 "keep_version_means_selected": False,
                 "human_review_authority_preserved": True,
                 "selection_prerequisites_preserved": True,
+            },
+            "shareable_playable_delivery": {
+                "schema_version": 1,
+                "provider": "github-pages",
+                "auto_preference_scope": "public_repository_handoff_only",
+                "immutable_version_key": "result_source_sha",
+                "version_path": "play/<result_source_sha>/",
+                "executor_owns_publish": True,
+                "game_exp_hosts_playable": False,
+                "deployment_verification_required": True,
+                "browser_playable_verification_required": True,
+                "historical_lookup": "previous_candidate.source_sha -> work.release.delivery.playable",
+                "human_lifecycle_authority_changed": False,
             },
             "iteration_routing": {
                 "default_existing_experiment_change": "REVISION",
@@ -2785,6 +2799,7 @@ class GameExpClient:
         delivery_release: dict[str, Any] | None,
         candidate: dict[str, Any] | None,
         previous_candidate: dict[str, Any] | None,
+        previous_playable: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         delivery = (
             delivery_release.get("delivery")
@@ -2935,6 +2950,20 @@ class GameExpClient:
             if isinstance(previous_retention.get("release_url"), str)
             else None
         )
+        previous_shareable_url = (
+            previous_playable.get("url")
+            if isinstance(previous_playable, dict)
+            and previous_playable.get("kind") == "SHAREABLE_URL"
+            and previous_playable.get("verified") is True
+            and isinstance(previous_playable.get("url"), str)
+            else None
+        )
+        previous_open_url = previous_shareable_url or previous_release_url
+        previous_open_label_zh = (
+            "试玩上一版"
+            if previous_shareable_url
+            else "打开上一版候选包"
+        )
         current_candidate_id = row.get("candidate_id")
         if comparison_available:
             comparison_zh = (
@@ -2991,13 +3020,21 @@ class GameExpClient:
                 "note_zh": "这是明确选择意图；仍需满足主干集成验证等现有前置条件。",
             },
             {
-                "label_zh": "打开上一版候选包",
+                "label_zh": previous_open_label_zh,
                 "intent": "OPEN_PREVIOUS_VERSION",
-                "enabled": bool(previous_release_url),
+                "enabled": bool(previous_open_url),
                 "direct_lifecycle_mutation": False,
-                "route": "OPEN_PREVIOUS_CANDIDATE_ARTIFACT",
-                "url": previous_release_url,
-                "note_zh": "只打开上一候选版本的保留产物，不修改源码或实验状态。",
+                "route": (
+                    "OPEN_PREVIOUS_SHAREABLE_PLAYABLE"
+                    if previous_shareable_url
+                    else "OPEN_PREVIOUS_CANDIDATE_ARTIFACT"
+                ),
+                "url": previous_open_url,
+                "note_zh": (
+                    "打开上一版已验证的可分享试玩地址，不修改源码或实验状态。"
+                    if previous_shareable_url
+                    else "只打开上一候选版本的保留产物，不修改源码或实验状态。"
+                ),
             },
             {
                 "label_zh": "用上一版源码继续修改",
@@ -3066,15 +3103,22 @@ class GameExpClient:
                 ),
                 "summary_zh": comparison_zh,
                 "changes_zh": changes,
-                "previous_playable": {
-                    "kind": "ARTIFACT_ONLY" if previous_release_url else "MISSING",
-                    "artifact_url": previous_release_url,
-                    "action_zh": (
-                        "打开上一版候选包"
-                        if previous_release_url
-                        else "上一版试玩入口不可用"
-                    ),
-                },
+                "previous_playable": (
+                    {
+                        **previous_playable,
+                        "action_zh": "试玩上一版",
+                    }
+                    if previous_shareable_url
+                    else {
+                        "kind": "ARTIFACT_ONLY" if previous_release_url else "MISSING",
+                        "artifact_url": previous_release_url,
+                        "action_zh": (
+                            "打开上一版候选包"
+                            if previous_release_url
+                            else "上一版试玩入口不可用"
+                        ),
+                    }
+                ),
             },
             "focus_points_zh": focus_points[:3],
             "producer": (
@@ -3855,11 +3899,49 @@ class GameExpClient:
                 if isinstance(previous_value, dict):
                     previous_candidate = previous_value
 
+            previous_playable = None
+            previous_source_sha = (
+                previous_candidate.get("source_sha")
+                if isinstance(previous_candidate, dict)
+                and isinstance(previous_candidate.get("source_sha"), str)
+                else None
+            )
+            if previous_source_sha:
+                release_prefix = f"experiments/{experiment_id}/work-releases/"
+                for release_path in sorted(
+                    path
+                    for path in paths
+                    if path.startswith(release_prefix) and path.endswith(".json")
+                ):
+                    historical_release = self.transport.ledger_json(
+                        release_path,
+                        ref=snapshot_head,
+                    )
+                    if not isinstance(historical_release, dict):
+                        continue
+                    if historical_release.get("result_source_sha") != previous_source_sha:
+                        continue
+                    historical_delivery = historical_release.get("delivery")
+                    historical_playable = (
+                        historical_delivery.get("playable")
+                        if isinstance(historical_delivery, dict)
+                        else None
+                    )
+                    if (
+                        isinstance(historical_playable, dict)
+                        and historical_playable.get("kind") == "SHAREABLE_URL"
+                        and historical_playable.get("verified") is True
+                        and isinstance(historical_playable.get("url"), str)
+                    ):
+                        previous_playable = historical_playable
+                        break
+
             item["delivery_card"] = self._iteration_delivery_card_zh(
                 row=item,
                 delivery_release=delivery_release,
                 candidate=candidate if isinstance(candidate, dict) else None,
                 previous_candidate=previous_candidate,
+                previous_playable=previous_playable,
             )
             items.append(item)
             counts[lifecycle] = counts.get(lifecycle, 0) + 1
@@ -4573,6 +4655,28 @@ class GameExpClient:
                     else None
                 ),
             },
+            "delivery_request": {
+                "prefer_shareable_url": (
+                    isinstance(board.get("repository"), dict)
+                    and board.get("repository", {}).get("visibility") == "public"
+                    and board.get("repository", {}).get("private") is False
+                ),
+                "preferred_provider": "github-pages",
+                "immutable_version_key": "result_source_sha",
+                "path_scheme": "play/<result_source_sha>/",
+                "requires_deployment_verification": True,
+                "requires_browser_playable_verification": True,
+                "fallback_order": [
+                    "SHAREABLE_URL",
+                    "LOCAL_URL",
+                    "ARTIFACT_ONLY",
+                    "MISSING",
+                ],
+                "note_zh": (
+                    "公开仓库优先由原型执行器发布不可变的 GitHub Pages 试玩地址；"
+                    "只有部署内容和真实浏览器试玩都验证后，才回填 verified=true 的 SHAREABLE_URL。"
+                ),
+            },
             "return_contract": {
                 "schema_version": 2,
                 "required": [
@@ -4632,7 +4736,8 @@ class GameExpClient:
                     "trust": "participant_reported",
                     "rule": (
                         "provide one structured delivery object after each completed "
-                        "implementation iteration; use MISSING rather than inventing a playable URL"
+                        "implementation iteration; when delivery_request.prefer_shareable_url is true, "
+                        "prefer its immutable verified shareable route; use MISSING rather than inventing a playable URL"
                     ),
                 },
                 "evidence_scope": {
@@ -5142,6 +5247,7 @@ class GameExpClient:
                 delivery_release=None,
                 candidate=None,
                 previous_candidate=None,
+                previous_playable=None,
             )
 
         return {

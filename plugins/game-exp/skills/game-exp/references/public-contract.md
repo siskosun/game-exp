@@ -480,3 +480,19 @@ Hosts may enrich overlap/risk with Git-native facts such as actual changed paths
 
 This contract does not add a lifecycle state, shared-memory service, CRDT layer, Agent swarm, second database, or general file lock.
 
+
+
+## Shareable playable delivery v1
+
+`features.shareable_playable_delivery_v1=true` means prototype handoff includes a non-authoritative delivery preference.
+
+For a public repository:
+
+- `delivery_request.prefer_shareable_url=true`;
+- preferred provider is `github-pages`;
+- immutable version identity is the exact `result_source_sha`;
+- the intended stable path is `play/<result_source_sha>/`;
+- the prototype executor owns publishing and browser/player verification;
+- game-exp never becomes the hosting service and never treats successful deployment as Review/PROMISING/SELECTED evidence.
+
+A previous Candidate may regain a direct playable link when its `source_sha` matches a historical participant-reported `work.release.delivery.playable` with `kind=SHAREABLE_URL` and `verified=true`. Otherwise the existing retained Candidate artifact fallback remains unchanged.

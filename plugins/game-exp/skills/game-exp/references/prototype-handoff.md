@@ -140,4 +140,8 @@ Specialized executor automation stops at evidence. game-exp remains the authorit
 
 ## Playtest delivery ownership
 
-game-exp does not host or publish playable builds. The specialized executor owns the requested playable delivery. For external testers, prefer a verified `SHAREABLE_URL`; a localhost/LAN URL or retained `candidate.tgz` is not a substitute for a cross-device link. If a completed iteration returns `LOCAL_URL`, `ARTIFACT_ONLY`, or `MISSING` and external testing is needed, the next action is to ask the executor to publish a shareable build and persist that URL through `work.release.delivery.playable`.
+game-exp does not host or publish playable builds. The specialized executor owns the requested playable delivery. For external testers, prefer a verified `SHAREABLE_URL`; a localhost/LAN URL or retained `candidate.tgz` is not a substitute for a cross-device link. On public repositories the handoff sets `delivery_request.prefer_shareable_url=true` and recommends immutable GitHub Pages paths keyed by the exact `result_source_sha`. GPS/H5 may use their bundled publisher, but must verify both deployment identity and the real browser/player path before returning `verified=true`.
+
+Each published build should remain at a stable path such as `play/<result_source_sha>/`. That lets the Board recover an older playable by matching `previous_candidate.source_sha` to historical `work.release.delivery.playable` records. If no verified historical shareable exists, the Board falls back to the retained Candidate artifact.
+
+If a completed iteration returns `LOCAL_URL`, `ARTIFACT_ONLY`, or `MISSING` and external testing is needed, the next action is to ask the executor to publish a shareable build and persist that URL through `work.release.delivery.playable`.

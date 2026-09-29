@@ -36,7 +36,7 @@ The cleanup flag is intentionally invalid for a single-Harness install.
 
 Each Harness gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent game-exp Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
-The 1.1 install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
+The 1.2 install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
 
 - `godot-prototype-studio` from `https://github.com/siskosun/godot-prototype-studio`
 - `h5-game-prototype-agent` from `https://github.com/siskosun/h5-game-prototype-agent`
@@ -69,16 +69,16 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.1.0`.
+Current version: `1.2.0`.
 
-After a completed implementation iteration, game-exp can now project a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates.
+After a completed implementation iteration, game-exp projects a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. In 1.2, public-repository handoff prefers immutable executor-published GitHub Pages playables keyed by source SHA, and the Board can recover an older verified shareable URL for the previous Candidate. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates.
 
 For a brand-new prototype with no existing repository, local CLI/stdio MCP can now use `project-create` to create the GitHub repository, seed the latest tagged Godot/H5 starter, install game-exp, push `main`, and run complete project initialization. New repositories default to public so GitHub Rulesets work on the intended free-plan path. Existing private repositories remain supported when their plan provides the required protection.
 
 Release history: see `CHANGELOG.md`.
 
 
-## 1.1 pre-merge gate
+## 1.2 pre-merge gate
 
 Before merging a release change, run:
 
