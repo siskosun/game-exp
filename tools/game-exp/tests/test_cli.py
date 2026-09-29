@@ -42,6 +42,57 @@ class CLIRoutingTests(unittest.TestCase):
             code = cli.main(argv)
         return code, client
 
+    def test_project_create_routes_before_repository_client_construction(self):
+        result = {
+            "status": "PASS",
+            "complete": True,
+            "project_readiness": "PROJECT_READY",
+            "repo": "alice/demo",
+        }
+        with (
+            patch("cli.prototype_project_create", return_value=result) as create,
+            patch("cli.GitHubTransport") as transport,
+            patch("cli._print_result"),
+        ):
+            code = cli.main(
+                [
+                    "project-create",
+                    "demo",
+                    "--stack",
+                    "h5",
+                    "--visibility",
+                    "private",
+                ]
+            )
+        self.assertEqual(code, 0)
+        transport.assert_not_called()
+        create.assert_called_once_with(
+            name="demo",
+            stack="h5",
+            visibility="private",
+            owner=None,
+            directory=None,
+            h5_mode="probe",
+            description=None,
+            trust_mode="auto",
+            run_selftest=True,
+        )
+
+    def test_project_create_incomplete_returns_nonzero(self):
+        with (
+            patch(
+                "cli.prototype_project_create",
+                return_value={
+                    "status": "BLOCKED_PLAN",
+                    "complete": False,
+                    "repo_created": True,
+                },
+            ),
+            patch("cli._print_result"),
+        ):
+            code = cli.main(["project-create", "demo", "--stack", "godot"])
+        self.assertEqual(code, 1)
+
     def test_project_preflight_routes_before_client_construction(self):
         transport = MagicMock()
         transport.repo = "owner/repo"

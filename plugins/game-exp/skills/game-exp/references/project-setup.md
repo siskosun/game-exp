@@ -101,6 +101,26 @@ Doctor validates the required minimum Ruleset semantics, not only Ruleset names.
 
 ## New-project sequence
 
+### Preferred path for a brand-new prototype
+
+When no repository exists yet, prefer local `game_exp_project_create` or CLI `project-create`.
+
+The command:
+
+1. takes a repository name plus `godot` or `h5`;
+2. fetches the latest tagged companion starter (GPS for Godot, H5 Game Prototype Agent for H5);
+3. creates an isolated local Git working tree on `main`;
+4. installs game-exp workflows/runtime and a valid repository-root project policy;
+5. creates and pushes a GitHub repository with the requested visibility; default visibility is private;
+6. runs project-init, Trusted Writer self-test and final Doctor;
+7. returns `PROJECT_READY` or an explicit blocker while preserving the created repository for repair/resume.
+
+For H5, `probe` is the default starter for a new gameplay idea; `slice` uses the minimal DOM slice starter. For Godot, project-create uses the canonical GPS 2D starter plus a repository-root source-bundle policy. Runtime/playable evidence still comes from GPS.
+
+Never overwrite an existing local directory or GitHub repository. Never automatically change a private repository to public to bypass a Ruleset-plan blocker. If setup stops after repository creation, resume with project-init instead of creating another repository.
+
+### Existing/manual repository path
+
 1. Create/initialize the source repository.
 2. Ensure a valid `.game-exp/project-policy.json` exists.
    - locked Node/npm may be inferred from `package.json` plus `package-lock.json` / `npm-shrinkwrap.json`;

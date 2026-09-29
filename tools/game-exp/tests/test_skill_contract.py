@@ -272,6 +272,40 @@ class GameExpSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, setup)
 
+    def test_project_create_contract_is_private_by_default_and_non_overwriting(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        setup = (
+            PLUGIN / "skills" / "game-exp" / "references" / "project-setup.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+        onboarding = (
+            PLUGIN / "skills" / "game-exp" / "references" / "onboarding.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "game_exp_project_create",
+            "Default visibility to **private**",
+            "first-experiment onboarding",
+        ):
+            self.assertIn(phrase, skill)
+        for phrase in (
+            "latest tagged companion starter",
+            "default visibility is private",
+            "Never overwrite an existing local directory or GitHub repository",
+            "Never automatically change a private repository to public",
+        ):
+            self.assertIn(phrase, setup)
+        for phrase in (
+            "game_exp_project_create",
+            "default repository visibility is `private`",
+            "never overwritten",
+            "shared/streamable HTTP MCP must reject project creation",
+        ):
+            self.assertIn(phrase, contract)
+        self.assertIn("project-create", onboarding)
+
     def test_conformance_contract_is_screening_only(self):
         skill = SKILL.read_text(encoding="utf-8")
         reference = (

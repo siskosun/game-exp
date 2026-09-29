@@ -1,6 +1,6 @@
 ---
 name: game-exp
-description: Create, continue, inspect, review, compare, integrate, archive, recover, and diagnose trusted gameplay/prototype experiments across MCP, CLI, and the GitHub Bridge. Also bootstrap or upgrade game-exp repositories. Preserve protected Ledger authority, exact Candidate identity, human lifecycle gates, and recovery by stable operation id.
+description: Create brand-new prototype projects/repositories, continue, inspect, review, compare, integrate, archive, recover, and diagnose trusted gameplay/prototype experiments across MCP, CLI, and the GitHub Bridge. Also bootstrap or upgrade game-exp repositories. Preserve protected Ledger authority, exact Candidate identity, human lifecycle gates, and recovery by stable operation id.
 ---
 
 # game-exp
@@ -37,7 +37,8 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 | Task | Primary tool / action | Read |
 |---|---|---|
 | Status / permissions / version | `game_exp_status` | `references/public-contract.md` |
-| New repository / trust repair | `game_exp_project_init` (optional advanced preflight), Doctor | `references/project-setup.md` |
+| Brand-new prototype / repository | `game_exp_project_create` (local stdio/CLI) | `references/project-setup.md`, `references/onboarding.md` |
+| Existing repository / trust repair | `game_exp_project_init` (optional advanced preflight), Doctor | `references/project-setup.md` |
 | First experiment | `game_exp_experiment_template`, Bind, Initialize | `references/onboarding.md`, `references/workflow.md` |
 | Board / one experiment / one prototype | `game_exp_board`; optional advanced panel tools when enabled | `references/board.md`, `references/chat-ui.md` |
 | Continue implementation | collaboration preflight, source edit, Work Claim/Release | `references/collaboration.md`, `references/workflow.md` |
@@ -52,6 +53,12 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 ## Complete project setup
 
 Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion.
+
+When the user asks for a **brand-new prototype** and has not selected an existing repository, prefer `game_exp_project_create` or CLI `project-create` instead of asking them to create GitHub/Git/configuration manually. Default visibility to **private** unless the user explicitly asks for public. Never make a repository public automatically to bypass a plan limitation.
+
+The project-create path creates the local starter and GitHub repository, installs game-exp files/project policy, pushes `main`, runs project-init/Doctor, then returns either `PROJECT_READY` or one retained repository plus an actionable setup blocker. It must refuse existing local directories/repositories rather than overwrite them.
+
+If project-create succeeds, continue directly into first-experiment onboarding using the user's original prototype goal; do not ask them to repeat it.
 
 If the optional advanced `game_exp_project_preflight` tool is registered, use it first; otherwise `game_exp_project_init` performs the same fail-closed preflight before any mutation. Run project initialization only from local stdio MCP or CLI using repository-admin credentials. Shared/streamable HTTP MCP must never perform complete project initialization.
 
@@ -139,7 +146,7 @@ Conformance is screening only. When explicitly enabled, follow `references/confo
 - `references/onboarding.md` — first-use flow
 - `references/collaboration.md` — work intent, freshness, handoff
 - `references/evaluation.md` — Evaluation Profile/evidence/human comparison
-- `references/prototype-handoff.md` — Godot handoff boundary
+- `references/prototype-handoff.md` — Godot/H5 executor handoff boundary
 - `references/exploration-thread.md` — serial exploration rule
 - `references/notifications.md` — notification/cursor rules
 - `references/github-bridge.md` — Issue command surface

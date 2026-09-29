@@ -303,6 +303,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(
             names,
             {
+                "game_exp_project_create",
                 "game_exp_project_init",
                 "game_exp_status",
                 "game_exp_experiment_template",
@@ -328,7 +329,7 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_operation_resume",
             },
         )
-        self.assertEqual(len(names), 23)
+        self.assertEqual(len(names), 24)
         for hidden in (
             "game_exp_project_preflight",
             "game_exp_experiment_panel",
@@ -446,6 +447,60 @@ class MCPServerTests(unittest.TestCase):
         self.assertTrue(archive.destructive_hint)
         self.assertTrue(archive.idempotent_hint)
 
+
+    def test_project_create_rejects_shared_http(self):
+        if mcp_server is None:
+            self.skipTest("mcp dependency not installed")
+        with (
+            patch.dict(
+                os.environ,
+                {"GAME_EXP_MCP_TRANSPORT": "streamable-http"},
+                clear=False,
+            ),
+            patch("mcp_server.prototype_project_create") as create,
+        ):
+            result = mcp_server.game_exp_project_create("demo", "h5")
+        self.assertEqual(result["status"], "REJECTED")
+        self.assertEqual(result["code"], "PROJECT_CREATE_LOCAL_STDIO_REQUIRED")
+        create.assert_not_called()
+
+    def test_project_create_runs_only_under_local_stdio(self):
+        if mcp_server is None:
+            self.skipTest("mcp dependency not installed")
+        expected = {
+            "status": "PASS",
+            "complete": True,
+            "project_readiness": "PROJECT_READY",
+            "repo": "alice/demo",
+        }
+        with (
+            patch.dict(
+                os.environ,
+                {"GAME_EXP_MCP_TRANSPORT": "stdio"},
+                clear=False,
+            ),
+            patch(
+                "mcp_server.prototype_project_create",
+                return_value=expected,
+            ) as create,
+        ):
+            result = mcp_server.game_exp_project_create(
+                "demo",
+                "h5",
+                visibility="private",
+            )
+        self.assertEqual(result["status"], "PASS")
+        create.assert_called_once_with(
+            name="demo",
+            stack="h5",
+            visibility="private",
+            owner=None,
+            directory=None,
+            h5_mode="probe",
+            description=None,
+            trust_mode="auto",
+            run_selftest=True,
+        )
 
     def test_project_init_rejects_shared_http(self):
         transport = MagicMock()

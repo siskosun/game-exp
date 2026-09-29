@@ -24,6 +24,7 @@ from conformance_core import (
 )
 from protocol_core import ProtocolError, strict_json_loads
 from project_setup import preflight as project_preflight, provision as project_provision
+from prototype_project import PrototypeProjectError, create_project as prototype_project_create
 
 
 def _load_object(value: str | None, path: str | None, *, label: str) -> dict[str, Any]:
@@ -115,6 +116,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="diagnostic only; a skipped self-test can never count as complete setup",
     )
     project_init.add_argument(
+        "--trust-mode",
+        choices=("auto", "single-principal", "multi-principal"),
+        default="auto",
+        help="repository trust policy mode",
+    )
+
+    project_create = sub.add_parser(
+        "project-create",
+        help="create a new GitHub prototype repository and make game-exp project-ready",
+    )
+    project_create.add_argument("name", help="new GitHub repository name")
+    project_create.add_argument(
+        "--stack",
+        required=True,
+        choices=("godot", "h5"),
+        help="prototype technology",
+    )
+    project_create.add_argument(
+        "--visibility",
+        choices=("private", "public"),
+        default="private",
+        help="GitHub repository visibility; defaults to private",
+    )
+    project_create.add_argument("--owner", help="GitHub user or organization; defaults to current user")
+    project_create.add_argument("--directory", help="local destination; defaults to ./<name>")
+    project_create.add_argument(
+        "--h5-mode",
+        choices=("probe", "slice"),
+        default="probe",
+        help="H5 starter type; ignored for Godot",
+    )
+    project_create.add_argument("--description", help="GitHub repository description")
+    project_create.add_argument(
+        "--skip-selftest",
+        action="store_true",
+        help="diagnostic only; project cannot be PROJECT_READY when self-test is skipped",
+    )
+    project_create.add_argument(
         "--trust-mode",
         choices=("auto", "single-principal", "multi-principal"),
         default="auto",
@@ -400,6 +439,34 @@ def main(argv: list[str] | None = None) -> int:
             result = conformance_compare_reports(baseline, candidate)
             _print_result(result, as_json=args.json)
             return 0 if result.get("status") == "PASS" else 1
+
+        if args.command == "project-create":
+            if args.conformance_session:
+                result = {
+                    "status": "REJECTED",
+                    "complete": False,
+                    "code": "PROJECT_CREATE_NOT_AVAILABLE_IN_CONFORMANCE",
+                    "error": "project creation cannot run in conformance simulation mode",
+                }
+            else:
+                result = prototype_project_create(
+                    name=args.name,
+                    stack=args.stack,
+                    visibility=args.visibility,
+                    owner=args.owner,
+                    directory=args.directory,
+                    h5_mode=args.h5_mode,
+                    description=args.description,
+                    trust_mode=args.trust_mode,
+                    run_selftest=not args.skip_selftest,
+                )
+                if args.skip_selftest and result.get("status") == "PASS":
+                    result["status"] = "INCOMPLETE"
+                    result["complete"] = False
+                    result["project_readiness"] = "INCOMPLETE"
+                    result["next_step"] = "RUN_PROJECT_INIT_WITH_SELFTEST"
+            _print_result(result, as_json=args.json)
+            return 0 if result.get("status") == "PASS" and result.get("complete") is True else 1
 
         if args.command in {"project-preflight", "project-init"}:
             if args.conformance_session:

@@ -8,6 +8,7 @@ from mcp.types import ToolAnnotations
 
 from client import GameExpClient, GitHubTransport
 from project_setup import preflight as project_preflight, provision as project_provision
+from prototype_project import create_project as prototype_project_create
 from conformance_core import (
     ConformanceClient,
     compare_reports as conformance_compare_reports,
@@ -166,6 +167,48 @@ def game_exp_project_preflight(repo: str | None = None) -> dict[str, Any]:
         }
     target = GitHubTransport(_target_repo(repo)).repo
     return project_preflight(target)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+def game_exp_project_create(
+    name: str,
+    stack: str,
+    visibility: str = "private",
+    owner: str | None = None,
+    directory: str | None = None,
+    h5_mode: str = "probe",
+    description: str | None = None,
+    run_selftest: bool = True,
+    trust_mode: str = "auto",
+) -> dict[str, Any]:
+    """Create a new prototype GitHub repository and provision game-exp. Local stdio only."""
+    if _conformance_session_path() is not None:
+        return {
+            "status": "REJECTED",
+            "complete": False,
+            "code": "PROJECT_CREATE_NOT_AVAILABLE_IN_CONFORMANCE",
+        }
+    if _mcp_transport() != "stdio":
+        return {
+            "status": "REJECTED",
+            "complete": False,
+            "code": "PROJECT_CREATE_LOCAL_STDIO_REQUIRED",
+            "error": (
+                "project-create creates a local working tree, GitHub repository, and "
+                "repository trust controls; run it through local CLI/stdio MCP."
+            ),
+        }
+    return prototype_project_create(
+        name=name,
+        stack=stack,
+        visibility=visibility,
+        owner=owner,
+        directory=directory,
+        h5_mode=h5_mode,
+        description=description,
+        trust_mode=trust_mode,
+        run_selftest=run_selftest,
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
