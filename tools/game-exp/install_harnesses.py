@@ -351,6 +351,34 @@ class HarnessInstaller:
         return version
 
     def _validate_source(self) -> None:
+        try:
+            marker = (self.source_root / "VERSION.txt").read_text(
+                encoding="utf-8"
+            ).strip()
+            install = json.loads(
+                (self.source_root / "INSTALL.json").read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HarnessInstallError(
+                f"source release metadata is invalid: {exc}"
+            ) from exc
+        install_version = (
+            install.get("version") if isinstance(install, dict) else None
+        )
+        install_source = (
+            install.get("source_of_truth") if isinstance(install, dict) else None
+        )
+        if marker != self.version or install_version != self.version:
+            raise HarnessInstallError(
+                "source version metadata is inconsistent: "
+                f"plugin={self.version!r}, VERSION.txt={marker!r}, "
+                f"INSTALL.json={install_version!r}"
+            )
+        if install_source != CANONICAL_SOURCE:
+            raise HarnessInstallError(
+                f"source_of_truth is unexpected: {install_source!r}"
+            )
+
         missing = [
             rel
             for rel in self.managed_paths
