@@ -425,6 +425,80 @@ class HarnessInstallerTests(unittest.TestCase):
             )
             self.assertEqual(list(locked_path.parent.glob("project_setup.py.live-backup-*")), [])
 
+    def test_codex_config_install_handles_live_locked_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            config = self._codex_config(home)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            module = __import__("install_harnesses")
+            original_atomic_write = module._atomic_write
+            state = {"raised": False}
+
+            def locked_config(path, content):
+                if path == config and path.exists() and not state["raised"]:
+                    state["raised"] = True
+                    raise PermissionError("simulated Codex config denying delete-sharing")
+                return original_atomic_write(path, content)
+
+            with (
+                mock.patch("install_harnesses.shutil.which", return_value="uv"),
+                mock.patch("install_harnesses._atomic_write", side_effect=locked_config),
+            ):
+                result = installer.install()
+
+            self.assertTrue(state["raised"])
+            self.assertEqual(result["status"], "PASS")
+            value = tomllib.loads(config.read_text(encoding="utf-8"))
+            self.assertEqual(value["model"], "gpt-test")
+            self.assertIn("other", value["mcp_servers"])
+            self.assertIn("game-exp", value["mcp_servers"])
+            self.assertEqual(list(config.parent.glob("config.toml.live-backup-*")), [])
+
+    def test_rollback_restores_live_locked_existing_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            config = self._codex_config(home)
+            original = config.read_bytes()
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            module = __import__("install_harnesses")
+            original_atomic_write = module._atomic_write
+            state = {"rollback_lock_raised": False}
+
+            def fail_after_config_mutation():
+                config.write_text("mutated = true\n", encoding="utf-8")
+                raise RuntimeError("simulated failure after config mutation")
+
+            def locked_rollback(path, content):
+                if (
+                    path == config
+                    and content == original
+                    and not state["rollback_lock_raised"]
+                ):
+                    state["rollback_lock_raised"] = True
+                    raise PermissionError("simulated rollback rename denial")
+                return original_atomic_write(path, content)
+
+            with (
+                mock.patch("install_harnesses.shutil.which", return_value="uv"),
+                mock.patch.object(
+                    HarnessInstaller,
+                    "_install_config",
+                    side_effect=fail_after_config_mutation,
+                ),
+                mock.patch("install_harnesses._atomic_write", side_effect=locked_rollback),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "simulated failure after config mutation",
+                ):
+                    installer.install()
+
+            self.assertTrue(state["rollback_lock_raised"])
+            self.assertEqual(config.read_bytes(), original)
+            self.assertFalse(installer.runtime_dir.exists())
+            self.assertFalse(installer.skill_target.exists())
+            self.assertEqual(list(config.parent.glob("config.toml.live-backup-*")), [])
+
     def test_reinstall_is_idempotent_for_selected_harness(self):
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td)
