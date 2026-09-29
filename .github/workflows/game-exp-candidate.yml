@@ -29,7 +29,7 @@ jobs:
       actor_login: ${{ steps.guard.outputs.actor_login }}
     steps:
       - name: Checkout request-id guard
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -38,7 +38,7 @@ jobs:
             tools/game-exp/workflow_guard.py
             tools/game-exp/protocol_core.py
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Select the first run for this request id
@@ -76,7 +76,7 @@ jobs:
       evaluation_output_dir: ${{ steps.resolve.outputs.evaluation_output_dir }}
     steps:
       - name: Checkout trusted protocol core
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -199,12 +199,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout exact experiment source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.source_sha }}
           persist-credentials: false
       - name: Checkout trusted project policy
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -214,12 +214,12 @@ jobs:
             tools/game-exp/protocol_core.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '1'
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema != '1'
         with:
           node-version: ${{ needs.resolve.outputs.node_version }}
@@ -232,7 +232,7 @@ jobs:
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json run build --cwd .
       - name: Freeze candidate bytes
         run: python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json package --repo-root . --output candidate.tgz
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate.tgz
@@ -247,7 +247,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout trusted evaluator control source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -259,7 +259,7 @@ jobs:
             .game-exp/project-policy.json
             .game-exp/evaluation/
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
           path: evaluation-work
@@ -299,13 +299,13 @@ jobs:
           test -f "$EVALUATION_OUTPUT_DIR/result.json"
           PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py package             "$EVALUATION_OUTPUT_DIR" evaluation-output.tgz
           PYTHONPATH=control/tools/game-exp python control/tools/game-exp/evaluation_evidence.py observe             profile.json evaluation-output.tgz             --source-sha "$SOURCE_SHA"             --expected-profile-digest "$PROFILE_DIGEST"             --work-dir "$RUNNER_TEMP/evaluation-verify"             --summary-out trusted-evaluation-summary.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: game-exp-candidate-evaluation-summary-${{ github.run_id }}-${{ github.run_attempt }}
           path: evaluation-work/trusted-evaluation-summary.json
           retention-days: 30
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: needs.resolve.outputs.evaluation_enabled == 'true'
         with:
           name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
@@ -320,7 +320,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted project policy
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -330,7 +330,7 @@ jobs:
             tools/game-exp/protocol_core.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Observe artifact without source checkout
@@ -340,7 +340,7 @@ jobs:
           python control/tools/game-exp/project_policy.py --policy control/.game-exp/project-policy.json verify --archive candidate.tgz > artifact-files.txt
           printf '{"observer":"trusted-clean-job","source_checkout":false,"artifact":"candidate.tgz"}\n' > observer.json
           sha256sum candidate.tgz
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: game-exp-candidate-observation-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -359,7 +359,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout trusted Candidate control source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -369,19 +369,19 @@ jobs:
             tools/game-exp/protocol_core.py
             tools/game-exp/domain_core.py
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: game-exp-candidate-bytes-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: game-exp-candidate-observation-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: game-exp-candidate-evaluation-summary-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: needs.resolve.outputs.evaluation_enabled == 'true'
         with:
           name: game-exp-candidate-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
@@ -612,7 +612,7 @@ jobs:
           assert value["status"]=="COMMITTED", value
           assert value["domain_status"]=="APPLIED", value
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: game-exp-candidate-trusted-evidence-${{ github.run_id }}-${{ github.run_attempt }}
