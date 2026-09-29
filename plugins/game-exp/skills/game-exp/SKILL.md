@@ -54,7 +54,7 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 
 Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion.
 
-When the user asks for a **brand-new prototype** and has not selected an existing repository, prefer `game_exp_project_create` or CLI `project-create` instead of asking them to create GitHub/Git/configuration manually. Default visibility to **private** unless the user explicitly asks for public. Never make a repository public automatically to bypass a plan limitation.
+When the user asks for a **brand-new prototype** and has not selected an existing repository, prefer `game_exp_project_create` or CLI `project-create` instead of asking them to create GitHub/Git/configuration manually. Default visibility to **public**. Existing private repositories remain usable only when their GitHub plan exposes the required protection; do not silently change an existing repository's visibility.
 
 The project-create path creates the local starter and GitHub repository, installs game-exp files/project policy, pushes `main`, runs project-init/Doctor, then returns either `PROJECT_READY` or one retained repository plus an actionable setup blocker. It must refuse existing local directories/repositories rather than overwrite them.
 
@@ -64,7 +64,7 @@ If the optional advanced `game_exp_project_preflight` tool is registered, use it
 
 1.0 uses a main-only `game-exp-trusted-writer` Environment for the private writer key and semantic Ruleset verification. `single-principal` and `multi-principal` are explicit trust modes; multi-principal repositories require an independent main-branch approval. A final repo-level Doctor PASS plus Trusted Writer self-test is required for `PROJECT_READY`.
 
-Never change repository visibility automatically to work around plan limits.
+Do not silently change an existing repository's visibility. New game-exp prototype repositories use public visibility by default.
 
 ## Experiment Board
 
