@@ -99,6 +99,73 @@ class CompanionSkillTests(unittest.TestCase):
             self.assertFalse((target / "ut-out.txt").exists())
             self.assertFalse((home / ".cursor" / "skills" / "demo-skill").exists())
 
+    def test_safe_extract_rejects_too_many_members(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("root/a.txt", "a")
+            archive.writestr("root/b.txt", "b")
+            archive.writestr("root/c.txt", "c")
+        with tempfile.TemporaryDirectory() as td:
+            archive_path = pathlib.Path(td) / "source.zip"
+            archive_path.write_bytes(buffer.getvalue())
+            target = pathlib.Path(td) / "extract"
+            target.mkdir()
+            with mock.patch.object(module, "_MAX_ARCHIVE_MEMBERS", 2):
+                with self.assertRaisesRegex(
+                    CompanionSkillSyncError,
+                    "too many members",
+                ):
+                    module._safe_extract(archive_path, target)
+
+    def test_safe_extract_rejects_oversized_member(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("root/a.txt", "0123456789")
+        with tempfile.TemporaryDirectory() as td:
+            archive_path = pathlib.Path(td) / "source.zip"
+            archive_path.write_bytes(buffer.getvalue())
+            target = pathlib.Path(td) / "extract"
+            target.mkdir()
+            with mock.patch.object(module, "_MAX_ARCHIVE_MEMBER_BYTES", 8):
+                with self.assertRaisesRegex(
+                    CompanionSkillSyncError,
+                    "member is too large",
+                ):
+                    module._safe_extract(archive_path, target)
+
+    def test_safe_extract_rejects_symbolic_link_member(self):
+        buffer = io.BytesIO()
+        link = zipfile.ZipInfo("root/link")
+        link.create_system = 3
+        link.external_attr = (0o120777 << 16)
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(link, "../outside")
+        with tempfile.TemporaryDirectory() as td:
+            archive_path = pathlib.Path(td) / "source.zip"
+            archive_path.write_bytes(buffer.getvalue())
+            target = pathlib.Path(td) / "extract"
+            target.mkdir()
+            with self.assertRaisesRegex(
+                CompanionSkillSyncError,
+                "symbolic-link",
+            ):
+                module._safe_extract(archive_path, target)
+
+    def test_safe_extract_rejects_path_escape(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("root/../../outside.txt", "escape")
+        with tempfile.TemporaryDirectory() as td:
+            archive_path = pathlib.Path(td) / "source.zip"
+            archive_path.write_bytes(buffer.getvalue())
+            target = pathlib.Path(td) / "extract"
+            target.mkdir()
+            with self.assertRaisesRegex(
+                CompanionSkillSyncError,
+                "unsafe archive path",
+            ):
+                module._safe_extract(archive_path, target)
+
     def test_sync_rejects_tag_version_mismatch_before_install(self):
         spec = CompanionSkillSpec("demo-skill", "owner/demo-skill")
         tags = json.dumps([{"name": "v2.3.4"}]).encode("utf-8")
