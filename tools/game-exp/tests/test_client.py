@@ -892,7 +892,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["statistics"]["abnormal_health"], 0)
         self.assertEqual(
             result["statistics"]["attention_sections"],
-            [{"section": "REVIEW", "title_zh": "需要你评审", "count": 1}],
+            [{"section": "REVIEW", "title_zh": "需要你试玩", "count": 1}],
         )
         self.assertFalse(result["onboarding"]["active"])
         self.assertIn("项目已就绪", result["display"]["project_status_zh"])
@@ -1048,7 +1048,7 @@ class ClientTests(unittest.TestCase):
             [
                 {
                     "section": "REVIEW",
-                    "title_zh": "需要你评审",
+                    "title_zh": "需要你试玩",
                     "count": 1,
                     "experiment_ids": ["EXP-7"],
                 }
@@ -1057,12 +1057,12 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(
             result["experiments"][0]["display"],
             {
-                "lifecycle": "评审中",
+                "lifecycle": "待试玩",
                 "health": "正常",
-                "next_gate": "人工评审",
-                "attention_section": "需要你评审",
-                "attention_reason": "等待人工评审",
-                "attention_action": "提交人工评审结果（通过 / 未通过）",
+                "next_gate": "试玩后选择通过或未通过",
+                "attention_section": "需要你试玩",
+                "attention_reason": "等待试玩结果",
+                "attention_action": "试玩当前版本，然后选择通过或未通过",
             },
         )
         self.assertEqual(
@@ -1111,7 +1111,7 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(
             result["views"]["branches"]["lanes"][0]["lifecycle_zh"],
-            "评审中",
+            "待试玩",
         )
         self.assertEqual(
             result["views"]["archive"]["experiment_ids"],
@@ -1232,8 +1232,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(panel["status"], "PASS")
         self.assertEqual(panel["snapshot_head"], transport.head)
         self.assertEqual(panel["overview"]["title"], "Combat readability")
-        self.assertEqual(panel["overview"]["lifecycle_zh"], "评审中")
-        self.assertEqual(panel["overview"]["next_action_zh"], "人工评审")
+        self.assertEqual(panel["overview"]["lifecycle_zh"], "待试玩")
+        self.assertEqual(panel["overview"]["next_action_zh"], "试玩后选择通过或未通过")
         self.assertEqual(panel["overview"]["initiator"]["login"], "alice")
         self.assertEqual(panel["overview"]["contributors"], ["alice", "bob"])
         self.assertEqual(
@@ -1264,6 +1264,12 @@ class ClientTests(unittest.TestCase):
             "立即试玩",
         )
         self.assertTrue(delivery_card["playable"]["portable"])
+        self.assertEqual(delivery_card["version_state_zh"], "当前试玩版本已就绪")
+        self.assertNotIn("Candidate", delivery_card["authority_note_zh"])
+        self.assertNotIn("Review", delivery_card["authority_note_zh"])
+        self.assertTrue(
+            delivery_card["comparison"]["summary_zh"].startswith("上一版 → 当前版")
+        )
         self.assertTrue(delivery_card["comparison"]["available"])
         self.assertEqual(
             delivery_card["comparison"]["previous_candidate_id"],
@@ -1366,7 +1372,7 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(transport).board()
         display = result["display"]
 
-        self.assertEqual(result["presentation"]["contract_version"], 6)
+        self.assertEqual(result["presentation"]["contract_version"], 7)
         self.assertEqual(result["presentation"]["primary"], "display")
         self.assertEqual(
             result["presentation"]["primary_text_path"],
@@ -1383,7 +1389,7 @@ class ClientTests(unittest.TestCase):
             display["render_contract"]["forbidden_primary_tokens"],
         )
         self.assertEqual(display["locale"], "zh-CN")
-        self.assertEqual(display["presentation_version"], 6)
+        self.assertEqual(display["presentation_version"], 7)
         self.assertTrue(display["raw_machine_codes_hidden_by_default"])
         self.assertEqual(
             [row["label"] for row in display["rows_zh"]],
@@ -1435,7 +1441,23 @@ class ClientTests(unittest.TestCase):
         self.assertIn("医生检查", render_contract["forbidden_primary_tokens"])
         self.assertIn("PROJECT_READY", render_contract["forbidden_primary_tokens"])
         self.assertIn("PASS", render_contract["forbidden_primary_tokens"])
+        for protocol_term in (
+            "Candidate",
+            "Review",
+            "Rehearsal",
+            "Binding",
+            "PROMISING",
+            "SELECTED",
+            "候选版本",
+            "人工评审",
+            "晋级",
+            "生命周期",
+        ):
+            self.assertIn(protocol_term, render_contract["forbidden_primary_tokens"])
         self.assertEqual(display["terminology_zh"]["doctor"], "仓库检查")
+        self.assertEqual(display["terminology_zh"]["candidate"], "试玩版本")
+        self.assertEqual(display["terminology_zh"]["review"], "试玩结果")
+        self.assertEqual(display["terminology_zh"]["rehearsal"], "合入前检查")
         self.assertEqual(display["terminology_zh"]["ledger"], "实验记录")
         self.assertEqual(
             display["trust_checks_zh"][0],
@@ -1517,7 +1539,7 @@ class ClientTests(unittest.TestCase):
             {
                 "required": True,
                 "reason": "HUMAN_REVIEW",
-                "action_zh": "提交人工评审结果（通过 / 未通过）",
+                "action_zh": "试玩当前版本，然后选择通过或未通过",
             },
             "HUMAN_REVIEW",
         )
