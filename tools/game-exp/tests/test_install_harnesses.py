@@ -82,6 +82,31 @@ class HarnessInstallerTests(unittest.TestCase):
                 ):
                     installer.preflight()
 
+    def test_managed_file_manifest_comes_from_target_source(self):
+        module = __import__("install_harnesses")
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            bootstrap = root / "tools" / "game-exp" / "bootstrap.py"
+            bootstrap.parent.mkdir(parents=True)
+            bootstrap.write_text(
+                "PRODUCTION_WORKFLOWS = ('old.yml',)\n"
+                "PRODUCTION_TOOLS = ('bootstrap.py', 'old_runtime.py')\n"
+                "PLUGIN_FILES = ('plugins/game-exp/skills/game-exp/SKILL.md',)\n",
+                encoding="utf-8",
+            )
+            paths = module._managed_paths_for_source(root)
+        self.assertEqual(
+            paths,
+            [
+                ".github/workflows/old.yml",
+                "tools/game-exp/bootstrap.py",
+                "tools/game-exp/old_runtime.py",
+                "plugins/game-exp/skills/game-exp/SKILL.md",
+                "plugins/game-exp/plugin.json",
+            ],
+        )
+        self.assertNotIn("tools/game-exp/release_source.py", paths)
+
     def test_cli_defaults_to_stable_channel(self):
         module = __import__("install_harnesses")
         with mock.patch.object(
