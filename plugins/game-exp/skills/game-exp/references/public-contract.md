@@ -376,7 +376,7 @@ A completed/HANDED_OFF `work.release` may carry `delivery` as `participant_repor
 
 URL-based playable entries must be reported as verified. `MISSING` is the correct value when no verified playable entry exists. A local filesystem path is not a portable playable URL.
 
-`game_exp_experiment_panel` projects this plus trusted Candidate retention into `delivery_card`. Trusted Candidate retention may provide an artifact-only fallback, but participant-reported delivery facts never become trusted Candidate/Review evidence.
+The default `game_exp_board` projects this plus trusted Candidate retention into `experiments[].delivery_card`. The optional advanced `game_exp_experiment_panel` exposes the same card as `delivery_card`. Trusted Candidate retention may provide an artifact-only fallback, but participant-reported delivery facts never become trusted Candidate/Review evidence.
 
 The card quick actions are intent mappings only. In particular:
 
