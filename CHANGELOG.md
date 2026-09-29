@@ -2,6 +2,9 @@
 
 ## 1.0.0 maintenance fix - 2026-09-29
 
+- Project iteration delivery cards into the default `game_exp_board.experiments[]` response so ordinary 1.0 MCP users do not need the optional advanced experiment-panel tool.
+- Keep `experiment_panel.delivery_card` as the same secondary projection rather than a separate data path.
+
 - Add iteration delivery card v1 without changing the game-exp lifecycle or version number.
 - Allow COMPLETED/HANDED_OFF `work.release` to carry bounded participant-reported `delivery` evidence: player-visible changes, verified playable descriptor, focus points, producer/build id and optional prior Candidate.
 - Project `experiment_panel.delivery_card` with one immediate playable/download action, previous-version context, focus points and fixed Chinese quick intents.

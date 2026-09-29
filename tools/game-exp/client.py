@@ -1216,7 +1216,7 @@ class GameExpClient:
             },
             "iteration_delivery_card": {
                 "schema_version": 1,
-                "projection": "experiment_panel.delivery_card",
+                "projection": "board.experiments[].delivery_card + experiment_panel.delivery_card",
                 "delivery_evidence_trust": "participant_reported",
                 "delivery_persisted_via": "work.release.delivery",
                 "playable_kinds": [
@@ -3713,6 +3713,44 @@ class GameExpClient:
             item["contributors"] = contributor_info.get("contributors", [])
             item["contributors_source"] = contributor_info.get("source")
             item["contributors_complete"] = bool(contributor_info.get("complete"))
+
+            delivery_release = None
+            release_id = item.get("last_work_release_id")
+            if isinstance(release_id, str) and release_id:
+                release_value = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/work-releases/{release_id}.json",
+                    ref=snapshot_head,
+                )
+                if isinstance(release_value, dict):
+                    delivery_release = release_value
+
+            previous_candidate = None
+            delivery_value = (
+                delivery_release.get("delivery")
+                if isinstance(delivery_release, dict)
+                and isinstance(delivery_release.get("delivery"), dict)
+                else None
+            )
+            previous_candidate_id = (
+                delivery_value.get("previous_candidate_id")
+                if isinstance(delivery_value, dict)
+                and isinstance(delivery_value.get("previous_candidate_id"), str)
+                else None
+            )
+            if isinstance(previous_candidate_id, str) and previous_candidate_id:
+                previous_value = self.transport.ledger_json(
+                    f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
+                    ref=snapshot_head,
+                )
+                if isinstance(previous_value, dict):
+                    previous_candidate = previous_value
+
+            item["delivery_card"] = self._iteration_delivery_card_zh(
+                row=item,
+                delivery_release=delivery_release,
+                candidate=candidate if isinstance(candidate, dict) else None,
+                previous_candidate=previous_candidate,
+            )
             items.append(item)
             counts[lifecycle] = counts.get(lifecycle, 0) + 1
             health_counts[health["status"]] = (
@@ -4987,51 +5025,14 @@ class GameExpClient:
             }
 
         snapshot_head = board.get("snapshot_head")
-        candidate = None
-        candidate_id = row.get("candidate_id")
-        if isinstance(candidate_id, str) and candidate_id:
-            candidate = self.transport.ledger_json(
-                f"experiments/{experiment_id}/candidates/{candidate_id}.json",
-                ref=snapshot_head,
+        delivery_card = row.get("delivery_card")
+        if not isinstance(delivery_card, dict):
+            delivery_card = self._iteration_delivery_card_zh(
+                row=row,
+                delivery_release=None,
+                candidate=None,
+                previous_candidate=None,
             )
-
-        delivery_release = None
-        release_id = row.get("last_work_release_id")
-        if isinstance(release_id, str) and release_id:
-            delivery_release = self.transport.ledger_json(
-                f"experiments/{experiment_id}/work-releases/{release_id}.json",
-                ref=snapshot_head,
-            )
-            if not isinstance(delivery_release, dict):
-                delivery_release = None
-
-        previous_candidate = None
-        delivery_value = (
-            delivery_release.get("delivery")
-            if isinstance(delivery_release, dict)
-            and isinstance(delivery_release.get("delivery"), dict)
-            else None
-        )
-        previous_candidate_id = (
-            delivery_value.get("previous_candidate_id")
-            if isinstance(delivery_value, dict)
-            and isinstance(delivery_value.get("previous_candidate_id"), str)
-            else None
-        )
-        if isinstance(previous_candidate_id, str) and previous_candidate_id:
-            previous_candidate = self.transport.ledger_json(
-                f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
-                ref=snapshot_head,
-            )
-
-        delivery_card = self._iteration_delivery_card_zh(
-            row=row,
-            delivery_release=delivery_release,
-            candidate=candidate if isinstance(candidate, dict) else None,
-            previous_candidate=(
-                previous_candidate if isinstance(previous_candidate, dict) else None
-            ),
-        )
 
         return {
             "status": "PASS",

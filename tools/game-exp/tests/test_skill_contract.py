@@ -316,6 +316,7 @@ class GameExpSkillContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for phrase in (
+            "game_exp_board.experiments[].delivery_card",
             "experiment_panel.delivery_card",
             "保留这版",
             "never means SELECTED",
@@ -337,6 +338,8 @@ class GameExpSkillContractTests(unittest.TestCase):
 
         for phrase in (
             "Iteration delivery card contract v1",
+            "game_exp_board",
+            "experiments[].delivery_card",
             "iteration_delivery_card_v1=true",
             "work.release",
             "participant_reported",

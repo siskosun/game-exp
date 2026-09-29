@@ -873,6 +873,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["experiments"][0]["contributors"], ["alice", "bob"])
         self.assertEqual(result["experiments"][0]["contributors_source"], "github_commits")
         self.assertTrue(result["experiments"][0]["contributors_complete"])
+        delivery_card = result["experiments"][0]["delivery_card"]
+        self.assertEqual(delivery_card["schema_version"], 1)
+        self.assertEqual(delivery_card["candidate_id"], "C-7-1-1")
+        self.assertEqual(delivery_card["version_state"], "CANDIDATE_BOUND")
+        self.assertEqual(delivery_card["playable"]["kind"], "LOCAL_URL")
+        self.assertEqual(delivery_card["playable"]["action_zh"], "在当前设备试玩")
+        self.assertTrue(delivery_card["comparison"]["available"])
+        self.assertTrue(
+            delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
+        )
         card = result["experiments"][0]["card_zh"]
         self.assertEqual(card["locale"], "zh-CN")
         self.assertEqual(card["prototype_zh"], "Arena Duel")
@@ -1854,6 +1864,10 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["iteration_delivery_card_v1"])
         delivery = result["iteration_delivery_card"]
         self.assertEqual(delivery["schema_version"], 1)
+        self.assertEqual(
+            delivery["projection"],
+            "board.experiments[].delivery_card + experiment_panel.delivery_card",
+        )
         self.assertEqual(
             delivery["delivery_persisted_via"],
             "work.release.delivery",
