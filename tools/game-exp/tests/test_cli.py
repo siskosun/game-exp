@@ -287,25 +287,26 @@ class CLIRoutingTests(unittest.TestCase):
         )
 
     def test_review_rejects_two_comparison_json_modes(self):
-        with self.assertRaises(ValueError):
-            self.run_cli(
-                [
-                    "review",
-                    "EXP-21",
-                    "--outcome",
-                    "PASS",
-                    "--notes",
-                    "Human review.",
-                    "--candidate-id",
-                    "C-21-123-1",
-                    "--comparison-json",
-                    "{}",
-                    "--revision-comparison-json",
-                    "{}",
-                    "--request-id",
-                    "req_review_conflict_21",
-                ]
-            )
+        code, client = self.run_cli(
+            [
+                "review",
+                "EXP-21",
+                "--outcome",
+                "PASS",
+                "--notes",
+                "Human review.",
+                "--candidate-id",
+                "C-21-123-1",
+                "--comparison-json",
+                "{}",
+                "--revision-comparison-json",
+                "{}",
+                "--request-id",
+                "req_review_conflict_21",
+            ]
+        )
+        self.assertEqual(code, 1)
+        client.review_record.assert_not_called()
 
     def test_integrate_routes_to_client(self):
         code, client = self.run_cli(["integrate", "EXP-21", "--request-id", "req_integrate_21"])
