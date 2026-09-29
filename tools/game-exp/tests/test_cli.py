@@ -305,7 +305,7 @@ class CLIRoutingTests(unittest.TestCase):
                 "req_review_conflict_21",
             ]
         )
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         client.review_record.assert_not_called()
 
     def test_integrate_routes_to_client(self):
