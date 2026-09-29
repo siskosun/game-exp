@@ -4,7 +4,7 @@
 
 Help a new user reach a valid first experiment without requiring them to understand Ledger internals, request ids, lifecycle enums, or protected refs.
 
-First-experiment onboarding assumes the repository is already `PROJECT_READY` under `references/project-setup.md`. If repository trust prerequisites are incomplete, return to project setup instead of continuing onboarding.
+First-experiment onboarding assumes the repository is already `PROJECT_READY` under `references/project-setup.md`. If the user is starting a brand-new prototype with no repository, use project-create first and carry the original prototype goal forward into onboarding. If repository trust prerequisites are incomplete, return to project setup instead of continuing onboarding.
 
 Onboarding is guidance only. It must not bypass repository trust checks, human gates, or trusted workflow tools.
 
@@ -92,6 +92,8 @@ For repositories that already contain experiments, expose `新手引导` as an o
 Accept simple user intents such as:
 
 - `第一次用 game-exp`
+- `帮我新建一个 H5 原型`（无现有仓库时先走 project-create）
+- `新建一个 Godot 原型项目`
 - `帮我创建第一个实验`
 - `我要给 flip-match 做一个实验：失配后提示下一位玩家`
 - `这个实验开发完成，进入评审`
