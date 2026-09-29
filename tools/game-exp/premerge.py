@@ -47,7 +47,7 @@ def premerge() -> dict[str, Any]:
                 "run",
                 "--with",
                 MCP_SPEC,
-                sys.executable,
+                "python",
                 "-m",
                 "unittest",
                 "discover",
