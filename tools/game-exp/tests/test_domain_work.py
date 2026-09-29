@@ -154,6 +154,7 @@ class WorkCoordinationTests(unittest.TestCase):
         outcome="COMPLETED",
         result_source_sha=None,
         handoff=None,
+        delivery=None,
     ):
         value = {
             "experiment_id": "EXP-77",
@@ -167,6 +168,8 @@ class WorkCoordinationTests(unittest.TestCase):
             value["result_source_sha"] = "b" * 40
         if handoff is not None:
             value["handoff"] = handoff
+        if delivery is not None:
+            value["delivery"] = delivery
         payload = build_operation_payload("work.release", value)
         return plan_domain_mutation(
             repo_dir=self.root,
@@ -234,6 +237,91 @@ class WorkCoordinationTests(unittest.TestCase):
                 handoff=stale,
             )
         self.assertEqual(ctx.exception.code, "DOMAIN_WORK_STALE")
+
+    def test_completed_release_records_iteration_delivery_as_participant_reported(self):
+        candidate_dir = self.root / "experiments/EXP-77/candidates"
+        candidate_dir.mkdir(parents=True, exist_ok=True)
+        previous_id = "C-77-100-1"
+        (candidate_dir / f"{previous_id}.json").write_text(
+            json.dumps(
+                {
+                    "kind": "candidate",
+                    "candidate_id": previous_id,
+                    "experiment_id": "EXP-77",
+                    "source_sha": "a" * 40,
+                    "artifact_digest": "sha256:" + "1" * 64,
+                }
+            ),
+            encoding="utf-8",
+        )
+        first = self.claim("req_work_delivery")
+        self.apply(first)
+        delivery = {
+            "changes": ["缩短冲刺前摇", "增强命中反馈"],
+            "playable": {
+                "kind": "LOCAL_URL",
+                "verified": True,
+                "url": "http://127.0.0.1:8000/",
+                "launch_hint": "保持本地试玩服务运行",
+            },
+            "focus_points": ["冲刺是否更直接", "命中反馈是否更清楚"],
+            "producer": "godot-prototype-studio",
+            "build_id": "build-42",
+            "previous_candidate_id": previous_id,
+        }
+        plan = self.release(
+            "req_release_delivery",
+            "req_work_delivery",
+            delivery=delivery,
+        )
+        release = plan.writes[
+            "experiments/EXP-77/work-releases/req_release_delivery.json"
+        ]
+        self.assertEqual(release["delivery_trust"], "participant_reported")
+        self.assertEqual(release["delivery"]["changes"], delivery["changes"])
+        self.assertEqual(release["delivery"]["playable"]["kind"], "LOCAL_URL")
+        self.assertFalse(release["delivery"]["playable"]["portable"])
+        self.assertEqual(
+            release["delivery"]["previous_candidate_id"],
+            previous_id,
+        )
+
+    def test_delivery_rejects_unverified_playable_url(self):
+        first = self.claim("req_work_bad_delivery")
+        self.apply(first)
+        with self.assertRaises(DomainError) as ctx:
+            self.release(
+                "req_release_bad_delivery",
+                "req_work_bad_delivery",
+                delivery={
+                    "changes": ["Changed timing"],
+                    "playable": {
+                        "kind": "SHAREABLE_URL",
+                        "verified": False,
+                        "url": "https://example.com/play",
+                    },
+                    "focus_points": ["Timing"],
+                    "producer": "h5-game-prototype-agent",
+                },
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_WORK_INVALID")
+
+    def test_abandoned_release_rejects_delivery(self):
+        first = self.claim("req_work_abandoned_delivery")
+        self.apply(first)
+        with self.assertRaises(DomainError) as ctx:
+            self.release(
+                "req_release_abandoned_delivery",
+                "req_work_abandoned_delivery",
+                outcome="ABANDONED",
+                delivery={
+                    "changes": ["Nothing durable"],
+                    "playable": {"kind": "MISSING", "verified": False},
+                    "focus_points": ["None"],
+                    "producer": "h5-game-prototype-agent",
+                },
+            )
+        self.assertEqual(ctx.exception.code, "DOMAIN_WORK_INVALID")
 
     def test_stale_work_claim_is_rejected_before_editing(self):
         with self.assertRaises(DomainError) as ctx:
