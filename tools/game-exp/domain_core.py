@@ -894,6 +894,168 @@ def _plan_work_claim(
     )
 
 
+def _normalize_iteration_delivery(
+    *,
+    repo_dir: Path,
+    experiment_id: str,
+    value: dict[str, Any],
+) -> dict[str, Any]:
+    _expect_keys(
+        value,
+        {"changes", "playable", "focus_points", "producer"},
+        optional={"previous_candidate_id", "build_id"},
+        where="operation.input.delivery",
+    )
+
+    def bounded_list(name: str, raw: Any, *, minimum: int, maximum: int) -> list[str]:
+        if not isinstance(raw, list) or not minimum <= len(raw) <= maximum:
+            raise DomainError(
+                f"delivery.{name} must contain {minimum}-{maximum} entries",
+                code="DOMAIN_WORK_INVALID",
+            )
+        rows: list[str] = []
+        for item in raw:
+            if not isinstance(item, str) or not item.strip() or len(item.strip()) > 300:
+                raise DomainError(
+                    f"delivery.{name} entries must be non-empty strings up to 300 chars",
+                    code="DOMAIN_WORK_INVALID",
+                )
+            rows.append(item.strip())
+        return rows
+
+    changes = bounded_list("changes", value["changes"], minimum=1, maximum=8)
+    focus_points = bounded_list(
+        "focus_points",
+        value["focus_points"],
+        minimum=1,
+        maximum=3,
+    )
+    producer = _string(value["producer"], "operation.input.delivery.producer")
+    if len(producer) > 120:
+        raise DomainError(
+            "delivery.producer must be at most 120 characters",
+            code="DOMAIN_WORK_INVALID",
+        )
+
+    build_id = value.get("build_id")
+    if build_id is not None:
+        build_id = _string(build_id, "operation.input.delivery.build_id")
+        if len(build_id) > 200:
+            raise DomainError(
+                "delivery.build_id must be at most 200 characters",
+                code="DOMAIN_WORK_INVALID",
+            )
+
+    previous_candidate_id = value.get("previous_candidate_id")
+    if previous_candidate_id is not None:
+        previous_candidate_id = _string(
+            previous_candidate_id,
+            "operation.input.delivery.previous_candidate_id",
+        )
+        match = CANDIDATE_RE.fullmatch(previous_candidate_id)
+        expected_issue = experiment_id.removeprefix("EXP-")
+        if match is None or match.group(1) != expected_issue:
+            raise DomainError(
+                "delivery.previous_candidate_id does not match experiment",
+                code="DOMAIN_WORK_INVALID",
+            )
+        previous_candidate = _read_json_file(
+            repo_dir,
+            f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
+            where=experiment_id,
+        )
+        if (
+            previous_candidate.get("kind") != "candidate"
+            or previous_candidate.get("candidate_id") != previous_candidate_id
+            or previous_candidate.get("experiment_id") != experiment_id
+        ):
+            raise DomainError(
+                "delivery.previous_candidate_id does not reference a Candidate",
+                code="DOMAIN_WORK_INVALID",
+            )
+
+    playable = _mapping(value["playable"], "operation.input.delivery.playable")
+    _expect_keys(
+        playable,
+        {"kind", "verified"},
+        optional={"url", "artifact_url", "launch_hint"},
+        where="operation.input.delivery.playable",
+    )
+    kind = _string(playable["kind"], "operation.input.delivery.playable.kind")
+    if kind not in {"SHAREABLE_URL", "LOCAL_URL", "ARTIFACT_ONLY", "MISSING"}:
+        raise DomainError(
+            "delivery.playable.kind must be SHAREABLE_URL, LOCAL_URL, ARTIFACT_ONLY, or MISSING",
+            code="DOMAIN_WORK_INVALID",
+        )
+    verified = playable["verified"]
+    if not isinstance(verified, bool):
+        raise DomainError(
+            "delivery.playable.verified must be boolean",
+            code="DOMAIN_WORK_INVALID",
+        )
+
+    def optional_url(name: str) -> str | None:
+        raw = playable.get(name)
+        if raw is None:
+            return None
+        raw = _string(raw, f"operation.input.delivery.playable.{name}")
+        if len(raw) > 1000 or re.fullmatch(r"https?://[^\s]+", raw) is None:
+            raise DomainError(
+                f"delivery.playable.{name} must be an http(s) URL up to 1000 chars",
+                code="DOMAIN_WORK_INVALID",
+            )
+        return raw
+
+    url = optional_url("url")
+    artifact_url = optional_url("artifact_url")
+    launch_hint = playable.get("launch_hint")
+    if launch_hint is not None:
+        launch_hint = _string(
+            launch_hint,
+            "operation.input.delivery.playable.launch_hint",
+        )
+        if len(launch_hint) > 300:
+            raise DomainError(
+                "delivery.playable.launch_hint must be at most 300 characters",
+                code="DOMAIN_WORK_INVALID",
+            )
+
+    if kind in {"SHAREABLE_URL", "LOCAL_URL"}:
+        if url is None or verified is not True:
+            raise DomainError(
+                "playable URL kinds require a verified url",
+                code="DOMAIN_WORK_INVALID",
+            )
+    elif kind == "ARTIFACT_ONLY":
+        if artifact_url is None or verified is not True:
+            raise DomainError(
+                "ARTIFACT_ONLY requires a verified artifact_url",
+                code="DOMAIN_WORK_INVALID",
+            )
+    elif url is not None or artifact_url is not None or verified is not False:
+        raise DomainError(
+            "MISSING playable must be unverified and include no url or artifact_url",
+            code="DOMAIN_WORK_INVALID",
+        )
+
+    normalized_playable = {
+        "kind": kind,
+        "verified": verified,
+        "portable": kind in {"SHAREABLE_URL", "ARTIFACT_ONLY"},
+        "url": url,
+        "artifact_url": artifact_url,
+        "launch_hint": launch_hint,
+    }
+    return {
+        "changes": changes,
+        "playable": normalized_playable,
+        "focus_points": focus_points,
+        "producer": producer,
+        "build_id": build_id,
+        "previous_candidate_id": previous_candidate_id,
+    }
+
+
 def _plan_work_release(
     *,
     repo_dir: Path,
@@ -907,7 +1069,7 @@ def _plan_work_release(
         input_value,
         {"experiment_id", "claim_id", "outcome", "notes"},
         where="operation.input",
-        optional={"result_source_sha", "handoff"},
+        optional={"result_source_sha", "handoff", "delivery"},
     )
     experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
     claim_id = _string(input_value["claim_id"], "operation.input.claim_id")
@@ -949,6 +1111,7 @@ def _plan_work_release(
 
     result_source_sha = input_value.get("result_source_sha")
     handoff = input_value.get("handoff")
+    delivery = input_value.get("delivery")
     if handoff is not None:
         handoff = _mapping(handoff, "operation.input.handoff")
         _expect_keys(
@@ -1003,6 +1166,19 @@ def _plan_work_release(
             code="DOMAIN_WORK_INVALID",
         )
 
+    normalized_delivery = None
+    if delivery is not None:
+        if outcome not in {"COMPLETED", "HANDED_OFF"}:
+            raise DomainError(
+                "delivery is allowed only for COMPLETED or HANDED_OFF work",
+                code="DOMAIN_WORK_INVALID",
+            )
+        normalized_delivery = _normalize_iteration_delivery(
+            repo_dir=repo_dir,
+            experiment_id=experiment_id,
+            value=_mapping(delivery, "operation.input.delivery"),
+        )
+
     release_path = f"experiments/{experiment_id}/work-releases/{request_id}.json"
     if (repo_dir / release_path).exists():
         raise DomainError("work release id already exists", code="DOMAIN_WORK_CONFLICT")
@@ -1018,6 +1194,10 @@ def _plan_work_release(
         "handoff": normalized_handoff,
         "handoff_trust": (
             "participant_reported" if normalized_handoff is not None else None
+        ),
+        "delivery": normalized_delivery,
+        "delivery_trust": (
+            "participant_reported" if normalized_delivery is not None else None
         ),
         "actor": {
             "login": trusted_actor.login,

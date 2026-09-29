@@ -16,7 +16,7 @@ from client import (  # noqa: E402
     _recommended_prototype_executor,
     _runtime_version,
 )
-from protocol_core import digest_object  # noqa: E402
+from protocol_core import decode_payload_b64, digest_object  # noqa: E402
 from trust_policy import ruleset_templates  # noqa: E402
 
 
@@ -716,6 +716,7 @@ class ClientTests(unittest.TestCase):
                     "lifecycle": "REVIEW",
                     "current_candidate_id": "C-7-1-1",
                     "current_review_id": None,
+                    "last_work_release_id": "req_release_7",
                     "archive_lock": None,
                 },
                 "experiments/EXP-7/manifest.json": {
@@ -756,6 +757,42 @@ class ClientTests(unittest.TestCase):
                 "experiments/EXP-21/reviews/req_review.json": {
                     "review_id": "req_review",
                     "outcome": "PASS",
+                },
+                "experiments/EXP-7/candidates/C-7-0-1.json": {
+                    "candidate_id": "C-7-0-1",
+                    "source_sha": "9" * 40,
+                    "retention": {
+                        "release_url": "https://github.com/owner/repo/releases/tag/candidate-old"
+                    },
+                },
+                "experiments/EXP-7/candidates/C-7-1-1.json": {
+                    "candidate_id": "C-7-1-1",
+                    "source_sha": "b" * 40,
+                    "retention": {
+                        "release_url": "https://github.com/owner/repo/releases/tag/candidate-current"
+                    },
+                },
+                "experiments/EXP-7/work-releases/req_release_7.json": {
+                    "release_id": "req_release_7",
+                    "outcome": "COMPLETED",
+                    "notes": "Tuned combat readability.",
+                    "result_source_sha": "b" * 40,
+                    "delivery": {
+                        "changes": ["缩短角色切换反馈", "强化回合归属提示"],
+                        "playable": {
+                            "kind": "LOCAL_URL",
+                            "verified": True,
+                            "portable": False,
+                            "url": "http://127.0.0.1:8000/",
+                            "artifact_url": None,
+                            "launch_hint": "保持本地试玩服务运行",
+                        },
+                        "focus_points": ["是否更快看懂当前行动角色"],
+                        "producer": "godot-prototype-studio",
+                        "build_id": "build-7",
+                        "previous_candidate_id": "C-7-0-1",
+                    },
+                    "delivery_trust": "participant_reported",
                 },
             }
         )
@@ -996,6 +1033,11 @@ class ClientTests(unittest.TestCase):
         self.assertIn("source_sha", handoff["return_contract"]["required"])
         self.assertIn("artifacts", handoff["return_contract"]["required"])
         self.assertIn("build_identity", handoff["return_contract"]["required"])
+        self.assertIn("iteration_delivery", handoff["return_contract"]["required"])
+        self.assertEqual(
+            handoff["return_contract"]["iteration_delivery"]["persist_via"],
+            "work.release.delivery",
+        )
 
         self.assertEqual(
             result["focus"],
@@ -1053,6 +1095,37 @@ class ClientTests(unittest.TestCase):
             "EXP-21",
         )
         self.assertEqual(panel["evidence"]["candidate_id"], "C-7-1-1")
+        delivery_card = panel["delivery_card"]
+        self.assertEqual(delivery_card["schema_version"], 1)
+        self.assertFalse(delivery_card["authoritative"])
+        self.assertEqual(delivery_card["candidate_id"], "C-7-1-1")
+        self.assertEqual(delivery_card["version_state"], "CANDIDATE_BOUND")
+        self.assertEqual(
+            delivery_card["changes_zh"],
+            ["缩短角色切换反馈", "强化回合归属提示"],
+        )
+        self.assertEqual(delivery_card["playable"]["kind"], "LOCAL_URL")
+        self.assertEqual(
+            delivery_card["playable"]["action_zh"],
+            "在当前设备试玩",
+        )
+        self.assertFalse(delivery_card["playable"]["portable"])
+        self.assertTrue(delivery_card["comparison"]["available"])
+        self.assertEqual(
+            delivery_card["comparison"]["previous_candidate_id"],
+            "C-7-0-1",
+        )
+        actions = {
+            row["label_zh"]: row for row in delivery_card["quick_actions"]
+        }
+        self.assertTrue(actions["继续微调"]["enabled"])
+        self.assertTrue(actions["保留这版"]["enabled"])
+        self.assertTrue(actions["我试玩通过了"]["enabled"])
+        self.assertFalse(actions["就选这版"]["enabled"])
+        self.assertTrue(actions["回到上一版"]["enabled"])
+        self.assertTrue(
+            delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
+        )
 
         missing = GameExpClient(transport).experiment_panel("EXP-999")
         self.assertEqual(missing["status"], "UNKNOWN")
@@ -1778,6 +1851,18 @@ class ClientTests(unittest.TestCase):
         self.assertFalse(evaluation["persistent_comparison_set"])
         self.assertEqual(evaluation["small_candidate_ranking"], "PAIRWISE_NO_ELO")
         self.assertTrue(result["features"]["iteration_routing_v1"])
+        self.assertTrue(result["features"]["iteration_delivery_card_v1"])
+        delivery = result["iteration_delivery_card"]
+        self.assertEqual(delivery["schema_version"], 1)
+        self.assertEqual(
+            delivery["delivery_persisted_via"],
+            "work.release.delivery",
+        )
+        self.assertTrue(delivery["quick_actions_are_intents"])
+        self.assertFalse(delivery["card_mutates_lifecycle"])
+        self.assertFalse(delivery["keep_version_means_selected"])
+        self.assertTrue(delivery["human_review_authority_preserved"])
+        self.assertTrue(delivery["selection_prerequisites_preserved"])
         self.assertTrue(result["features"]["optional_implementation_capabilities_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v1"])
         self.assertTrue(result["features"]["collaboration_coordination_v2"])
@@ -1952,6 +2037,33 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(release["status"], "ACCEPTED")
         self.assertEqual(transport.dispatched[-1]["request_id"], "req_work_release_7")
+
+    def test_work_release_passes_iteration_delivery_payload(self):
+        transport = FakeTransport()
+        client = GameExpClient(transport)
+        delivery = {
+            "changes": ["Changed timing"],
+            "playable": {
+                "kind": "SHAREABLE_URL",
+                "verified": True,
+                "url": "https://example.com/play",
+            },
+            "focus_points": ["Timing"],
+            "producer": "h5-game-prototype-agent",
+        }
+        result = client.work_release(
+            "EXP-7",
+            claim_id="req_work_7",
+            outcome="COMPLETED",
+            notes="Done",
+            result_source_sha="b" * 40,
+            delivery=delivery,
+            request_id="req_release_delivery_7",
+        )
+        self.assertEqual(result["status"], "ACCEPTED")
+        dispatch = transport.dispatched[-1]
+        payload = decode_payload_b64(dispatch["payload_b64"])
+        self.assertEqual(payload["input"]["delivery"], delivery)
 
     def test_async_mutation_requires_stable_request_id(self):
         result = GameExpClient(FakeTransport()).candidate("EXP-21")

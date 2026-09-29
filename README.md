@@ -71,6 +71,8 @@ v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, truste
 
 Current version: `1.0.0` (maintenance fixes; version number unchanged).
 
+After a completed implementation iteration, game-exp can now project a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates.
+
 For a brand-new prototype with no existing repository, local CLI/stdio MCP can now use `project-create` to create the GitHub repository, seed the latest tagged Godot/H5 starter, install game-exp, push `main`, and run complete project initialization. New repositories default to private and are never made public automatically to bypass plan limits.
 
 Release history: see `CHANGELOG.md`.

@@ -306,6 +306,46 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, contract)
         self.assertIn("project-create", onboarding)
 
+    def test_iteration_delivery_card_preserves_human_authority(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        chat = (
+            PLUGIN / "skills" / "game-exp" / "references" / "chat-ui.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            PLUGIN / "skills" / "game-exp" / "references" / "public-contract.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "experiment_panel.delivery_card",
+            "保留这版",
+            "never means SELECTED",
+            "我试玩通过了",
+            "就选这版",
+        ):
+            self.assertIn(phrase, skill)
+
+        for phrase in (
+            "本次改了什么",
+            "立即试玩",
+            "与上一版相比",
+            "这次重点感受",
+            "试玩入口未生成",
+            "保留这版",
+            "就选这版",
+        ):
+            self.assertIn(phrase, chat)
+
+        for phrase in (
+            "Iteration delivery card contract v1",
+            "iteration_delivery_card_v1=true",
+            "work.release",
+            "participant_reported",
+            "KEEP_CURRENT_VERSION",
+            "REVIEW_PASS",
+            "SELECT_CURRENT_VERSION",
+        ):
+            self.assertIn(phrase, contract)
+
     def test_conformance_contract_is_screening_only(self):
         skill = SKILL.read_text(encoding="utf-8")
         reference = (

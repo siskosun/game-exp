@@ -363,6 +363,30 @@ A Harness may infer that a request crosses an experiment boundary, but it must g
 
 This policy does not mutate lifecycle state, loosen human gates, or authorize reopening `SELECTED`, `INTEGRATED`, or `ARCHIVED` work.
 
+## Iteration delivery card contract v1
+
+`game_exp_capabilities.features.iteration_delivery_card_v1=true` exposes a cross-Harness post-iteration presentation contract.
+
+A completed/HANDED_OFF `work.release` may carry `delivery` as `participant_reported` implementation context. It is bound to the same current canonical source SHA as the Work Release and may contain:
+
+- 1-8 player-visible `changes`;
+- one `playable` descriptor: `SHAREABLE_URL | LOCAL_URL | ARTIFACT_ONLY | MISSING`;
+- 1-3 human `focus_points`;
+- executor `producer`, optional `build_id`, and optional real previous Candidate id.
+
+URL-based playable entries must be reported as verified. `MISSING` is the correct value when no verified playable entry exists. A local filesystem path is not a portable playable URL.
+
+`game_exp_experiment_panel` projects this plus trusted Candidate retention into `delivery_card`. Trusted Candidate retention may provide an artifact-only fallback, but participant-reported delivery facts never become trusted Candidate/Review evidence.
+
+The card quick actions are intent mappings only. In particular:
+
+- `KEEP_CURRENT_VERSION` has no lifecycle effect and never means SELECTED;
+- `REVIEW_PASS` requires an explicit human statement about the exact current Candidate in REVIEW;
+- `SELECT_CURRENT_VERSION` preserves fresh-Rehearsal and other existing selection prerequisites;
+- `CONTINUE_REVISION` and `REVISE_FROM_PREVIOUS` go through normal Work Claim/source editing.
+
+No delivery-card field can authorize Review, PROMISING, SELECTED, REJECTED, Integration, or Archive.
+
 ## Optional implementation capability contract v1
 
 `game_exp_capabilities` exposes `features.optional_implementation_capabilities_v1=true`, `recommended_capabilities.godot_prototype_studio`, and `recommended_capabilities.h5_game_prototype_agent`.
