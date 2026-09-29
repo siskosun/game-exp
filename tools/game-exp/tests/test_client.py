@@ -549,10 +549,10 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
         self.assertEqual(result["runtime_version"], _runtime_version())
-        self.assertEqual(result["runtime_identity"]["version"], "1.1.0")
+        self.assertEqual(result["runtime_identity"]["version"], "1.2.0")
         self.assertEqual(
             result["runtime_identity"]["build_identity"],
-            "version:1.1.0",
+            "version:1.2.0",
         )
         self.assertEqual(result["repository_version"], _runtime_version())
         self.assertEqual(result["version_state"], "MATCH")
@@ -1922,8 +1922,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["contract"]["version"], "1.0")
         runtime_identity = result["runtime_identity"]
-        self.assertEqual(runtime_identity["version"], "1.1.0")
-        self.assertEqual(runtime_identity["build_identity"], "version:1.1.0")
+        self.assertEqual(runtime_identity["version"], "1.2.0")
+        self.assertEqual(runtime_identity["build_identity"], "version:1.2.0")
         self.assertEqual(runtime_identity["build_identity_kind"], "version-only")
         self.assertIsNone(runtime_identity["source_digest"])
         self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2, 3])
@@ -1944,6 +1944,14 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(evaluation["small_candidate_ranking"], "PAIRWISE_NO_ELO")
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["iteration_delivery_card_v1"])
+        self.assertTrue(result["features"]["shareable_playable_delivery_v1"])
+        shareable = result["shareable_playable_delivery"]
+        self.assertEqual(shareable["provider"], "github-pages")
+        self.assertEqual(shareable["immutable_version_key"], "result_source_sha")
+        self.assertTrue(shareable["executor_owns_publish"])
+        self.assertFalse(shareable["game_exp_hosts_playable"])
+        self.assertTrue(shareable["browser_playable_verification_required"])
+        self.assertFalse(shareable["human_lifecycle_authority_changed"])
         delivery = result["iteration_delivery_card"]
         self.assertEqual(delivery["schema_version"], 1)
         self.assertEqual(
