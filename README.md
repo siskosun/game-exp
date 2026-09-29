@@ -4,7 +4,7 @@
 
 Repository: `https://github.com/siskosun/game-exp`
 
-This repository is the only development source of truth. `toy2game`, `game-exp-sandbox`, target projects, and locally installed Harness copies are consumers/snapshots. They are not mirrors and are not updated on every game-exp change.
+This repository is the only development source of truth. `main` is a development branch, not the default install channel. Stable installation/upgrade resolves the latest published, non-prerelease semantic-version Release. `toy2game`, `game-exp-sandbox`, target projects, and locally installed Harness copies are consumers/snapshots. They are not mirrors and are not updated on every game-exp change.
 
 ## Install or upgrade
 
@@ -15,6 +15,22 @@ git clone https://github.com/siskosun/game-exp.git
 cd game-exp
 python tools/game-exp/install_harnesses.py --harness codex --json
 ```
+
+The checkout above is only the launcher. The default `--channel stable` does **not** install the checked-out `main`; it queries GitHub Releases, selects the newest published non-prerelease semantic version, downloads that Release tag's source archive, validates its version metadata, and installs from that frozen source.
+
+To install one specific published Release, including an explicit rollback target:
+
+```powershell
+python tools/game-exp/install_harnesses.py --harness codex --release v1.3.0 --allow-downgrade --json
+```
+
+To test the current checkout or `main`, opt into the development channel explicitly:
+
+```powershell
+python tools/game-exp/install_harnesses.py --harness codex --channel development --json
+```
+
+`--release` and `--channel development` cannot be combined. Stable installs record the resolved Release tag and Release URL in `INSTALL_SOURCE.json`; development installs record `source_channel=development` and `source_ref=working-tree`.
 
 Supported Harness values: `codex`, `qoder`, `cursor`. Python 3.11+ is required. Local CLI/project setup also requires GitHub CLI (`gh`) authenticated with `gh auth login`. Use `--harness all` only when the user explicitly wants all three updated.
 
@@ -69,7 +85,7 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.3.0`.
+Current version: `1.4.0`.
 
 After a completed implementation iteration, game-exp projects a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. In 1.2.1, public-repository handoff stores immutable executor-produced versions on `gh-pages` and deploys them through a managed GitHub Actions Pages workflow keyed by source SHA; the Board can recover an older verified shareable URL for the previous Candidate. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates. In 1.3.0, when the exact current Candidate and its authoritative immediate previous Candidate both have verified shareable playables, the card also exposes a blind `版本 A / 版本 B` revision comparison. The preference is HUMAN_REPORTED evidence only and can be persisted only together with an explicit current-Candidate Review PASS/FAIL; it never auto-ranks, promotes, rejects, or selects a Candidate.
 
@@ -78,7 +94,7 @@ For a brand-new prototype with no existing repository, local CLI/stdio MCP can n
 Release history: see `CHANGELOG.md`.
 
 
-## 1.3.0 pre-merge gate
+## 1.4.0 pre-merge gate
 
 Before merging a release change, run:
 
