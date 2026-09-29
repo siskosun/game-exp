@@ -19,6 +19,11 @@ from companion_skills import (
     companion_target_paths,
     companion_targets,
 )
+from release_source import (
+    ReleaseSourceError,
+    ResolvedInstallSource,
+    resolve_install_source,
+)
 
 
 class HarnessInstallError(RuntimeError):
@@ -252,6 +257,9 @@ class HarnessInstaller:
         harness: str,
         runtime_dir: pathlib.Path | None = None,
         allow_downgrade: bool = False,
+        source_channel: str = "development",
+        source_ref: str = "working-tree",
+        release_url: str | None = None,
     ):
         if harness not in SUPPORTED_HARNESSES:
             raise HarnessInstallError(
@@ -262,6 +270,9 @@ class HarnessInstaller:
         self.home = home.resolve()
         self.harness = harness
         self.allow_downgrade = allow_downgrade
+        self.source_channel = source_channel
+        self.source_ref = source_ref
+        self.release_url = release_url
         self.runtime_dir = (
             runtime_dir.resolve()
             if runtime_dir is not None
