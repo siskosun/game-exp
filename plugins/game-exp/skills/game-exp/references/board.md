@@ -108,7 +108,7 @@ Each experiment entry should show:
 - 实验标题
 - 发起人（来自可信实验登记；历史记录可能缺失）
 - 代码贡献者（来自 GitHub commit contributor 信息，仅协作展示，不作为权限依据）
-- 当前阶段
+- 当前进展
 - 为什么需要处理
 - 下一步动作
 
@@ -212,7 +212,7 @@ Show parent SHA only when diagnosing freshness or ancestry. Show final tag for a
 
 When the user opens one experiment, use `game_exp_experiment_panel` when available and organize the returned detail panel in this order:
 
-1. `实验概况`: 标题、原型、发起人、代码贡献者、阶段、健康、下一步。
+1. `实验概况`: 标题、原型、发起人、代码贡献者、当前进展、记录状态、下一步。
 2. `假设与判定`: use `judgement.hypothesis`, `judgement.success_criteria`, and `judgement.kill_criteria`.
 3. `活动时间线`: use the experiment `activity` array. Render `label_zh` and `detail_zh`; show `occurred_at` only when the Ledger-derived record contains a trustworthy timestamp.
 4. `关系`: show outgoing and incoming experiment relations with Chinese relation labels.
@@ -282,20 +282,20 @@ Health:
 
 Next gate:
 
-- `IMPLEMENT_OR_REVIEW` -> `继续实现 / 进入评审`
-- `CANDIDATE_BUILD` -> `构建候选版本`
-- `HUMAN_REVIEW` -> `人工评审`
-- `HUMAN_PROMOTION` -> `决定是否晋级`
-- `HUMAN_DECISION` -> `人工决策`
-- `TRUSTED_REHEARSAL` -> `主干集成验证`
-- `HUMAN_SELECTION_OR_REFRESH_REHEARSAL` -> `人工选择 / 主干变化后重新验证`
-- `TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL` -> `集成 / 主干变化后重新验证`
-- `ARCHIVE_OR_RETAIN` -> `选择归档方式`
-- `ARCHIVE_RECOVERY` -> `恢复归档`
-- `ARCHIVE` -> `归档`
-- `TERMINAL_NEW_EXPERIMENT_FOR_NEW_WORK` -> `已结束；新工作需新建实验`
-- `VERIFY_EXPERIMENT_HEALTH` -> `核验实验健康`
-- `DO_NOT_USE_RECREATE_EXPERIMENT` -> `禁止继续；重建实验`
+- `IMPLEMENT_OR_REVIEW` -> `继续修改 / 准备试玩`
+- `CANDIDATE_BUILD` -> `准备试玩版本`
+- `HUMAN_REVIEW` -> `试玩后选择通过或未通过`
+- `HUMAN_PROMOTION` -> `保留为待选版本 / 继续修改`
+- `HUMAN_DECISION` -> `继续修改 / 放弃这版`
+- `TRUSTED_REHEARSAL` -> `自动检查是否可以合入主版本`
+- `HUMAN_SELECTION_OR_REFRESH_REHEARSAL` -> `选定这版 / 主版本变化后重新检查`
+- `TRUSTED_INTEGRATION_OR_REFRESH_REHEARSAL` -> `合入主版本 / 主版本变化后重新检查`
+- `ARCHIVE_OR_RETAIN` -> `完成；选择是否保留开发分支`
+- `ARCHIVE_RECOVERY` -> `继续完成归档`
+- `ARCHIVE` -> `归档这个实验`
+- `TERMINAL_NEW_EXPERIMENT_FOR_NEW_WORK` -> `已结束；新想法请新建实验`
+- `VERIFY_EXPERIMENT_HEALTH` -> `检查实验记录`
+- `DO_NOT_USE_RECREATE_EXPERIMENT` -> `记录异常；先修复再继续`
 
 Keep raw non-PASS health codes visible for diagnosis.
 
@@ -318,7 +318,7 @@ Do not fabricate a placeholder experiment row.
 
 Use two distinct concepts:
 
-- `发起人`: the trusted GitHub actor verified by Trusted Writer at experiment Bind time and stored in binding `initiator`. This identity may be used for attribution, but lifecycle authority still comes from current trusted permission checks.
+- `发起人`: the trusted GitHub actor recorded when the experiment is established. This identity may be used for attribution, but authority still comes from current trusted permission checks. Keep Bind/binding details out of primary UI copy.
 - `代码贡献者`: GitHub-linked contributors observed from commits on the canonical experiment branch (or final tag for archived experiments). This is collaboration metadata only and must never grant authority.
 
 For legacy experiments without `binding.initiator`, display `发起人：历史记录未保存` rather than inferring an authoritative initiator from commit authors.
