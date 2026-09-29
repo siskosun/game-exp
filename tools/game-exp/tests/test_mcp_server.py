@@ -313,6 +313,9 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_doctor",
                 "game_exp_experiment_get",
                 "game_exp_board",
+                "game_exp_experiment_panel",
+                "game_exp_subject_panel",
+                "game_exp_notifications",
                 "game_exp_prototype_handoff",
                 "game_exp_collaboration_context",
                 "game_exp_work_claim",
@@ -332,12 +335,9 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_operation_resume",
             },
         )
-        self.assertEqual(len(names), 24)
+        self.assertEqual(len(names), 27)
         for hidden in (
             "game_exp_project_preflight",
-            "game_exp_experiment_panel",
-            "game_exp_subject_panel",
-            "game_exp_notifications",
             "game_exp_request_submit",
             "game_exp_access_check",
             "game_exp_capabilities",
@@ -431,6 +431,9 @@ class MCPServerTests(unittest.TestCase):
             "game_exp_doctor",
             "game_exp_experiment_get",
             "game_exp_board",
+            "game_exp_experiment_panel",
+            "game_exp_subject_panel",
+            "game_exp_notifications",
             "game_exp_prototype_handoff",
             "game_exp_collaboration_context",
             "game_exp_operation_get",
