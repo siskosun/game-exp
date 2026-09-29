@@ -220,7 +220,7 @@ Harness supports it) so the running process picks up the new version.
 
 The adapter uses the official Python MCP SDK v2 and delegates to the same validated Client / Trusted Domain Core. MCP never gets direct Git authority. The same tool surface supports local stdio for Codex and Streamable HTTP for ChatGPT Web.
 
-1.1 introduced, and 1.2 retains, a compact default MCP surface (24 tools): normal lifecycle, Board, collaboration, trusted project init, operation lookup and safe resume. Secondary diagnostics/projections are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`; legacy aliases use `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools remain isolated behind conformance mode. This reduces model tool-selection noise without deleting the underlying APIs.
+1.5 uses a 27-tool default MCP surface: normal lifecycle, Board, collaboration, trusted project init, operation lookup/recovery, plus the read-only `game_exp_experiment_panel`, `game_exp_subject_panel`, and `game_exp_notifications`. Registration of those read-only tools is capability availability only; it does not trigger proactive panel surfacing or event polling. `GAME_EXP_ENABLE_ADVANCED_TOOLS=1` now adds only advanced preflight and the generic request-submit surface; legacy aliases use `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools remain isolated behind conformance mode.
 
 Normal Harness use should prefer domain tools:
 
@@ -318,7 +318,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.4.0`. Installer default source is now the latest published non-prerelease semantic-version Release; using the current checkout/main requires explicit `--channel development`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.5.0`. Installer default source is now the latest published non-prerelease semantic-version Release; using the current checkout/main requires explicit `--channel development`.
 
 ### Windows UTF-8 compatibility
 
