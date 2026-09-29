@@ -549,6 +549,11 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
         self.assertEqual(result["runtime_version"], _runtime_version())
+        self.assertEqual(result["runtime_identity"]["version"], "1.1.0")
+        self.assertEqual(
+            result["runtime_identity"]["build_identity"],
+            "version:1.1.0",
+        )
         self.assertEqual(result["repository_version"], _runtime_version())
         self.assertEqual(result["version_state"], "MATCH")
         self.assertEqual(result["access"]["status"], "WRITE")
