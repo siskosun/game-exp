@@ -30,6 +30,7 @@ from trust_policy import (
 
 RUN_URL_RE = re.compile(r"/actions/runs/(\d+)(?:$|[/?#])")
 EXPERIMENT_ID_RE = re.compile(r"^EXP-[1-9][0-9]*$")
+CANDIDATE_ID_RE = re.compile(r"^C-([1-9][0-9]*)-([0-9]+)-([1-9][0-9]*)$")
 
 GODOT_PROTOTYPE_STUDIO = {
     "id": "godot-prototype-studio",
@@ -1266,6 +1267,7 @@ class GameExpClient:
                 "iteration_routing_v1": True,
                 "iteration_delivery_card_v1": True,
                 "shareable_playable_delivery_v1": True,
+                "revision_ab_review_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
                 "collaboration_coordination_v2": True,
@@ -1288,6 +1290,24 @@ class GameExpClient:
                 "keep_version_means_selected": False,
                 "human_review_authority_preserved": True,
                 "selection_prerequisites_preserved": True,
+            },
+            "revision_ab_review": {
+                "schema_version": 1,
+                "scope": "same_experiment_immediate_previous_candidate",
+                "blind_slots": ["A", "B"],
+                "choices": [
+                    "A_MUCH_BETTER",
+                    "A_SLIGHTLY_BETTER",
+                    "NO_CLEAR_DIFFERENCE",
+                    "B_SLIGHTLY_BETTER",
+                    "B_MUCH_BETTER",
+                    "INCONCLUSIVE",
+                ],
+                "persist_via": "review.record.revision_comparison",
+                "comparison_is_review_outcome": False,
+                "comparison_changes_lifecycle": False,
+                "elo_or_automatic_ranking": False,
+                "human_review_authority_preserved": True,
             },
             "shareable_playable_delivery": {
                 "schema_version": 1,
@@ -1963,6 +1983,7 @@ class GameExpClient:
         request_id: str,
         candidate_id: str,
         comparison: dict[str, Any] | None = None,
+        revision_comparison: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
         input_value: dict[str, Any] = {
@@ -1973,6 +1994,8 @@ class GameExpClient:
         }
         if comparison is not None:
             input_value["comparison"] = comparison
+        if revision_comparison is not None:
+            input_value["revision_comparison"] = revision_comparison
         return self.submit(
             operation="review.record",
             input_value=input_value,
@@ -2933,14 +2956,12 @@ class GameExpClient:
         }.get(playable_kind, "未知")
 
         previous_candidate_id = (
-            delivery.get("previous_candidate_id")
-            if isinstance(delivery, dict)
-            and isinstance(delivery.get("previous_candidate_id"), str)
+            previous_candidate.get("candidate_id")
+            if isinstance(previous_candidate, dict)
+            and isinstance(previous_candidate.get("candidate_id"), str)
             else None
         )
-        comparison_available = bool(
-            previous_candidate_id and isinstance(previous_candidate, dict)
-        )
+        comparison_available = bool(previous_candidate_id)
         previous_retention = (
             previous_candidate.get("retention")
             if isinstance(previous_candidate, dict)
@@ -2981,6 +3002,113 @@ class GameExpClient:
         lifecycle = str(row.get("lifecycle") or "")
         next_gate = str(row.get("next_gate") or "")
         has_current = bool(current_source_sha)
+
+        current_shareable_url = (
+            playable.get("url")
+            if candidate_matches_current
+            and playable.get("kind") == "SHAREABLE_URL"
+            and playable.get("verified") is True
+            and isinstance(playable.get("url"), str)
+            else None
+        )
+        revision_session_available = bool(
+            previous_candidate_id
+            and current_candidate_id
+            and previous_shareable_url
+            and current_shareable_url
+        )
+        revision_session = {
+            "available": False,
+            "blind": True,
+            "reason_zh": "需要当前版和上一版都存在已验证的可分享试玩地址。",
+            "recordable_with_review": False,
+        }
+        if revision_session_available:
+            session_seed = digest_object(
+                {
+                    "kind": "revision-ab-v1",
+                    "experiment_id": row.get("experiment_id"),
+                    "previous_candidate_id": previous_candidate_id,
+                    "current_candidate_id": current_candidate_id,
+                }
+            )
+            presentation_order = (
+                "CURRENT_PREVIOUS"
+                if int(session_seed[-1], 16) % 2 == 0
+                else "PREVIOUS_CURRENT"
+            )
+            if presentation_order == "CURRENT_PREVIOUS":
+                slot_urls = {
+                    "A": current_shareable_url,
+                    "B": previous_shareable_url,
+                }
+                slot_candidates = {
+                    "A": current_candidate_id,
+                    "B": previous_candidate_id,
+                }
+            else:
+                slot_urls = {
+                    "A": previous_shareable_url,
+                    "B": current_shareable_url,
+                }
+                slot_candidates = {
+                    "A": previous_candidate_id,
+                    "B": current_candidate_id,
+                }
+            previous_artifact_digest = (
+                previous_candidate.get("artifact_digest")
+                if isinstance(previous_candidate, dict)
+                and isinstance(previous_candidate.get("artifact_digest"), str)
+                else None
+            )
+            revision_session = {
+                "available": True,
+                "schema_version": 1,
+                "session_id": f"revision-ab:{session_seed[7:23]}",
+                "blind": True,
+                "identity_hidden_by_default": True,
+                "presentation_order": presentation_order,
+                "slots": [
+                    {"slot": "A", "label_zh": "版本 A", "url": slot_urls["A"]},
+                    {"slot": "B", "label_zh": "版本 B", "url": slot_urls["B"]},
+                ],
+                "focus_points_zh": focus_points[:3],
+                "rating_options": [
+                    {"choice": "A_MUCH_BETTER", "label_zh": "A 明显更好"},
+                    {"choice": "A_SLIGHTLY_BETTER", "label_zh": "A 略好"},
+                    {"choice": "NO_CLEAR_DIFFERENCE", "label_zh": "无明显差异"},
+                    {"choice": "B_SLIGHTLY_BETTER", "label_zh": "B 略好"},
+                    {"choice": "B_MUCH_BETTER", "label_zh": "B 明显更好"},
+                    {"choice": "INCONCLUSIVE", "label_zh": "暂时无法判断"},
+                ],
+                "recordable_with_review": (
+                    next_gate == "HUMAN_REVIEW"
+                    and candidate_matches_current
+                    and isinstance(previous_artifact_digest, str)
+                ),
+                "persist_via": "review.record.revision_comparison",
+                "review_outcome_still_required": True,
+                "machine_binding": {
+                    "previous_candidate_id": previous_candidate_id,
+                    "previous_artifact_digest": previous_artifact_digest,
+                    "current_candidate_id": current_candidate_id,
+                    "slot_candidates": slot_candidates,
+                    "hidden_from_primary_ui": True,
+                },
+                "record_template": {
+                    "previous_candidate_id": previous_candidate_id,
+                    "previous_artifact_digest": previous_artifact_digest,
+                    "blind": True,
+                    "presentation_order": presentation_order,
+                    "choice": "<USER_A_B_CHOICE>",
+                    "notes": "<HUMAN_COMPARISON_NOTES>",
+                },
+                "authority_note_zh": (
+                    "A/B 结果只是人工比较证据；仍需用户明确给出 Review PASS/FAIL，"
+                    "不会自动晋级或选择版本。"
+                ),
+            }
+
         quick_actions = [
             {
                 "label_zh": "继续微调",
@@ -2996,6 +3124,18 @@ class GameExpClient:
                 "direct_lifecycle_mutation": False,
                 "route": "NO_OP_RETAIN_CURRENT",
                 "note_zh": "只保留当前版本，不等于晋级或选中。",
+            },
+            {
+                "label_zh": "A/B 对比试玩",
+                "intent": "START_REVISION_AB",
+                "enabled": bool(revision_session.get("available")),
+                "direct_lifecycle_mutation": False,
+                "route": "OPEN_REVISION_AB_SESSION",
+                "session_id": revision_session.get("session_id"),
+                "note_zh": (
+                    "按版本 A / B 盲测当前候选与紧邻上一候选；"
+                    "比较结果不会自动变更 Review 或生命周期。"
+                ),
             },
             {
                 "label_zh": "我试玩通过了",
@@ -3105,6 +3245,11 @@ class GameExpClient:
                 ),
                 "summary_zh": comparison_zh,
                 "changes_zh": changes,
+                "previous_candidate_source": row.get("previous_candidate_source"),
+                "participant_previous_candidate_hint": row.get(
+                    "delivery_previous_candidate_hint"
+                ),
+                "revision_ab_session": revision_session,
                 "previous_playable": (
                     {
                         **previous_playable,
@@ -3145,6 +3290,8 @@ class GameExpClient:
                 "card_does_not_mutate": True,
                 "keep_version_is_not_selected": True,
                 "human_review_requires_explicit_user_statement": True,
+                "revision_ab_requires_explicit_review_outcome_to_persist": True,
+                "revision_ab_never_auto_ranks_or_selects": True,
                 "selection_preserves_existing_prerequisites": True,
             },
         }
@@ -3788,6 +3935,12 @@ class GameExpClient:
                 and isinstance(review.get("comparison"), dict)
                 else None
             )
+            review_revision_comparison = (
+                review.get("revision_comparison")
+                if isinstance(review, dict)
+                and isinstance(review.get("revision_comparison"), dict)
+                else None
+            )
             incumbent_experiment_id = next(
                 (
                     relation.get("experiment_id")
@@ -3837,6 +3990,7 @@ class GameExpClient:
                 "incumbent_experiment_id": incumbent_experiment_id,
                 "review_id": review_id,
                 "review_comparison": review_comparison,
+                "review_revision_comparison": review_revision_comparison,
                 "review_outcome": (
                     review.get("outcome") if isinstance(review, dict) else None
                 ),
@@ -3887,19 +4041,75 @@ class GameExpClient:
                 and isinstance(delivery_release.get("delivery"), dict)
                 else None
             )
-            previous_candidate_id = (
+            delivery_previous_candidate_hint = (
                 delivery_value.get("previous_candidate_id")
                 if isinstance(delivery_value, dict)
                 and isinstance(delivery_value.get("previous_candidate_id"), str)
                 else None
             )
-            if isinstance(previous_candidate_id, str) and previous_candidate_id:
-                previous_value = self.transport.ledger_json(
-                    f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
-                    ref=snapshot_head,
+            item["delivery_previous_candidate_hint"] = (
+                delivery_previous_candidate_hint
+            )
+
+            delivery_source_sha = (
+                delivery_release.get("result_source_sha")
+                if isinstance(delivery_release, dict)
+                and isinstance(delivery_release.get("result_source_sha"), str)
+                else None
+            )
+            candidate_source_sha = (
+                candidate.get("source_sha")
+                if isinstance(candidate, dict)
+                and isinstance(candidate.get("source_sha"), str)
+                else None
+            )
+            if (
+                isinstance(candidate, dict)
+                and delivery_source_sha
+                and candidate_source_sha
+                and delivery_source_sha != candidate_source_sha
+            ):
+                previous_candidate = candidate
+                item["previous_candidate_source"] = (
+                    "authoritative_current_candidate_before_unbound_source"
                 )
-                if isinstance(previous_value, dict):
-                    previous_candidate = previous_value
+            elif isinstance(candidate_id, str) and candidate_id:
+                candidate_prefix = f"experiments/{experiment_id}/candidates/"
+                candidate_ids: list[str] = []
+                for candidate_path in paths:
+                    if (
+                        not candidate_path.startswith(candidate_prefix)
+                        or not candidate_path.endswith(".json")
+                    ):
+                        continue
+                    candidate_name = candidate_path[
+                        len(candidate_prefix) : -len(".json")
+                    ]
+                    match = CANDIDATE_ID_RE.fullmatch(candidate_name)
+                    if (
+                        match is not None
+                        and match.group(1) == issue_number
+                    ):
+                        candidate_ids.append(candidate_name)
+                candidate_ids.sort(
+                    key=lambda value: (
+                        int(CANDIDATE_ID_RE.fullmatch(value).group(2)),
+                        int(CANDIDATE_ID_RE.fullmatch(value).group(3)),
+                    )
+                )
+                if candidate_id in candidate_ids:
+                    current_index = candidate_ids.index(candidate_id)
+                    if current_index > 0:
+                        previous_candidate_id = candidate_ids[current_index - 1]
+                        previous_value = self.transport.ledger_json(
+                            f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
+                            ref=snapshot_head,
+                        )
+                        if isinstance(previous_value, dict):
+                            previous_candidate = previous_value
+                            item["previous_candidate_source"] = (
+                                "authoritative_candidate_history"
+                            )
 
             previous_playable = None
             previous_source_sha = (
@@ -5311,6 +5521,9 @@ class GameExpClient:
                 "incumbent_comparison": row.get("incumbent_comparison"),
                 "review_id": row.get("review_id"),
                 "review_comparison": row.get("review_comparison"),
+                "review_revision_comparison": row.get(
+                    "review_revision_comparison"
+                ),
                 "review_outcome": row.get("review_outcome"),
                 "rehearsal_id": row.get("rehearsal_id"),
                 "integration_id": row.get("integration_id"),
@@ -5333,10 +5546,16 @@ class GameExpClient:
                             "已记录人工盲测"
                             if isinstance(row.get("review_comparison"), dict)
                             else (
+                                "已记录版本修订 A/B 对比"
+                                if isinstance(
+                                    row.get("review_revision_comparison"), dict
+                                )
+                                else (
                                 "待人工比较"
                                 if row.get("incumbent_comparison") is not None
                                 and row.get("eligible_for_human_comparison") == "ELIGIBLE"
                                 else None
+                                )
                             )
                         ),
                     },
