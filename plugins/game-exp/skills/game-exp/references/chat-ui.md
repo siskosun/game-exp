@@ -18,6 +18,8 @@ Preferred read APIs:
 
 Never combine data from separately moving snapshots inside one rendered panel.
 
+Tool availability and presentation are separate concerns. The default registration of subject/experiment panels and notifications does not authorize automatic drill-down, polling, or UI expansion. Use explicit user navigation or Board `surface_hint` to decide what to show.
+
 ## Navigation hierarchy
 
 The inline panel must support:
@@ -106,7 +108,7 @@ The primary labels must be Chinese. Raw enums and ids may appear as secondary di
 
 ## Iteration delivery card
 
-After a completed implementation iteration, prefer the current experiment's `game_exp_board.experiments[].delivery_card` as the user-facing completion surface before opening the full Board. If the optional advanced single-experiment panel is enabled, `experiment_panel.delivery_card` carries the same projection.
+After a completed implementation iteration, prefer the current experiment's `game_exp_board.experiments[].delivery_card` as the user-facing completion surface before opening the full Board. `game_exp_experiment_panel` is available by default for explicit drill-down and carries the same `delivery_card` projection.
 
 Render, in order:
 
