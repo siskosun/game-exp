@@ -5541,7 +5541,7 @@ class GameExpClient:
                     },
                     {
                         "key": "comparison",
-                        "label": "现任 / 挑战者比较",
+                        "label": "人工比较",
                         "value": (
                             "已记录人工盲测"
                             if isinstance(row.get("review_comparison"), dict)
@@ -5551,10 +5551,11 @@ class GameExpClient:
                                     row.get("review_revision_comparison"), dict
                                 )
                                 else (
-                                "待人工比较"
-                                if row.get("incumbent_comparison") is not None
-                                and row.get("eligible_for_human_comparison") == "ELIGIBLE"
-                                else None
+                                    "待人工比较"
+                                    if row.get("incumbent_comparison") is not None
+                                    and row.get("eligible_for_human_comparison")
+                                    == "ELIGIBLE"
+                                    else None
                                 )
                             )
                         ),
