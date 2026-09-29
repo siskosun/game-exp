@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "game-exp",
-  "version": "1.0.0",
-  "description": "Stable 1.0 trusted game experiment control plane with main-only writer credentials, semantic repository protection, cached Ledger snapshots, compact MCP/Skill routing, Evaluation Evidence v1, collaboration recovery, and human lifecycle gates.",
+  "version": "1.1.0",
+  "description": "Stable 1.1 trusted game experiment control plane with one-command prototype setup, unified iteration delivery cards, companion Skill synchronization, protected Ledger authority, and human lifecycle gates.",
   "repository": "https://github.com/siskosun/game-exp",
   "keywords": [
     "game-development",
@@ -17,7 +17,7 @@
       "interface": {
         "displayName": "game-exp",
         "shortDescription": "可信实验控制 · 快照读取 · 多Harness协作",
-        "longDescription": "Stable 1.0 control plane for gameplay/prototype experiments: protected Ledger authority, main-only Trusted Writer Environment, semantic Ruleset verification, cached immutable snapshots, version handshake, compact MCP/Skill routing, trusted Candidate/evaluation evidence, resumable collaboration, and explicit human Review/selection gates.",
+        "longDescription": "Stable 1.1 control plane for gameplay/prototype experiments: one-command prototype setup, protected Ledger authority, main-only Trusted Writer Environment, immutable workflow pins, runtime build identity, unified iteration delivery cards, companion Skill synchronization, trusted Candidate/evaluation evidence, resumable collaboration, and explicit human Review/selection gates.",
         "developerName": "game-exp",
         "category": "Productivity",
         "capabilities": [
