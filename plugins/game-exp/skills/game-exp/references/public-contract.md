@@ -317,10 +317,10 @@ It may create a local Git working tree and a GitHub repository, install the curr
 Contract:
 
 - stack is explicit: `godot` or `h5`;
-- default repository visibility is `private`;
+- default repository visibility is `public`;
 - existing local directories and existing GitHub repositories are never overwritten;
 - H5 defaults to the PROBE starter unless the caller explicitly asks for SLICE;
-- public visibility is explicit and is never selected automatically to bypass a GitHub plan limitation;
+- private visibility is an explicit compatibility option for accounts whose plan supports all required protections; project-create does not silently change an existing repository's visibility;
 - repository creation is durable: if later trust provisioning fails, the retained repository is returned with an actionable resume step instead of being deleted/recreated;
 - `PROJECT_READY` requires normal project-init completion, Trusted Writer self-test, and Doctor PASS;
 - shared/streamable HTTP MCP must reject project creation because the workflow requires local filesystem/GitHub-admin operations.
