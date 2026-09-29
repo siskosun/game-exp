@@ -4,10 +4,7 @@ on:
   pull_request:
     paths:
       - 'tools/game-exp/**'
-      - '.github/workflows/game-exp-core-tests.yml'
-      - '.github/workflows/game-exp-trusted-writer.yml'
-      - '.github/workflows/game-exp-trusted-writer-selftest.yml'
-      - '.github/workflows/game-exp-github-bridge.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
