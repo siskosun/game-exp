@@ -118,7 +118,7 @@ Render, in order:
 
 Playable semantics are explicit:
 
-- `SHAREABLE_URL`: verified clickable URL, intended to work across devices;
+- `SHAREABLE_URL`: `立即试玩`; verified clickable URL, intended to work across devices;
 - `LOCAL_URL`: verified clickable URL only for the current device/network environment;
 - `ARTIFACT_ONLY`: no direct playable link; offer the retained Candidate artifact;
 - `MISSING`: say `试玩入口未生成`; never invent a URL.
