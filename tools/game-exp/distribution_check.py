@@ -113,8 +113,26 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         and policy.get("updates_other_harnesses") is False
         and policy.get("updates_consumer_repositories") is False
         and policy.get("use_all_only_with_explicit_user_request") is True
-        and policy.get("repository_binding") == "dynamic",
+        and policy.get("repository_binding") == "dynamic"
+        and policy.get("default_install_channel") == "stable"
+        and policy.get("main_is_development_only") is True,
         policy,
+    )
+
+    source_selection = install.get("source_selection")
+    source_selection = (
+        source_selection if isinstance(source_selection, dict) else {}
+    )
+    add(
+        "stable_release_source_policy",
+        source_selection.get("default_channel") == "stable"
+        and source_selection.get("stable_selector")
+        == "latest_published_non_prerelease_semver_release"
+        and source_selection.get("explicit_release_supported") is True
+        and source_selection.get("development_requires_explicit_channel") is True
+        and source_selection.get("development_argument") == "--channel development"
+        and source_selection.get("main_policy") == "development_only",
+        source_selection,
     )
 
     companion = install.get("companion_skill_sync")
@@ -214,6 +232,9 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         and "godot-prototype-studio" in skill_text
         and "h5-game-prototype-agent" in skill_text
         and "semantic-version-tagged" in skill_text
+        and "latest published, non-prerelease semantic-version GitHub Release" in skill_text
+        and "--channel development" in skill_text
+        and "--release vX.Y.Z" in skill_text
         and "--cleanup-legacy-shared" in skill_text,
     )
 
