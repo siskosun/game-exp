@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "1.2.1")
+        self.assertEqual(manifest["version"], "1.3.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -331,6 +331,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "delivery_request.prefer_shareable_url=true",
             "game-exp never hosts the playable itself",
             ".github/workflows/game-exp-pages.yml",
+            "A/B 对比试玩",
+            "HUMAN_REPORTED",
         ):
             self.assertIn(phrase, skill)
         self.assertIn("GitHub CLI (`gh`)", skill)
