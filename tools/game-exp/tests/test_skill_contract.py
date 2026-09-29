@@ -222,8 +222,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "views.archive.experiment_ids",
             "views.attention.sections",
             "活动时间线",
-            "需要你评审",
-            "需要你决策",
+            "需要你试玩",
+            "需要你选择",
             "依赖",
             "阻塞",
             "替代",
@@ -249,6 +249,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "Do not append machine codes",
             "strict_primary_copy",
             "forbidden_primary_tokens",
+            "Candidate -> `试玩版本`",
+            "Review -> `试玩结果`",
+            "Rehearsal -> `合入前检查`",
+            "Binding -> `实验登记`",
         ):
             self.assertIn(phrase, board)
 
