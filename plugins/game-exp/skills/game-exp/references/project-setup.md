@@ -114,7 +114,7 @@ The command:
 1. takes a repository name plus `godot` or `h5`;
 2. fetches the latest tagged companion starter (GPS for Godot, H5 Game Prototype Agent for H5);
 3. creates an isolated local Git working tree on `main`;
-4. installs game-exp workflows/runtime and a valid repository-root project policy;
+4. installs game-exp workflows/runtime, including the managed `game-exp-pages.yml` static Pages deployment workflow, and a valid repository-root project policy;
 5. creates and pushes a GitHub repository with the requested visibility; default visibility is public;
 6. runs project-init, Trusted Writer self-test and final Doctor;
 7. returns `PROJECT_READY` or an explicit blocker while preserving the created repository for repair/resume.
