@@ -1207,11 +1207,29 @@ class GameExpClient:
                 "evaluation_evidence_v1": True,
                 "contextual_surface_v1": True,
                 "iteration_routing_v1": True,
+                "iteration_delivery_card_v1": True,
                 "optional_implementation_capabilities_v1": True,
                 "collaboration_coordination_v1": True,
                 "collaboration_coordination_v2": True,
                 "precise_execution_preconditions_v2": True,
                 "resumable_work_handoff_v2": True,
+            },
+            "iteration_delivery_card": {
+                "schema_version": 1,
+                "projection": "experiment_panel.delivery_card",
+                "delivery_evidence_trust": "participant_reported",
+                "delivery_persisted_via": "work.release.delivery",
+                "playable_kinds": [
+                    "SHAREABLE_URL",
+                    "LOCAL_URL",
+                    "ARTIFACT_ONLY",
+                    "MISSING",
+                ],
+                "quick_actions_are_intents": True,
+                "card_mutates_lifecycle": False,
+                "keep_version_means_selected": False,
+                "human_review_authority_preserved": True,
+                "selection_prerequisites_preserved": True,
             },
             "iteration_routing": {
                 "default_existing_experiment_change": "REVISION",
@@ -4417,6 +4435,7 @@ class GameExpClient:
                     "playable_status",
                     "evidence_scope",
                     "artifacts",
+                    "iteration_delivery",
                     "delivery_evidence_if_requested",
                 ],
                 "build_identity": {
@@ -4440,6 +4459,33 @@ class GameExpClient:
                         "portable",
                     ],
                     "rule": "local-only paths must set portable=false; cross-Harness evidence should use a durable accessible location",
+                },
+                "iteration_delivery": {
+                    "required": [
+                        "changes",
+                        "playable",
+                        "focus_points",
+                        "producer",
+                    ],
+                    "optional": [
+                        "build_id",
+                        "previous_candidate_id",
+                    ],
+                    "playable": {
+                        "required": ["kind", "verified"],
+                        "kinds": [
+                            "SHAREABLE_URL",
+                            "LOCAL_URL",
+                            "ARTIFACT_ONLY",
+                            "MISSING",
+                        ],
+                    },
+                    "persist_via": "work.release.delivery",
+                    "trust": "participant_reported",
+                    "rule": (
+                        "provide one structured delivery object after each completed "
+                        "implementation iteration; use MISSING rather than inventing a playable URL"
+                    ),
                 },
                 "evidence_scope": {
                     "must_bind": [
