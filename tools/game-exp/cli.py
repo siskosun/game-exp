@@ -251,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     work_release.add_argument("--notes", required=True)
     work_release.add_argument("--result-source-sha")
     work_release.add_argument("--handoff-json")
+    work_release.add_argument("--delivery-json")
     work_release.add_argument("--request-id", required=True)
     work_release.add_argument("--actor-claim")
 
@@ -559,6 +560,12 @@ def main(argv: list[str] | None = None) -> int:
                 if not isinstance(value, dict):
                     raise ValueError("--handoff-json must decode to an object")
                 handoff = value
+            delivery = None
+            if args.delivery_json:
+                value = json.loads(args.delivery_json)
+                if not isinstance(value, dict):
+                    raise ValueError("--delivery-json must decode to an object")
+                delivery = value
             result = client.work_release(
                 args.experiment_id,
                 claim_id=args.claim_id,
@@ -566,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
                 notes=args.notes,
                 result_source_sha=args.result_source_sha,
                 handoff=handoff,
+                delivery=delivery,
                 actor_claim=args.actor_claim,
                 request_id=args.request_id,
             )
