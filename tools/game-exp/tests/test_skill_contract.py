@@ -328,6 +328,8 @@ class GameExpSkillContractTests(unittest.TestCase):
             "never means SELECTED",
             "我试玩通过了",
             "就选这版",
+            "delivery_request.prefer_shareable_url=true",
+            "game-exp never hosts the playable itself",
         ):
             self.assertIn(phrase, skill)
         self.assertIn("GitHub CLI (`gh`)", skill)
@@ -340,6 +342,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "试玩入口未生成",
             "保留这版",
             "就选这版",
+            "试玩上一版",
             "打开上一版候选包",
             "用上一版源码继续修改",
             "playtest_delivery.next_action_zh",
@@ -356,6 +359,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "KEEP_CURRENT_VERSION",
             "REVIEW_PASS",
             "SELECT_CURRENT_VERSION",
+            "Shareable playable delivery v1",
+            "features.shareable_playable_delivery_v1=true",
+            "play/<result_source_sha>/",
+            "game-exp never becomes the hosting service",
         ):
             self.assertIn(phrase, contract)
 
