@@ -99,6 +99,10 @@ The Trusted Writer Deploy Key may bypass only the narrow rules required to opera
 
 Doctor validates the required minimum Ruleset semantics, not only Ruleset names. Weakening a required rule or adding writer authority where it is forbidden makes Doctor fail. Stricter user protection—such as extra reviewers, CODEOWNERS, resolved-review requirements, signatures, or narrower merge methods—is preserved and remains valid.
 
+## Local prerequisites
+
+CLI and local stdio MCP setup require Python 3.11+, Git, `uv`, and GitHub CLI (`gh`). Authenticate `gh` before running setup with `gh auth login`.
+
 ## New-project sequence
 
 ### Preferred path for a brand-new prototype
