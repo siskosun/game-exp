@@ -2,6 +2,13 @@
 
 ## 1.0.0 maintenance fix - 2026-09-29
 
+- Add local `game_exp_project_create` / CLI `project-create` for a brand-new Godot or H5 prototype when no repository exists.
+- Default new repositories to private; require explicit public visibility and never publish automatically to bypass Ruleset-plan limits.
+- Seed from the latest semantic-version-tagged GPS/H5 starter, install game-exp/project policy, push `main`, then run the existing project-init/Doctor path.
+- Refuse existing local directories or GitHub repositories instead of overwriting them.
+- Preserve a repository created before a later setup/push blocker and return an explicit resume action rather than deleting/recreating it.
+- Keep first-experiment creation separate: after `PROJECT_READY`, onboarding continues from the user's original prototype goal without asking them to repeat it.
+
 - Keep the game-exp version at `1.0.0`.
 - Make `--check` compare a deterministic managed-runtime digest plus required installed entrypoints/configuration, so older maintenance builds with the same version string no longer report `CURRENT`.
 - Store the managed-runtime digest in install provenance and normalize line endings before hashing for Windows/macOS/Linux consistency.
