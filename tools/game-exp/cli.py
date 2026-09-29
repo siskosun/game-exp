@@ -54,11 +54,11 @@ def _print_result(result: dict[str, Any], *, as_json: bool) -> None:
     status = result.get("status", "UNKNOWN")
     print(f"status: {status}")
     if result.get("code"):
-        print(f"code: {result[\'code\']}")
+        print(f"code: {result['code']}")
     if result.get("error"):
-        print(f"error: {result[\'error\']}")
+        print(f"error: {result['error']}")
     if result.get("hint"):
-        print(f"hint: {result[\'hint\']}")
+        print(f"hint: {result['hint']}")
     if result.get("request_id"):
         print(f"request_id: {result['request_id']}")
     if result.get("repo"):
