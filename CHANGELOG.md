@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 maintenance - 2026-09-29
+
+- Refresh GitHub Actions to the current major versions already proposed by Dependabot while retaining immutable 40-character commit pins.
+- Upgrade checkout to v7.0.1, setup-python/setup-node to v7.0.0, upload-artifact to v7.0.1, and download-artifact to v8.0.1 across all repository workflows.
+- Keep the game-exp product version at 1.1.0; this is CI/supply-chain maintenance and does not change the public protocol or lifecycle.
+
 ## 1.1.0 - 2026-09-29
 
 - Promote the accumulated user-facing project-create, iteration-delivery-card, and companion-Skill synchronization work from same-version maintenance patches into a real SemVer minor release.
