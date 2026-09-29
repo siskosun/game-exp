@@ -6048,6 +6048,7 @@ class GameExpClient:
         }
 
     def status(self) -> dict[str, Any]:
+        runtime_identity = _runtime_identity()
         runtime_version = _runtime_version()
         try:
             ledger_head = self.transport.ledger_head()
@@ -6057,6 +6058,7 @@ class GameExpClient:
                 "code": "LEDGER_HEAD_UNAVAILABLE",
                 "repo": self.transport.repo,
                 "runtime_version": runtime_version,
+                "runtime_identity": runtime_identity,
                 "error": str(exc),
                 "retryable": True,
             }
@@ -6109,6 +6111,7 @@ class GameExpClient:
             "repo": self.transport.repo,
             "ledger_head": ledger_head,
             "runtime_version": runtime_version,
+            "runtime_identity": runtime_identity,
             "repository_version": repository_version,
             "version_state": version_state,
             "version_action": version_action,
