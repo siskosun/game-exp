@@ -1013,11 +1013,11 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(card["initiator_zh"], "alice")
         self.assertEqual(card["contributors_zh"], "alice\u3001bob")
         self.assertEqual(card["branch_zh"], "refs/heads/exp/7")
-        self.assertEqual(card["progress_zh"], "\u8bc4\u5ba1\u4e2d")
+        self.assertEqual(card["progress_zh"], "待试玩")
         self.assertEqual(card["health_zh"], "\u6b63\u5e38")
         self.assertEqual(
             card["next_action_zh"],
-            "\u63d0\u4ea4\u4eba\u5de5\u8bc4\u5ba1\u7ed3\u679c\uff08\u901a\u8fc7 / \u672a\u901a\u8fc7\uff09",
+            "试玩当前版本，然后选择通过或未通过",
         )
         self.assertEqual(
             [row["label"] for row in card["rows_zh"]],
@@ -1715,7 +1715,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         row = result["experiments"][0]
         self.assertEqual(row["lifecycle"], "ABANDONED")
-        self.assertEqual(row["display"]["lifecycle"], "已终止")
+        self.assertEqual(row["display"]["lifecycle"], "已放弃")
         self.assertEqual(row["next_gate"], "ARCHIVE")
         self.assertEqual(result["views"]["overview"]["active_ids"], [])
         self.assertEqual(result["views"]["overview"]["abandoned_ids"], ["EXP-31"])
