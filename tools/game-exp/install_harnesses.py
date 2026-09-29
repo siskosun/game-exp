@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -148,9 +149,66 @@ def _copy_tree_atomic(source: pathlib.Path, target: pathlib.Path) -> str:
             shutil.rmtree(stage)
 
 
-def _managed_digest(root: pathlib.Path) -> str:
+def _managed_paths_for_source(root: pathlib.Path) -> list[str]:
+    bootstrap_path = root / "tools" / "game-exp" / "bootstrap.py"
+    try:
+        tree = ast.parse(bootstrap_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+        raise HarnessInstallError(
+            f"cannot read managed-file manifest from source bootstrap.py: {exc}"
+        ) from exc
+
+    values: dict[str, tuple[str, ...]] = {}
+    wanted = {"PRODUCTION_WORKFLOWS", "PRODUCTION_TOOLS", "PLUGIN_FILES"}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in wanted:
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, TypeError, SyntaxError) as exc:
+            raise HarnessInstallError(
+                f"source bootstrap.py has non-literal {target.id}"
+            ) from exc
+        if (
+            not isinstance(value, tuple)
+            or not all(isinstance(item, str) for item in value)
+        ):
+            raise HarnessInstallError(
+                f"source bootstrap.py has invalid {target.id}"
+            )
+        values[target.id] = value
+
+    missing = wanted - set(values)
+    if missing:
+        raise HarnessInstallError(
+            "source bootstrap.py is missing managed-file declarations: "
+            + ", ".join(sorted(missing))
+        )
+
+    paths = [
+        f".github/workflows/{name}"
+        for name in values["PRODUCTION_WORKFLOWS"]
+    ]
+    paths += [
+        f"tools/game-exp/{name}"
+        for name in values["PRODUCTION_TOOLS"]
+    ]
+    paths += list(values["PLUGIN_FILES"])
+    paths += ["plugins/game-exp/plugin.json"]
+    if len(paths) != len(set(paths)):
+        raise HarnessInstallError("source managed-file manifest contains duplicates")
+    return paths
+
+
+def _managed_digest(
+    root: pathlib.Path,
+    managed_paths: list[str],
+) -> str:
     digest = hashlib.sha256()
-    for rel in sorted(_managed_paths()):
+    for rel in sorted(managed_paths):
         path = root / rel
         if not path.is_file():
             raise HarnessInstallError(f"managed runtime file is missing: {rel}")
@@ -281,6 +339,7 @@ class HarnessInstaller:
         self.plugin_path = self.source_root / "plugins" / "game-exp" / "plugin.json"
         self.skill_source = self.source_root / "plugins" / "game-exp" / "skills" / "game-exp"
         self.version = self._load_version()
+        self.managed_paths = _managed_paths_for_source(self.source_root)
 
     def _load_version(self) -> str:
         try:
@@ -295,7 +354,7 @@ class HarnessInstaller:
     def _validate_source(self) -> None:
         missing = [
             rel
-            for rel in _managed_paths()
+            for rel in self.managed_paths
             if not (self.source_root / rel).is_file()
         ]
         if missing:
@@ -317,12 +376,12 @@ class HarnessInstaller:
         stage.parent.mkdir(parents=True, exist_ok=True)
         stage.mkdir(parents=False, exist_ok=False)
         try:
-            for rel in _managed_paths():
+            for rel in self.managed_paths:
                 src = self.source_root / rel
                 dst = stage / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
-            source_digest = _managed_digest(self.source_root)
+            source_digest = _managed_digest(self.source_root, self.managed_paths)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
             (stage / "INSTALL_SOURCE.json").write_text(
                 json.dumps(
@@ -362,8 +421,8 @@ class HarnessInstaller:
         provenance = json.loads(
             (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
         )
-        expected_digest = _managed_digest(self.source_root)
-        actual_digest = _managed_digest(root)
+        expected_digest = _managed_digest(self.source_root, self.managed_paths)
+        actual_digest = _managed_digest(root, self.managed_paths)
         if provenance != {
             "schema_version": 3,
             "source": CANONICAL_SOURCE,
@@ -501,7 +560,7 @@ class HarnessInstaller:
 
     def plan(self) -> dict[str, Any]:
         self._validate_source()
-        source_digest = _managed_digest(self.source_root)
+        source_digest = _managed_digest(self.source_root, self.managed_paths)
         installed = self.installed_version()
         installed_digest = None
         reason = None
