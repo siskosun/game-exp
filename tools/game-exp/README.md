@@ -32,6 +32,14 @@ A network timeout during dispatch is `UNKNOWN`, not `REJECTED`.
 
 ## Commands
 
+Local CLI usage requires Python 3.11+, Git, `uv`, and an authenticated GitHub CLI (`gh`). Verify or establish authentication first:
+
+```powershell
+gh auth status
+# If needed:
+gh auth login
+```
+
 From the repository root:
 
 ```powershell
@@ -40,14 +48,16 @@ python tools/game-exp/cli.py --repo owner/repo --json doctor
 python tools/game-exp/cli.py --repo owner/repo --json capabilities
 ```
 
-Submit a request:
+Create and bind an experiment:
 
 ```powershell
 python tools/game-exp/cli.py --repo owner/repo --json experiment-template
 
-# Use the returned Manifest with experiment.bind through the documented
-# high-level workflow/MCP/Bridge path; unknown low-level operation names fail closed.
+# After filling the returned Manifest blueprint and saving the canonical Manifest:
+python tools/game-exp/cli.py --repo owner/repo --json bind --manifest-file .game-exp/manifest.json
 ```
+
+`bind` uses `manifest.operation_id` as the stable request id. An optional `--request-id` is accepted only as a compatibility check and must match `manifest.operation_id`.
 
 The command returns a stable `request_id`. If the workflow result is uncertain:
 
