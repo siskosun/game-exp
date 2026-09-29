@@ -90,6 +90,8 @@ Before editing an existing experiment, read `game_exp_collaboration_context`, th
 
 Release with `game_exp_work_release`: `COMPLETED`, `ABANDONED`, or `HANDED_OFF`. Handoff text is participant-reported context, not authority. Unpublished local edits are not recoverable through game-exp.
 
+After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Then present `experiment_panel.delivery_card` instead of dumping the full Board. The card is an intent surface only: `保留这版` never means SELECTED; `我试玩通过了` records PASS only when the exact current Candidate is already waiting for human Review; `就选这版` preserves Rehearsal/selection prerequisites.
+
 ## Prototype implementation handoff
 
 Specialized prototype executors are recommended but not mandatory dependencies. Before implementation, check the current host's available Skill/tool catalog.
