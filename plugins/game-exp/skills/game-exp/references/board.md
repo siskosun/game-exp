@@ -14,7 +14,7 @@ Show five logical views:
 
 Use one pinned protected experiment-record snapshot for every view in the same response.
 
-In the 1.0 default MCP surface, `game_exp_board` is always available; advanced focused-panel tools are opt-in with `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. If those tools are not registered, use Board focus plus `game_exp_experiment_get` rather than treating the missing tool as a capability failure.
+In the 1.5 default MCP surface, `game_exp_board`, `game_exp_subject_panel`, and `game_exp_experiment_panel` are registered read-only tools. Registration is not a UI trigger. The full Board remains explicit by default; a focused panel may surface proactively only when `surface_hint.surface_when_relevant=true` or the user explicitly drills down.
 
 ## Shared header
 
@@ -327,7 +327,7 @@ When contributor history is incomplete (for example more than the inspected comm
 
 ## 协作通知
 
-The panel may show a compact `协作动态` entry backed by `game_exp_notifications`.
+The panel may show a compact `协作动态` entry backed by `game_exp_notifications`. The notification tool is registered by default, but registration is not permission to poll or surface events continuously; call it only for explicit activity/collaboration requests or a workflow that actually needs incremental event deltas.
 
 Show only meaningful experiment events. Display subject/prototype, experiment id, trusted actor when known, event label, and title. Do not show delivery state as lifecycle state.
 

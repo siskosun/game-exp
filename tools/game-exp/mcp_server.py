@@ -337,20 +337,30 @@ def game_exp_board(
         attention_only=attention_only,
     )
 
-@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_experiment_panel(
     experiment_id: str,
     repo: str | None = None,
 ) -> dict[str, Any]:
-    """Return one Chinese-ready single-experiment panel from one pinned Ledger snapshot."""
+    """Return one Chinese-ready single-experiment drill-down from one pinned Ledger snapshot.
+
+    This read-only tool is available by default. Registration is not a request
+    to surface the panel proactively; open it only for explicit drill-down or
+    when the Board surface hint says a contextual panel is relevant.
+    """
     return _client(repo).experiment_panel(experiment_id)
 
-@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_subject_panel(
     subject_id: str,
     repo: str | None = None,
 ) -> dict[str, Any]:
-    """Return one Chinese-ready subject/prototype panel from one pinned Ledger snapshot."""
+    """Return one Chinese-ready prototype drill-down from one pinned Ledger snapshot.
+
+    This read-only tool is available by default. Registration alone must not
+    trigger proactive UI; use it when the user opens a prototype or a Board
+    interaction explicitly drills into that subject.
+    """
     return _client(repo).subject_panel(subject_id)
 
 
@@ -376,7 +386,7 @@ def game_exp_prototype_handoff(
     return _client(repo).prototype_handoff(experiment_id)
 
 
-@_optional_tool(ADVANCED_MCP_TOOLS_ENABLED, annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def game_exp_notifications(
     repo: str | None = None,
     viewer_login: str | None = None,
@@ -385,7 +395,13 @@ def game_exp_notifications(
     after: str | None = None,
     cursor: str | None = None,
 ) -> dict[str, Any]:
-    """Return cursor-resumable collaboration events from committed Ledger snapshots."""
+    """Return cursor-resumable collaboration events from committed Ledger snapshots.
+
+    This read-only feed is available by default but is not a polling mandate.
+    Call it for explicit collaboration/activity requests or a user workflow
+    that actually needs event deltas; do not surface it merely because the tool
+    is registered.
+    """
     return _client(repo).notification_feed(
         viewer_login=viewer_login,
         subject_id=subject_id,

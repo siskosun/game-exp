@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "1.4.0")
+        self.assertEqual(manifest["version"], "1.5.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -119,7 +119,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "game_exp_project_preflight",
             "game_exp_project_init",
             "game_exp_board",
-            "advanced focused-panel tools",
+            "default read-only drill-down tools",
             "GAME_EXP_ENABLE_ADVANCED_TOOLS=1",
             "game_exp_notifications",
             "game_exp_collaboration_context",
@@ -233,9 +233,10 @@ class GameExpSkillContractTests(unittest.TestCase):
             "attention_only",
             "counts_by_lifecycle",
             "counts_by_health",
-            "advanced focused-panel tools",
+            "registered read-only tools",
+            "Registration is not a UI trigger",
+            "surface_hint.surface_when_relevant=true",
             "judgement.success_criteria",
-            "GAME_EXP_ENABLE_ADVANCED_TOOLS=1",
             "relationship_edges",
             "发起人",
             "代码贡献者",
@@ -397,7 +398,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "## Harness conformance screening",
             "eligible_for_real_repo_test=true",
             "same `suite_digest`",
-            "optional conformance tools",
+            "conformance-only tools require their dedicated conformance mode/flag",
         ):
             self.assertIn(phrase, skill)
         for phrase in (
