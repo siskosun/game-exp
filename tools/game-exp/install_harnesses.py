@@ -13,7 +13,6 @@ import tomllib
 import uuid
 from typing import Any
 
-from bootstrap import _managed_paths
 from companion_skills import (
     CompanionSkillSyncError,
     CompanionSkillSynchronizer,
