@@ -329,7 +329,7 @@ class MCPServerTests(unittest.TestCase):
                 "game_exp_operation_resume",
             },
         )
-        self.assertEqual(len(names), 23)
+        self.assertEqual(len(names), 24)
         for hidden in (
             "game_exp_project_preflight",
             "game_exp_experiment_panel",
