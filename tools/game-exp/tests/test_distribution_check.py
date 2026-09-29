@@ -31,6 +31,11 @@ class DistributionIntegrityTests(unittest.TestCase):
             if row["name"] == "companion_skill_sync_policy"
         )
         self.assertEqual(companion["status"], "PASS")
+        stable = next(
+            row for row in result["checks"]
+            if row["name"] == "stable_release_source_policy"
+        )
+        self.assertEqual(stable["status"], "PASS")
 
     def test_harness_command_contract_is_exact(self):
         self.assertTrue(
