@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 - 2026-09-29
+
+- Add shareable playable delivery v1 without moving hosting or lifecycle authority into game-exp.
+- Public-repository prototype handoff now prefers immutable GitHub Pages delivery owned by GPS/H5, keyed by the exact result source SHA.
+- Require deployment identity plus real browser/player verification before an executor may return `SHAREABLE_URL verified=true`.
+- Recover a previous Candidate's direct playable by matching its source SHA to historical verified `work.release.delivery.playable` evidence; retain the Candidate artifact fallback when no shareable URL exists.
+- Keep Review, PROMISING, SELECTED, Integration, Archive and protected Ledger semantics unchanged.
+
 ## 1.1.0 maintenance - 2026-09-29 (Windows live-config rollback)
 
 - Fix Codex/Cursor/Qoder config updates when a running Harness denies Windows rename/delete-sharing on its existing MCP config file.
