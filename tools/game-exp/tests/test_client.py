@@ -712,6 +712,8 @@ class ClientTests(unittest.TestCase):
             "experiments/EXP-21/state.json",
             "experiments/EXP-21/manifest.json",
             "experiments/EXP-21/reviews/req_review.json",
+            "experiments/EXP-7/candidates/C-7-0-1.json",
+            "experiments/EXP-7/candidates/C-7-1-1.json",
             "experiments/EXP-7/work-releases/req_release_old.json",
             "experiments/EXP-7/work-releases/req_release_7.json",
             "operations/req_other.json",
@@ -768,6 +770,7 @@ class ClientTests(unittest.TestCase):
                 "experiments/EXP-7/candidates/C-7-0-1.json": {
                     "candidate_id": "C-7-0-1",
                     "source_sha": "9" * 40,
+                    "artifact_digest": "sha256:" + "0" * 64,
                     "retention": {
                         "release_url": "https://github.com/owner/repo/releases/tag/candidate-old"
                     },
@@ -775,6 +778,7 @@ class ClientTests(unittest.TestCase):
                 "experiments/EXP-7/candidates/C-7-1-1.json": {
                     "candidate_id": "C-7-1-1",
                     "source_sha": "b" * 40,
+                    "artifact_digest": "sha256:" + "1" * 64,
                     "retention": {
                         "release_url": "https://github.com/owner/repo/releases/tag/candidate-current"
                     },
@@ -809,17 +813,17 @@ class ClientTests(unittest.TestCase):
                     "delivery": {
                         "changes": ["缩短角色切换反馈", "强化回合归属提示"],
                         "playable": {
-                            "kind": "LOCAL_URL",
+                            "kind": "SHAREABLE_URL",
                             "verified": True,
-                            "portable": False,
-                            "url": "http://127.0.0.1:8000/",
+                            "portable": True,
+                            "url": "https://owner.github.io/repo/play/bbbbb/",
                             "artifact_url": None,
-                            "launch_hint": "保持本地试玩服务运行",
+                            "launch_hint": "immutable Pages build",
                         },
                         "focus_points": ["是否更快看懂当前行动角色"],
                         "producer": "godot-prototype-studio",
                         "build_id": "build-7",
-                        "previous_candidate_id": "C-7-0-1",
+                        "previous_candidate_id": "C-7-999-1",
                     },
                     "delivery_trust": "participant_reported",
                 },
@@ -906,8 +910,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(delivery_card["schema_version"], 1)
         self.assertEqual(delivery_card["candidate_id"], "C-7-1-1")
         self.assertEqual(delivery_card["version_state"], "CANDIDATE_BOUND")
-        self.assertEqual(delivery_card["playable"]["kind"], "LOCAL_URL")
-        self.assertEqual(delivery_card["playable"]["action_zh"], "在当前设备试玩")
+        self.assertEqual(delivery_card["playable"]["kind"], "SHAREABLE_URL")
+        self.assertEqual(delivery_card["playable"]["action_zh"], "立即试玩")
         self.assertTrue(delivery_card["comparison"]["available"])
         self.assertIn("本轮：缩短角色切换反馈", delivery_card["comparison"]["summary_zh"])
         self.assertEqual(
@@ -918,6 +922,59 @@ class ClientTests(unittest.TestCase):
             delivery_card["comparison"]["previous_playable"]["kind"],
             "SHAREABLE_URL",
         )
+        self.assertEqual(
+            delivery_card["comparison"]["previous_candidate_id"],
+            "C-7-0-1",
+        )
+        self.assertEqual(
+            delivery_card["comparison"]["previous_candidate_source"],
+            "authoritative_candidate_history",
+        )
+        self.assertEqual(
+            delivery_card["comparison"]["participant_previous_candidate_hint"],
+            "C-7-999-1",
+        )
+        revision_session = delivery_card["comparison"]["revision_ab_session"]
+        self.assertTrue(revision_session["available"])
+        self.assertTrue(revision_session["blind"])
+        self.assertTrue(revision_session["identity_hidden_by_default"])
+        self.assertTrue(revision_session["recordable_with_review"])
+        self.assertEqual(
+            {slot["label_zh"] for slot in revision_session["slots"]},
+            {"版本 A", "版本 B"},
+        )
+        self.assertEqual(
+            {slot["url"] for slot in revision_session["slots"]},
+            {
+                "https://owner.github.io/repo/play/bbbbb/",
+                "https://owner.github.io/repo/play/999999/",
+            },
+        )
+        self.assertEqual(
+            revision_session["machine_binding"]["previous_candidate_id"],
+            "C-7-0-1",
+        )
+        self.assertTrue(
+            revision_session["machine_binding"]["hidden_from_primary_ui"]
+        )
+        self.assertEqual(
+            [row["choice"] for row in revision_session["rating_options"]],
+            [
+                "A_MUCH_BETTER",
+                "A_SLIGHTLY_BETTER",
+                "NO_CLEAR_DIFFERENCE",
+                "B_SLIGHTLY_BETTER",
+                "B_MUCH_BETTER",
+                "INCONCLUSIVE",
+            ],
+        )
+        compare_action = next(
+            action
+            for action in delivery_card["quick_actions"]
+            if action["intent"] == "START_REVISION_AB"
+        )
+        self.assertTrue(compare_action["enabled"])
+        self.assertEqual(compare_action["route"], "OPEN_REVISION_AB_SESSION")
         previous_action = next(
             action
             for action in delivery_card["quick_actions"]
@@ -935,13 +992,20 @@ class ClientTests(unittest.TestCase):
             if action["intent"] == "REVISE_FROM_PREVIOUS"
         )
         self.assertEqual(revise_action["label_zh"], "用上一版源码继续修改")
-        self.assertFalse(delivery_card["playtest_delivery"]["external_share_ready"])
-        self.assertIn(
-            "原型执行器发布可分享试玩地址",
-            delivery_card["playtest_delivery"]["next_action_zh"],
-        )
+        self.assertTrue(delivery_card["playtest_delivery"]["external_share_ready"])
+        self.assertIsNone(delivery_card["playtest_delivery"]["next_action_zh"])
         self.assertTrue(
             delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
+        )
+        self.assertTrue(
+            delivery_card["quick_action_contract"][
+                "revision_ab_requires_explicit_review_outcome_to_persist"
+            ]
+        )
+        self.assertTrue(
+            delivery_card["quick_action_contract"][
+                "revision_ab_never_auto_ranks_or_selects"
+            ]
         )
         card = result["experiments"][0]["card_zh"]
         self.assertEqual(card["locale"], "zh-CN")
@@ -1953,6 +2017,19 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(result["features"]["iteration_routing_v1"])
         self.assertTrue(result["features"]["iteration_delivery_card_v1"])
         self.assertTrue(result["features"]["shareable_playable_delivery_v1"])
+        self.assertTrue(result["features"]["revision_ab_review_v1"])
+        revision_ab = result["revision_ab_review"]
+        self.assertEqual(
+            revision_ab["scope"],
+            "same_experiment_immediate_previous_candidate",
+        )
+        self.assertEqual(
+            revision_ab["persist_via"],
+            "review.record.revision_comparison",
+        )
+        self.assertFalse(revision_ab["comparison_is_review_outcome"])
+        self.assertFalse(revision_ab["comparison_changes_lifecycle"])
+        self.assertFalse(revision_ab["elo_or_automatic_ranking"])
         shareable = result["shareable_playable_delivery"]
         self.assertEqual(shareable["provider"], "github-pages")
         self.assertEqual(shareable["deployment_mode"], "actions-workflow")
