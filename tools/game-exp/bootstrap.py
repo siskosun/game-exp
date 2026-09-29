@@ -22,6 +22,7 @@ PRODUCTION_WORKFLOWS = (
     "game-exp-archive.yml",
     "game-exp-archive-snapshot-verify.yml",
     "game-exp-github-bridge.yml",
+    "game-exp-pages.yml",
 )
 
 PRODUCTION_TOOLS = (
