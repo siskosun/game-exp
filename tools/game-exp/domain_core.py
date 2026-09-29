@@ -959,7 +959,20 @@ def _normalize_iteration_delivery(
                 "delivery.previous_candidate_id does not match experiment",
                 code="DOMAIN_WORK_INVALID",
             )
-        _load_candidate(repo_dir, experiment_id, previous_candidate_id)
+        previous_candidate = _read_json_file(
+            repo_dir,
+            f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
+            where=experiment_id,
+        )
+        if (
+            previous_candidate.get("kind") != "candidate"
+            or previous_candidate.get("candidate_id") != previous_candidate_id
+            or previous_candidate.get("experiment_id") != experiment_id
+        ):
+            raise DomainError(
+                "delivery.previous_candidate_id does not reference a Candidate",
+                code="DOMAIN_WORK_INVALID",
+            )
 
     playable = _mapping(value["playable"], "operation.input.delivery.playable")
     _expect_keys(
@@ -1014,14 +1027,14 @@ def _normalize_iteration_delivery(
                 code="DOMAIN_WORK_INVALID",
             )
     elif kind == "ARTIFACT_ONLY":
-        if artifact_url is None:
+        if artifact_url is None or verified is not True:
             raise DomainError(
-                "ARTIFACT_ONLY requires artifact_url",
+                "ARTIFACT_ONLY requires a verified artifact_url",
                 code="DOMAIN_WORK_INVALID",
             )
-    elif url is not None or artifact_url is not None:
+    elif url is not None or artifact_url is not None or verified is not False:
         raise DomainError(
-            "MISSING playable must not include url or artifact_url",
+            "MISSING playable must be unverified and include no url or artifact_url",
             code="DOMAIN_WORK_INVALID",
         )
 
