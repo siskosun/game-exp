@@ -34,21 +34,19 @@ For installation or upgrade, read root `INSTALL.json`. The default installer cha
 
 ## Task routing
 
-| Task | Primary tool / action | Read |
+Route from the user's intent first. Internal lifecycle terms belong in the workflow layer.
+
+| User intent | Primary route | Read |
 |---|---|---|
-| Status / permissions / version | `game_exp_status` | `references/public-contract.md` |
-| Brand-new prototype / repository | `game_exp_project_create` (local stdio/CLI) | `references/project-setup.md`, `references/onboarding.md` |
-| Existing repository / trust repair | `game_exp_project_init` (optional advanced preflight), Doctor | `references/project-setup.md` |
-| First experiment | `game_exp_experiment_template`, Bind, Initialize | `references/onboarding.md`, `references/workflow.md` |
-| Board / one experiment / one prototype | `game_exp_board`; optional advanced panel tools when enabled | `references/board.md`, `references/chat-ui.md` |
-| Continue implementation | collaboration preflight, source edit, Work Claim/Release | `references/collaboration.md`, `references/workflow.md` |
-| Godot implementation / playable handoff | `game_exp_prototype_handoff` | `references/prototype-handoff.md` |
-| Candidate / evaluation / human comparison | Candidate, Review | `references/evaluation.md`, `references/workflow.md` |
-| Review / PROMISING / SELECTED / Integration | trusted lifecycle tools | `references/workflow.md`, `references/public-contract.md` |
-| Archive / recovery | Archive tools | `references/workflow.md`, `references/public-contract.md` |
-| Notifications | optional advanced `game_exp_notifications` | `references/notifications.md` |
-| GitHub Issue commands | GitHub Bridge | `references/github-bridge.md` |
-| Harness behavior screening | optional conformance tools | `references/conformance.md` |
+| 看状态 / 打开面板 | `game_exp_status`, `game_exp_board` | `references/board.md` |
+| 打开某个原型 / 实验 | `game_exp_subject_panel`, `game_exp_experiment_panel` | `references/board.md`, `references/chat-ui.md` |
+| 新建原型 / 第一个实验 | `game_exp_project_create`, then onboarding | `references/project-setup.md`, `references/onboarding.md` |
+| 继续修改当前实验 | collaboration context -> Work Claim -> source edit -> Work Release | `references/collaboration.md`, `references/workflow.md` |
+| 准备试玩 / 记录试玩结果 | `game_exp_prototype_handoff` plus the trusted workflow | `references/prototype-handoff.md`, `references/workflow.md` |
+| 保留、选择、放弃、合入、归档 | translate the natural-language choice into the trusted workflow | `references/workflow.md` |
+| 看协作动态 | `game_exp_notifications` | `references/notifications.md` |
+| 诊断 / 修复仓库 | Doctor, `game_exp_project_init`; optional advanced preflight when explicitly enabled | `references/project-setup.md` |
+| GitHub Issue bridge / conformance | use only for the matching fallback or diagnostic task | `references/github-bridge.md`, `references/conformance.md` |
 
 ## Complete project setup
 
@@ -68,7 +66,7 @@ Do not silently change an existing repository's visibility. New game-exp prototy
 
 ## Experiment Board
 
-Use `game_exp_board` for the default Board. If advanced focused-panel tools are registered, they may be used for one experiment/subject; otherwise use Board focus plus `game_exp_experiment_get`. All are read-only projections from one pinned Ledger snapshot.
+Use `game_exp_board` for the default Board. `game_exp_subject_panel` and `game_exp_experiment_panel` are default read-only drill-down tools. Their registration means **available**, not **show proactively**: open them for explicit drill-down, or when the Board's `surface_hint` says a contextual panel is relevant. All are projections from one pinned Ledger snapshot.
 
 Chinese is the default presentation. Use the emitted `display` contract rather than retranslating raw fields. Normal views are `总览`, `待处理`, `原型`, `分支图`, `归档`. Keep system-generated panel entries in natural Chinese. `health=FAIL` blocks normal lifecycle work.
 
@@ -94,7 +92,7 @@ Before editing an existing experiment, read `game_exp_collaboration_context`, th
 
 Release with `game_exp_work_release`: `COMPLETED`, `ABANDONED`, or `HANDED_OFF`. Handoff text is participant-reported context, not authority. Unpublished local edits are not recoverable through game-exp.
 
-After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; an advanced `experiment_panel.delivery_card` is the same projection when that tool is enabled. Present the card instead of dumping the full Board. The card is an intent surface only. Internally, `保留这版` never means SELECTED; `A/B 对比试玩` binds the exact current Candidate and its authoritative immediate previous Candidate; `我试玩通过了` records PASS only for the exact current version waiting for the user's result; `就选这版` preserves Rehearsal/selection prerequisites. In primary UI copy, describe these simply as keeping, comparing, passing, selecting, and automatically checking whether the version can merge into the main version. Do not expose Candidate/Review/Rehearsal/PROMISING/SELECTED unless diagnostics are requested.
+After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; `experiment_panel.delivery_card` is the same read-only projection for explicit drill-down. Present the card instead of dumping the full Board. The card is an intent surface only. Internally, `保留这版` never means SELECTED; `A/B 对比试玩` binds the exact current Candidate and its authoritative immediate previous Candidate; `我试玩通过了` records PASS only for the exact current version waiting for the user's result; `就选这版` preserves Rehearsal/selection prerequisites. In primary UI copy, describe these simply as keeping, comparing, passing, selecting, and automatically checking whether the version can merge into the main version. Do not expose Candidate/Review/Rehearsal/PROMISING/SELECTED unless diagnostics are requested.
 
 ## Prototype implementation handoff
 
@@ -133,7 +131,7 @@ Archive is a destructive/recovery-sensitive workflow. Follow `references/workflo
 
 MCP tools, CLI, and the GitHub Bridge share stable request-id semantics. Use `game_exp_operation_get` to resolve an operation and `game_exp_operation_resume` only when the protocol says effects can be safely resumed.
 
-The default 1.0 MCP surface keeps day-to-day lifecycle and recovery tools only. Optional diagnostics and secondary projections (`project_preflight`, single-experiment/subject panels, notifications, generic request submit) require `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. Legacy aliases require `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools require their dedicated conformance mode/flag. Do not assume optional tools are registered.
+The default 1.5 MCP surface contains 27 day-to-day/read-only tools, including `game_exp_experiment_panel`, `game_exp_subject_panel`, and `game_exp_notifications`. Tool registration is capability availability only: it must not cause automatic panel surfacing or notification polling. `surface_hint` and explicit user intent decide presentation. Only `game_exp_project_preflight` and the generic `game_exp_request_submit` remain behind `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`. Legacy aliases require `GAME_EXP_ENABLE_LEGACY_TOOLS=1`; conformance-only tools require their dedicated conformance mode/flag.
 
 For `UNKNOWN`, transport uncertainty, or claim-without-result, keep the same request id. For authorization failure, do not use fallback authority. Use the authorized GitHub connector when repository data/actions are needed and available.
 
