@@ -6,9 +6,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
-SHA_PIN_RE = re.compile(r"^[^\\s@]+@([0-9a-f]{40})$")
-USES_RE = re.compile(r"\\buses:\\s*([^\\s#]+)")
-JOB_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\\s*$")
+SHA_PIN_RE = re.compile(r"^[^\s@]+@([0-9a-f]{40})$")
+USES_RE = re.compile(r"\buses:\s*([^\s#]+)")
+JOB_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 
 
 def workflow_files() -> list[pathlib.Path]:
@@ -71,7 +71,7 @@ class WorkflowInvariantTests(unittest.TestCase):
                     continue
                 seen += 1
                 if not re.search(
-                    r"^    environment:\\s*game-exp-trusted-writer\\s*$",
+                    r"^    environment:\s*game-exp-trusted-writer\s*$",
                     block,
                     re.MULTILINE,
                 ):
@@ -101,11 +101,11 @@ class WorkflowInvariantTests(unittest.TestCase):
         self.assertNotIn("secrets.GAME_EXP_WRITER_KEY", validate)
         self.assertNotRegex(
             validate,
-            r"^    environment:\\s*game-exp-trusted-writer\\s*$",
+            r"^    environment:\s*game-exp-trusted-writer\s*$",
         )
         self.assertRegex(
             execute,
-            r"^    environment:\\s*game-exp-trusted-writer\\s*$",
+            r"^    environment:\s*game-exp-trusted-writer\s*$",
         )
         self.assertIn("secrets.GAME_EXP_WRITER_KEY", execute)
 
@@ -125,7 +125,7 @@ class WorkflowInvariantTests(unittest.TestCase):
         _name, block = protected[0]
         self.assertRegex(
             block,
-            r"^    environment:\\s*game-exp-trusted-writer\\s*$",
+            r"^    environment:\s*game-exp-trusted-writer\s*$",
         )
         self.assertIn("persist-credentials: false", block)
 
