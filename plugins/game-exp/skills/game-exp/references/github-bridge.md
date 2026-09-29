@@ -126,6 +126,14 @@ For Manifest review protocol `incumbent-challenger-blind-ab-v1`, the command may
 
 Comparison choices are `INCUMBENT`, `CHALLENGER`, `NO_CLEAR_DIFFERENCE`, or `INCONCLUSIVE`. The comparison is `HUMAN_REPORTED` evidence and does not replace the explicit Review outcome.
 
+For a same-experiment Candidate revision, `review_record` may instead carry one optional `revision_comparison`. `comparison` and `revision_comparison` are mutually exclusive. The protected Review path verifies that `previous_candidate_id` is the authoritative immediate previous Candidate of the current Candidate and that `previous_artifact_digest` matches it.
+
+~~~json
+{"schema_version":1,"request_id":"req_review_42_revision","action":"review_record","experiment_id":"EXP-42","candidate_id":"C-42-123457-1","outcome":"PASS","notes":"Human explicitly approved the current Candidate after blind comparison.","revision_comparison":{"previous_candidate_id":"C-42-123456-1","previous_artifact_digest":"sha256:<64hex>","blind":true,"presentation_order":"CURRENT_PREVIOUS","choice":"A_SLIGHTLY_BETTER","notes":"Version A felt slightly more responsive."}}
+~~~
+
+Revision choices are `A_MUCH_BETTER`, `A_SLIGHTLY_BETTER`, `NO_CLEAR_DIFFERENCE`, `B_SLIGHTLY_BETTER`, `B_MUCH_BETTER`, or `INCONCLUSIVE`. Presentation order is `CURRENT_PREVIOUS` or `PREVIOUS_CURRENT`. The stored Review normalizes the blind slot choice to a current-relative verdict. The A/B choice remains `HUMAN_REPORTED` evidence and never replaces the explicit `outcome=PASS|FAIL`, PROMISING, or SELECTED decision.
+
 ### decision_submit
 
 ~~~json
