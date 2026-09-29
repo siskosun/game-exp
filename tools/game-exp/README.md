@@ -318,7 +318,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.2.1`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.3.0`.
 
 ### Windows UTF-8 compatibility
 
