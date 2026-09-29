@@ -2,6 +2,12 @@
 
 ## 1.0.0 maintenance fix - 2026-09-29
 
+- Add iteration delivery card v1 without changing the game-exp lifecycle or version number.
+- Allow COMPLETED/HANDED_OFF `work.release` to carry bounded participant-reported `delivery` evidence: player-visible changes, verified playable descriptor, focus points, producer/build id and optional prior Candidate.
+- Project `experiment_panel.delivery_card` with one immediate playable/download action, previous-version context, focus points and fixed Chinese quick intents.
+- Keep quick intents non-authoritative: `保留这版` is no-op retention, Review PASS requires an explicit statement about the exact current Candidate, and selection still requires fresh Rehearsal.
+- Fall back to trusted immutable Candidate retention when no direct playable entry exists; otherwise show `试玩入口未生成` rather than inventing a URL.
+
 - Add local `game_exp_project_create` / CLI `project-create` for a brand-new Godot or H5 prototype when no repository exists.
 - Default new repositories to private; require explicit public visibility and never publish automatically to bypass Ruleset-plan limits.
 - Seed from the latest semantic-version-tagged GPS/H5 starter, install game-exp/project policy, push `main`, then run the existing project-init/Doctor path.
