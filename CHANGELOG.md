@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 - 2026-09-29
+
+- Make `game_exp_experiment_panel`, `game_exp_subject_panel`, and `game_exp_notifications` part of the default read-only MCP surface, increasing the normal surface from 24 to 27 tools.
+- Decouple tool registration from presentation: registered drill-down tools do not automatically open panels, and registered notifications do not imply polling; explicit user intent and Board `surface_hint` control surfacing.
+- Simplify the Skill's day-to-day routing around user actions such as 修改、试玩、保留这版、就选这版、放弃 instead of teaching protocol vocabulary first.
+- Keep `game_exp_project_preflight` and generic `game_exp_request_submit` behind `GAME_EXP_ENABLE_ADVANCED_TOOLS=1`; legacy and conformance surfaces remain separately gated.
+- Preserve protected Ledger authority, trusted write boundaries, lifecycle semantics, human gates, and recovery behavior unchanged.
+
 ## 1.4.0 - 2026-09-29
 
 - Change the default game-exp install/upgrade source from the current checkout to the latest published, non-prerelease semantic-version GitHub Release.
