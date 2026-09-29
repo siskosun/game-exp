@@ -5,6 +5,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import tempfile
 import urllib.error
 import urllib.request
@@ -31,6 +32,10 @@ _EXCLUDED_DIRS = {
 }
 _EXCLUDED_FILES = {"CHANGELOG.md", "README.md", "README.zh-CN.md", "probes.jsonl"}
 _SEMVER_TAG = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+_MAX_ARCHIVE_MEMBERS = 4096
+_MAX_ARCHIVE_TOTAL_BYTES = 128 * 1024 * 1024
+_MAX_ARCHIVE_MEMBER_BYTES = 32 * 1024 * 1024
+_MAX_ARCHIVE_COMPRESSION_RATIO = 500.0
 
 
 class CompanionSkillSyncError(RuntimeError):
@@ -100,26 +105,72 @@ def _latest_semver_tag(repository: str) -> str:
 
 
 def _safe_extract(archive_path: pathlib.Path, target: pathlib.Path) -> pathlib.Path:
+    target_root = target.resolve()
     with zipfile.ZipFile(archive_path) as archive:
         members = archive.infolist()
         if not members:
             raise CompanionSkillSyncError("downloaded archive is empty")
+        if len(members) > _MAX_ARCHIVE_MEMBERS:
+            raise CompanionSkillSyncError(
+                f"downloaded archive has too many members: {len(members)}"
+            )
+
         root_names: set[str] = set()
+        total_bytes = 0
+        validated: list[tuple[zipfile.ZipInfo, pathlib.Path]] = []
         for member in members:
             parts = pathlib.PurePosixPath(member.filename).parts
             if not parts:
                 continue
+            if member.flag_bits & 0x1:
+                raise CompanionSkillSyncError(
+                    f"encrypted archive member is not supported: {member.filename}"
+                )
+
+            mode = (member.external_attr >> 16) & 0o170000
+            if mode == stat.S_IFLNK:
+                raise CompanionSkillSyncError(
+                    f"symbolic-link archive member is not allowed: {member.filename}"
+                )
+
+            if member.file_size > _MAX_ARCHIVE_MEMBER_BYTES:
+                raise CompanionSkillSyncError(
+                    f"archive member is too large: {member.filename}"
+                )
+            total_bytes += member.file_size
+            if total_bytes > _MAX_ARCHIVE_TOTAL_BYTES:
+                raise CompanionSkillSyncError(
+                    "downloaded archive expands beyond the allowed size"
+                )
+            if member.file_size > 1024 * 1024:
+                compressed = max(member.compress_size, 1)
+                ratio = member.file_size / compressed
+                if ratio > _MAX_ARCHIVE_COMPRESSION_RATIO:
+                    raise CompanionSkillSyncError(
+                        f"archive member compression ratio is too high: {member.filename}"
+                    )
+
             root_names.add(parts[0])
             resolved = (target / pathlib.Path(*parts)).resolve()
             try:
-                resolved.relative_to(target.resolve())
+                resolved.relative_to(target_root)
             except ValueError as exc:
                 raise CompanionSkillSyncError(
                     f"unsafe archive path: {member.filename}"
                 ) from exc
+            validated.append((member, resolved))
+
         if len(root_names) != 1:
             raise CompanionSkillSyncError("downloaded archive has multiple roots")
-        archive.extractall(target)
+
+        for member, destination in validated:
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member, "r") as source, destination.open("wb") as sink:
+                shutil.copyfileobj(source, sink)
+
     root = target / next(iter(root_names))
     if not root.is_dir():
         raise CompanionSkillSyncError("downloaded archive root is missing")
