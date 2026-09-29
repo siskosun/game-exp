@@ -137,3 +137,7 @@ After implementation evidence is returned:
 6. preserve normal PROMISING -> Rehearsal -> SELECTED -> Integration gates.
 
 Specialized executor automation stops at evidence. game-exp remains the authority for experiment advancement.
+
+## Playtest delivery ownership
+
+game-exp does not host or publish playable builds. The specialized executor owns the requested playable delivery. For external testers, prefer a verified `SHAREABLE_URL`; a localhost/LAN URL or retained `candidate.tgz` is not a substitute for a cross-device link. If a completed iteration returns `LOCAL_URL`, `ARTIFACT_ONLY`, or `MISSING` and external testing is needed, the next action is to ask the executor to publish a shareable build and persist that URL through `work.release.delivery.playable`.
