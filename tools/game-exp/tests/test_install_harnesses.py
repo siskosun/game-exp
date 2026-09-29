@@ -71,6 +71,17 @@ class HarnessInstallerTests(unittest.TestCase):
         path.write_text(json.dumps(value), encoding="utf-8")
         return path
 
+    def test_preflight_rejects_python_older_than_311(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(ROOT, home, harness="codex")
+            with mock.patch("install_harnesses.sys.version_info", (3, 10, 14)):
+                with self.assertRaisesRegex(
+                    HarnessInstallError,
+                    "Python 3.11 or newer",
+                ):
+                    installer.preflight()
+
     def test_codex_install_is_isolated_from_other_harnesses(self):
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td)
@@ -91,7 +102,7 @@ class HarnessInstallerTests(unittest.TestCase):
                 ).install()
 
             self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["version"], "1.0.0")
+            self.assertEqual(result["version"], "1.1.0")
             self.assertEqual(result["updated_harnesses"], ["codex"])
             self.assertFalse(result["shared_runtime"])
             self.assertEqual(result["companion_skills"], self._companion_result)
@@ -100,7 +111,7 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(pathlib.Path(result["runtime_dir"]).resolve(), runtime.resolve())
             self.assertEqual(
                 (runtime / "VERSION.txt").read_text(encoding="utf-8").strip(),
-                "1.0.0",
+                "1.1.0",
             )
             provenance = json.loads(
                 (runtime / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
@@ -110,7 +121,7 @@ class HarnessInstallerTests(unittest.TestCase):
                 provenance["source"],
                 "https://github.com/siskosun/game-exp",
             )
-            self.assertEqual(provenance["version"], "1.0.0")
+            self.assertEqual(provenance["version"], "1.1.0")
             self.assertEqual(provenance["harness"], "codex")
             self.assertEqual(
                 provenance["digest_algorithm"],
@@ -143,7 +154,7 @@ class HarnessInstallerTests(unittest.TestCase):
 
             current = HarnessInstaller(ROOT, home, harness="codex").plan()
             self.assertEqual(current["install_state"], "CURRENT")
-            self.assertEqual(current["installed_version"], "1.0.0")
+            self.assertEqual(current["installed_version"], "1.1.0")
             self.assertFalse(current["would_update_other_harnesses"])
             self.assertTrue(current["would_sync_companion_skills"])
             self.assertEqual(
@@ -157,12 +168,12 @@ class HarnessInstallerTests(unittest.TestCase):
             installer = HarnessInstaller(ROOT, home, harness="codex")
             installer.runtime_dir.mkdir(parents=True)
             (installer.runtime_dir / "VERSION.txt").write_text(
-                "1.0.0\n",
+                "1.1.0\n",
                 encoding="utf-8",
             )
 
             plan = installer.plan()
-            self.assertEqual(plan["installed_version"], "1.0.0")
+            self.assertEqual(plan["installed_version"], "1.1.0")
             self.assertEqual(plan["install_state"], "UPGRADE_AVAILABLE")
             self.assertIn("SAME_VERSION_INSTALL_DRIFT", plan["install_reason"])
             self.assertNotEqual(plan["install_state"], "CURRENT")
@@ -277,7 +288,7 @@ class HarnessInstallerTests(unittest.TestCase):
             )
             with mock.patch("install_harnesses.shutil.which", return_value="uv"):
                 result = rollback.install()
-            self.assertEqual(result["version"], "1.0.0")
+            self.assertEqual(result["version"], "1.1.0")
 
     def test_single_harness_detects_but_preserves_legacy_shared_install(self):
         with tempfile.TemporaryDirectory() as td:
@@ -335,7 +346,7 @@ class HarnessInstallerTests(unittest.TestCase):
                 result = install_many(ROOT, home, SUPPORTED_HARNESSES)
 
             self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["version"], "1.0.0")
+            self.assertEqual(result["version"], "1.1.0")
             self.assertEqual(result["updated_harnesses"], list(SUPPORTED_HARNESSES))
             self.assertEqual(self._companion_sync.call_count, len(SUPPORTED_HARNESSES))
             runtime_paths = {
@@ -372,7 +383,7 @@ class HarnessInstallerTests(unittest.TestCase):
             self.assertEqual(result["runtime_update_mode"], "filewise-fallback")
             self.assertEqual(
                 (installer.runtime_dir / "VERSION.txt").read_text(encoding="utf-8").strip(),
-                "1.0.0",
+                "1.1.0",
             )
 
     def test_runtime_install_handles_file_locked_against_replace(self):

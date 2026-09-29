@@ -16,7 +16,7 @@ cd game-exp
 python tools/game-exp/install_harnesses.py --harness codex --json
 ```
 
-Supported Harness values: `codex`, `qoder`, `cursor`. Use `--harness all` only when the user explicitly wants all three updated.
+Supported Harness values: `codex`, `qoder`, `cursor`. Python 3.11+ is required. Use `--harness all` only when the user explicitly wants all three updated.
 
 Before writing anything, a Harness may check its state:
 
@@ -24,7 +24,7 @@ Before writing anything, a Harness may check its state:
 python tools/game-exp/install_harnesses.py --harness codex --check --json
 ```
 
-The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. `CURRENT` now requires more than a matching version string: the managed-runtime digest, required runtime entrypoints, installed game-exp Skill metadata, and selected Harness MCP entry must match the current source. This lets maintenance fixes remain version `1.0.0` without making an older 1.0.0 install look current. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
+The check reports `NOT_INSTALLED`, `CURRENT`, `UPGRADE_AVAILABLE`, or a version-comparison warning and does not modify files. `CURRENT` now requires more than a matching version string: the managed-runtime digest, required runtime entrypoints, installed game-exp Skill metadata, and selected Harness MCP entry must match the current source. This also detects incomplete or drifted installs even when their semantic version matches. Downgrades are blocked unless `--allow-downgrade` is explicitly supplied.
 
 Legacy 0.17.x shared installs under `~/.agents/tools/game-exp` / `~/.agents/skills/game-exp` are detected but preserved during a single-Harness upgrade. After all three Harnesses have been explicitly migrated, the old shared copy can be removed with:
 
@@ -36,7 +36,7 @@ The cleanup flag is intentionally invalid for a single-Harness install.
 
 Each Harness gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent game-exp Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
-As a maintenance fix to 1.0.0, the same install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
+The 1.1 install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
 
 - `godot-prototype-studio` from `https://github.com/siskosun/godot-prototype-studio`
 - `h5-game-prototype-agent` from `https://github.com/siskosun/h5-game-prototype-agent`
@@ -69,7 +69,7 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.0.0` (maintenance fixes; version number unchanged).
+Current version: `1.1.0`.
 
 After a completed implementation iteration, game-exp can now project a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates.
 
@@ -78,7 +78,7 @@ For a brand-new prototype with no existing repository, local CLI/stdio MCP can n
 Release history: see `CHANGELOG.md`.
 
 
-## 1.0 pre-merge gate
+## 1.1 pre-merge gate
 
 Before merging a release change, run:
 

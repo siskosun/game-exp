@@ -527,6 +527,10 @@ class HarnessInstaller:
             )
 
     def preflight(self) -> None:
+        if sys.version_info < (3, 11):
+            raise HarnessInstallError(
+                "game-exp requires Python 3.11 or newer"
+            )
         self._validate_source()
         self._guard_downgrade()
         if shutil.which("uv") is None:

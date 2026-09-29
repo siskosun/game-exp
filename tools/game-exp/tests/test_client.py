@@ -549,6 +549,11 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["ledger_head"], transport.head)
         self.assertEqual(result["runtime_version"], _runtime_version())
+        self.assertEqual(result["runtime_identity"]["version"], "1.1.0")
+        self.assertEqual(
+            result["runtime_identity"]["build_identity"],
+            "version:1.1.0",
+        )
         self.assertEqual(result["repository_version"], _runtime_version())
         self.assertEqual(result["version_state"], "MATCH")
         self.assertEqual(result["access"]["status"], "WRITE")
@@ -1844,6 +1849,11 @@ class ClientTests(unittest.TestCase):
         result = GameExpClient(FakeTransport()).capabilities()
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["contract"]["version"], "1.0")
+        runtime_identity = result["runtime_identity"]
+        self.assertEqual(runtime_identity["version"], "1.1.0")
+        self.assertEqual(runtime_identity["build_identity"], "version:1.1.0")
+        self.assertEqual(runtime_identity["build_identity_kind"], "version-only")
+        self.assertIsNone(runtime_identity["source_digest"])
         self.assertEqual(result["contract"]["manifest_schema_versions"], [1, 2, 3])
         self.assertEqual(result["contract"]["recommended_manifest_schema_version"], 2)
         self.assertEqual(result["contract"]["project_policy_schema_versions"], [1, 2, 3])

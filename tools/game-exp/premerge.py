@@ -47,7 +47,7 @@ def premerge() -> dict[str, Any]:
                 "run",
                 "--with",
                 MCP_SPEC,
-                sys.executable,
+                "python",
                 "-m",
                 "unittest",
                 "discover",
@@ -83,7 +83,7 @@ def premerge() -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the game-exp 1.0 premerge gate.")
+    parser = argparse.ArgumentParser(description="Run the game-exp 1.1 premerge gate.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:

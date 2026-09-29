@@ -55,6 +55,60 @@ H5_GAME_PROTOTYPE_AGENT = {
     "fallback": "host_native_source_editing",
 }
 
+def _runtime_identity() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[2]
+    version_path = root / "VERSION.txt"
+    provenance_path = root / "INSTALL_SOURCE.json"
+
+    version = None
+    if version_path.is_file():
+        value = version_path.read_text(encoding="utf-8").strip()
+        version = value or None
+
+    source = None
+    source_digest = None
+    digest_algorithm = None
+    provenance_schema = None
+    if provenance_path.is_file():
+        try:
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            provenance = None
+        if isinstance(provenance, dict):
+            source = provenance.get("source") if isinstance(provenance.get("source"), str) else None
+            source_digest = (
+                provenance.get("source_digest")
+                if isinstance(provenance.get("source_digest"), str)
+                else None
+            )
+            digest_algorithm = (
+                provenance.get("digest_algorithm")
+                if isinstance(provenance.get("digest_algorithm"), str)
+                else None
+            )
+            provenance_schema = (
+                provenance.get("schema_version")
+                if isinstance(provenance.get("schema_version"), int)
+                else None
+            )
+
+    return {
+        "version": version,
+        "source": source,
+        "source_digest": source_digest,
+        "digest_algorithm": digest_algorithm,
+        "provenance_schema_version": provenance_schema,
+        "build_identity": source_digest or (f"version:{version}" if version else None),
+        "build_identity_kind": (
+            "managed-runtime-digest"
+            if source_digest is not None
+            else "version-only"
+            if version is not None
+            else "unknown"
+        ),
+    }
+
+
 def _recommended_prototype_executor(runtime: dict[str, Any]) -> dict[str, Any]:
     return (
         H5_GAME_PROTOTYPE_AGENT
@@ -1184,6 +1238,7 @@ class GameExpClient:
             "status": "PASS" if access.get("can_read") else access.get("status", "UNKNOWN"),
             "repo": self.transport.repo,
             "contract": contract_descriptor(),
+            "runtime_identity": _runtime_identity(),
             "features": {
                 "board": True,
                 "board_presentation_v3": True,
@@ -5993,6 +6048,7 @@ class GameExpClient:
         }
 
     def status(self) -> dict[str, Any]:
+        runtime_identity = _runtime_identity()
         runtime_version = _runtime_version()
         try:
             ledger_head = self.transport.ledger_head()
@@ -6002,6 +6058,7 @@ class GameExpClient:
                 "code": "LEDGER_HEAD_UNAVAILABLE",
                 "repo": self.transport.repo,
                 "runtime_version": runtime_version,
+                "runtime_identity": runtime_identity,
                 "error": str(exc),
                 "retryable": True,
             }
@@ -6054,6 +6111,7 @@ class GameExpClient:
             "repo": self.transport.repo,
             "ledger_head": ledger_head,
             "runtime_version": runtime_version,
+            "runtime_identity": runtime_identity,
             "repository_version": repository_version,
             "version_state": version_state,
             "version_action": version_action,

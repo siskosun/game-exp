@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 - 2026-09-29
+
+- Promote the accumulated user-facing project-create, iteration-delivery-card, and companion-Skill synchronization work from same-version maintenance patches into a real SemVer minor release.
+- Expose runtime build identity through capabilities, including the managed-runtime digest when installed provenance is available.
+- Fix the premerge MCP gate so `uv --with mcp==2.2.0` actually executes tests with uv's Python environment.
+- Pin every external GitHub Action reference to an immutable commit SHA and run workflow invariant tests on every workflow change.
+- Lock Trusted Writer secrets to Environment-protected jobs in regression tests, including GitHub Bridge and trusted-writer self-test boundaries.
+- Declare Python 3.11 as the minimum and test both 3.11 and 3.12 in CI.
+- Harden companion ZIP extraction with member-count, expanded-size, per-member-size, compression-ratio, path-escape, encryption, and symlink checks.
+- Close the integration context file deterministically to avoid ResourceWarning/file-lock leakage.
+
 ## 1.0.0 maintenance fix - 2026-09-29
 
 - Project iteration delivery cards into the default `game_exp_board.experiments[]` response so ordinary 1.0 MCP users do not need the optional advanced experiment-panel tool.
