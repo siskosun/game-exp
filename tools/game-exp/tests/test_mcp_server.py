@@ -216,6 +216,7 @@ class FakeClient:
         outcome,
         notes,
         comparison=None,
+        revision_comparison=None,
         actor_claim=None,
         request_id=None,
     ):
@@ -226,6 +227,7 @@ class FakeClient:
             "outcome": outcome,
             "notes": notes,
             "comparison": comparison,
+            "revision_comparison": revision_comparison,
             "request_id": request_id,
             "actor_claim": actor_claim,
             "operation": "review.record",
@@ -419,6 +421,7 @@ class MCPServerTests(unittest.TestCase):
         review = tools["game_exp_review_record"].input_schema
         self.assertIn("candidate_id", review["required"])
         self.assertIn("request_id", review["required"])
+        self.assertIn("revision_comparison", review["properties"])
 
 
     def test_tool_annotations_distinguish_reads_from_submit(self):
@@ -716,6 +719,28 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ACCEPTED")
         self.assertEqual(result["operation"], "review.record")
         self.assertEqual(result["candidate_id"], "C-21-123-1")
+
+    @patch("mcp_server._client", return_value=FakeClient())
+    def test_review_forwards_revision_comparison(self, _):
+        revision = {
+            "previous_candidate_id": "C-21-122-1",
+            "previous_artifact_digest": "sha256:" + "0" * 64,
+            "blind": True,
+            "presentation_order": "CURRENT_PREVIOUS",
+            "choice": "A_SLIGHTLY_BETTER",
+            "notes": "A felt slightly better.",
+        }
+        result = mcp_server.game_exp_review_record(
+            experiment_id="EXP-21",
+            outcome="PASS",
+            notes="human playtest",
+            request_id="req_review_revision_21",
+            candidate_id="C-21-123-1",
+            revision_comparison=revision,
+            repo="owner/repo",
+        )
+        self.assertEqual(result["status"], "ACCEPTED")
+        self.assertEqual(result["revision_comparison"], revision)
 
     @patch("mcp_server._client", return_value=FakeClient())
     def test_decision_defaults_to_current_previous_decision(self, _):

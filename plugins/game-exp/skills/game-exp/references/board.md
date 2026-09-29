@@ -178,6 +178,21 @@ When a human blind A/B comparison exists, display the per-dimension choices, pre
 
 In experiment detail, show `可信筛查` before the human Review row. If the challenger is `ELIGIBLE` and the review protocol calls for comparison, `待人工比较` is useful secondary evidence text; lifecycle next-gate remains governed by the existing Review rules.
 
+### 同实验版本修订 A/B
+
+Iteration delivery card may expose `comparison.revision_ab_session` when the exact current Candidate and its authoritative immediate previous Candidate both have verified shareable URLs.
+
+Primary presentation rules:
+
+- show only `版本 A` and `版本 B` plus the focus points and rating options;
+- do not expose `machine_binding.slot_candidates`, Candidate ids, or which slot is current before the human choice;
+- the session is read-only until the human also supplies an explicit Review PASS/FAIL;
+- participant-reported previous-Candidate hints are diagnostic only; the Board pair comes from protected Candidate history;
+- a recorded Review may expose `review_revision_comparison` afterward, including the normalized current-relative verdict;
+- do not turn the comparison into Elo, a numeric score, PROMISING, REJECTED, or SELECTED.
+
+This revision comparison is independent of the cross-experiment `incumbent_comparison` projection and does not create a persistent Comparison Set.
+
 ## 分支图
 
 Use `views.branches.lanes`.

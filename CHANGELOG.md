@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-09-29
+
+- Add blind same-experiment revision A/B for the exact current Candidate versus the authoritative immediate previous Candidate.
+- Derive the revision pair from protected Candidate history; participant-reported `previous_candidate_id` remains a non-authoritative hint.
+- Add a read-only Board delivery session with stable hidden A/B ordering, verified shareable URLs, focus points, and qualitative human choices.
+- Persist revision preference only through `review.record.revision_comparison` together with an explicit Review PASS/FAIL; normalize the blind slot choice to a current-relative verdict in the protected domain layer.
+- Keep cross-experiment incumbent/challenger comparison unchanged and separate from revision A/B.
+- Add MCP, CLI, and GitHub Bridge parity for revision comparison evidence.
+- Preserve human lifecycle authority: revision A/B never creates Elo/scores, Review outcome, PROMISING, REJECTED, SELECTED, or a persistent Comparison Set.
+
 ## 1.2.1 - 2026-09-29
 
 - Replace the legacy GitHub Pages build queue with a game-exp-managed GitHub Actions Pages deployment workflow.

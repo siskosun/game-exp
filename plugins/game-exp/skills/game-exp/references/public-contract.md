@@ -97,7 +97,9 @@ Screening is exactly `ELIGIBLE | INELIGIBLE | INCONCLUSIVE`. It never mutates li
 
 `PARTICIPANT_REPORTED` exploration cannot by itself create trusted PASS/FAIL. `HUMAN_REPORTED` A/B preference is recorded through the existing Review authority path and remains distinct from `TRUSTED_OBSERVED` machine evidence.
 
-v1 introduces no persistent Comparison Set. One challenger compares with the current Candidate of its `supersedes` incumbent. Structured blind A/B comparison is optional Review evidence only when the Manifest review protocol is `incumbent-challenger-blind-ab-v1`.
+Evaluation Evidence v1 introduces no persistent Comparison Set. One cross-experiment challenger compares with the current Candidate of its `supersedes` incumbent, and that structured blind A/B remains optional Review evidence only when the Manifest review protocol is `incumbent-challenger-blind-ab-v1`.
+
+Same-experiment revision A/B is a separate Review evidence contract. It binds the exact current Candidate to the immediate previous Candidate derived from protected Candidate history, not from participant-reported delivery hints. The Board may present verified shareable versions as blind A/B slots; persistence uses optional `review.record.revision_comparison`, is `HUMAN_REPORTED`, and still requires an explicit Review PASS/FAIL. It never changes lifecycle, creates a Comparison Set, or ranks/selects Candidates automatically.
 
 See `evaluation.md`.
 

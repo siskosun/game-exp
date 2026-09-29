@@ -1643,6 +1643,166 @@ def _load_candidate(
     return candidate
 
 
+def _candidate_order_key(candidate_id: str) -> tuple[int, int]:
+    match = CANDIDATE_RE.fullmatch(candidate_id)
+    if match is None:
+        raise DomainError(
+            "candidate_id is invalid",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    return int(match.group(2)), int(match.group(3))
+
+
+def _immediate_previous_candidate_id(
+    repo_dir: Path,
+    experiment_id: str,
+    current_candidate_id: str,
+) -> str | None:
+    current_match = CANDIDATE_RE.fullmatch(current_candidate_id)
+    if (
+        current_match is None
+        or current_match.group(1) != experiment_id.removeprefix("EXP-")
+    ):
+        raise DomainError(
+            "current candidate_id does not match experiment",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    candidate_dir = repo_dir / f"experiments/{experiment_id}/candidates"
+    if not candidate_dir.is_dir():
+        return None
+    candidates: list[str] = []
+    for path in candidate_dir.glob("*.json"):
+        candidate_id = path.stem
+        match = CANDIDATE_RE.fullmatch(candidate_id)
+        if (
+            match is not None
+            and match.group(1) == experiment_id.removeprefix("EXP-")
+        ):
+            candidates.append(candidate_id)
+    ordered = sorted(candidates, key=_candidate_order_key)
+    if current_candidate_id not in ordered:
+        raise DomainError(
+            "current Candidate is missing from Candidate history",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    index = ordered.index(current_candidate_id)
+    return ordered[index - 1] if index > 0 else None
+
+
+def _normalize_revision_comparison(
+    *,
+    repo_dir: Path,
+    experiment_id: str,
+    candidate: dict[str, Any],
+    candidate_id: str,
+    raw: Any,
+) -> dict[str, Any]:
+    comparison = _mapping(raw, "operation.input.revision_comparison")
+    _expect_keys(
+        comparison,
+        {
+            "previous_candidate_id",
+            "previous_artifact_digest",
+            "blind",
+            "presentation_order",
+            "choice",
+            "notes",
+        },
+        where="operation.input.revision_comparison",
+    )
+    previous_candidate_id = _string(
+        comparison["previous_candidate_id"],
+        "operation.input.revision_comparison.previous_candidate_id",
+    )
+    expected_previous_id = _immediate_previous_candidate_id(
+        repo_dir,
+        experiment_id,
+        candidate_id,
+    )
+    if expected_previous_id is None:
+        raise DomainError(
+            "revision comparison requires an earlier Candidate",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    if previous_candidate_id != expected_previous_id:
+        raise DomainError(
+            "revision comparison must bind the immediate previous Candidate",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    previous_candidate = _load_candidate(
+        repo_dir,
+        experiment_id,
+        previous_candidate_id,
+    )
+    if (
+        comparison["previous_artifact_digest"]
+        != previous_candidate.get("artifact_digest")
+    ):
+        raise DomainError(
+            "revision comparison previous artifact digest mismatch",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    if comparison["blind"] is not True:
+        raise DomainError(
+            "revision comparison requires blind=true",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    presentation_order = comparison["presentation_order"]
+    if presentation_order not in {
+        "PREVIOUS_CURRENT",
+        "CURRENT_PREVIOUS",
+    }:
+        raise DomainError(
+            "revision comparison presentation_order is invalid",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    choice = comparison["choice"]
+    allowed_choices = {
+        "A_MUCH_BETTER",
+        "A_SLIGHTLY_BETTER",
+        "NO_CLEAR_DIFFERENCE",
+        "B_SLIGHTLY_BETTER",
+        "B_MUCH_BETTER",
+        "INCONCLUSIVE",
+    }
+    if choice not in allowed_choices:
+        raise DomainError(
+            "revision comparison choice is invalid",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
+    notes = _string(
+        comparison["notes"],
+        "operation.input.revision_comparison.notes",
+    )
+
+    if choice in {"NO_CLEAR_DIFFERENCE", "INCONCLUSIVE"}:
+        verdict = choice
+    else:
+        current_is_a = presentation_order == "CURRENT_PREVIOUS"
+        a_better = choice.startswith("A_")
+        strength = "MUCH" if "_MUCH_" in choice else "SLIGHTLY"
+        current_better = a_better == current_is_a
+        verdict = (
+            f"CURRENT_{strength}_BETTER"
+            if current_better
+            else f"CURRENT_{strength}_WORSE"
+        )
+
+    return {
+        "comparison_type": "REVISION",
+        "previous_candidate_id": previous_candidate_id,
+        "previous_artifact_digest": previous_candidate["artifact_digest"],
+        "current_candidate_id": candidate_id,
+        "current_artifact_digest": candidate["artifact_digest"],
+        "blind": True,
+        "presentation_order": presentation_order,
+        "choice": choice,
+        "verdict": verdict,
+        "notes": notes,
+        "evidence_source": "HUMAN_REPORTED",
+    }
+
+
 def _plan_review(
     *,
     repo_dir: Path,
@@ -1655,7 +1815,7 @@ def _plan_review(
         input_value,
         {"experiment_id", "candidate_id", "outcome", "notes"},
         where="operation.input",
-        optional={"comparison"},
+        optional={"comparison", "revision_comparison"},
     )
     experiment_id = _string(input_value["experiment_id"], "operation.input.experiment_id")
     candidate_id = _string(input_value["candidate_id"], "operation.input.candidate_id")
@@ -1702,7 +1862,14 @@ def _plan_review(
         raise DomainError("manifest review protocol missing", code="DOMAIN_BOUND_EXPERIMENT_INVALID")
 
     comparison = input_value.get("comparison")
+    revision_comparison = input_value.get("revision_comparison")
+    if comparison is not None and revision_comparison is not None:
+        raise DomainError(
+            "review may contain comparison or revision_comparison, not both",
+            code="DOMAIN_REVIEW_CONFLICT",
+        )
     normalized_comparison = None
+    normalized_revision_comparison = None
     if comparison is not None:
         if protocol != "incumbent-challenger-blind-ab-v1":
             raise DomainError(
@@ -1872,6 +2039,15 @@ def _plan_review(
             "evidence_source": "HUMAN_REPORTED",
         }
 
+    if revision_comparison is not None:
+        normalized_revision_comparison = _normalize_revision_comparison(
+            repo_dir=repo_dir,
+            experiment_id=experiment_id,
+            candidate=candidate,
+            candidate_id=candidate_id,
+            raw=revision_comparison,
+        )
+
     review_path = f"experiments/{experiment_id}/reviews/{request_id}.json"
     if (repo_dir / review_path).exists():
         raise DomainError("review_id already exists", code="DOMAIN_REVIEW_CONFLICT")
@@ -1886,6 +2062,11 @@ def _plan_review(
         "outcome": outcome,
         "notes": notes,
         **({"comparison": normalized_comparison} if normalized_comparison is not None else {}),
+        **(
+            {"revision_comparison": normalized_revision_comparison}
+            if normalized_revision_comparison is not None
+            else {}
+        ),
         "actor": {
             "login": trusted_actor.login,
             "user_id": trusted_actor.user_id,

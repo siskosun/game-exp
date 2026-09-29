@@ -30,6 +30,7 @@ class CLIRoutingTests(unittest.TestCase):
         client.notification_feed.return_value = {"status": "PASS", "notifications": []}
         client.prototype_handoff.return_value = {"status": "PASS"}
         client.bind.return_value = {"status": "ACCEPTED"}
+        client.review_record.return_value = {"status": "ACCEPTED"}
         client.operation_get.return_value = {"status": "COMMITTED"}
         client.resume_execution.return_value = {"status": "ACCEPTED"}
         client.integrate.return_value = {"status": "ACCEPTED"}
@@ -247,6 +248,65 @@ class CLIRoutingTests(unittest.TestCase):
             request_id="req_abandon_21",
             actor_claim=None,
         )
+
+    def test_review_routes_revision_comparison_to_client(self):
+        revision = {
+            "previous_candidate_id": "C-21-122-1",
+            "previous_artifact_digest": "sha256:" + "0" * 64,
+            "blind": True,
+            "presentation_order": "CURRENT_PREVIOUS",
+            "choice": "A_SLIGHTLY_BETTER",
+            "notes": "A felt slightly better.",
+        }
+        code, client = self.run_cli(
+            [
+                "review",
+                "EXP-21",
+                "--outcome",
+                "PASS",
+                "--notes",
+                "Human review.",
+                "--candidate-id",
+                "C-21-123-1",
+                "--revision-comparison-json",
+                json.dumps(revision),
+                "--request-id",
+                "req_review_revision_21",
+            ]
+        )
+        self.assertEqual(code, 0)
+        client.review_record.assert_called_once_with(
+            "EXP-21",
+            candidate_id="C-21-123-1",
+            outcome="PASS",
+            notes="Human review.",
+            comparison=None,
+            revision_comparison=revision,
+            actor_claim=None,
+            request_id="req_review_revision_21",
+        )
+
+    def test_review_rejects_two_comparison_json_modes(self):
+        code, client = self.run_cli(
+            [
+                "review",
+                "EXP-21",
+                "--outcome",
+                "PASS",
+                "--notes",
+                "Human review.",
+                "--candidate-id",
+                "C-21-123-1",
+                "--comparison-json",
+                "{}",
+                "--revision-comparison-json",
+                "{}",
+                "--request-id",
+                "req_review_conflict_21",
+            ]
+        )
+        self.assertEqual(code, 2)
+        client.review_record.assert_not_called()
 
     def test_integrate_routes_to_client(self):
         code, client = self.run_cli(["integrate", "EXP-21", "--request-id", "req_integrate_21"])

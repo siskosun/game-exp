@@ -113,8 +113,9 @@ Render, in order:
 1. `本次改了什么` from `changes_zh`;
 2. one primary playable action from `playable.action_zh`;
 3. `与上一版相比` from `comparison.summary_zh`; show `comparison.previous_playable` separately when available;
-4. `这次重点感受` from `focus_points_zh`;
-5. enabled natural-language actions from `quick_actions`.
+4. when `comparison.revision_ab_session.available=true`, offer its blind A/B session without exposing `machine_binding` or Candidate identity in the primary UI;
+5. `这次重点感受` from `focus_points_zh`;
+6. enabled natural-language actions from `quick_actions`.
 
 Playable semantics are explicit:
 
@@ -127,11 +128,14 @@ The card is read-only and `authoritative=false`. Its quick actions are user-inte
 
 - `继续微调`: continue the same experiment; return to ACTIVE when the current lifecycle allows it, then claim source work;
 - `保留这版`: no lifecycle mutation; retain the version only;
+- `A/B 对比试玩`: open `comparison.revision_ab_session`; render only 版本 A / 版本 B, the focus points, and the provided rating options. The hidden Candidate/slot binding is machine data and must not be revealed before the human choice;
 - `我试玩通过了`: an explicit human PASS statement only when the exact current Candidate is waiting for Review;
 - `就选这版`: explicit selection intent, but run/refresh required Rehearsal before SELECTED;
 - `试玩上一版`: when a historical verified `SHAREABLE_URL` matches the previous Candidate source SHA, open that immutable playable; it never edits source;
 - `打开上一版候选包`: fallback when no historical shareable URL exists but the retained prior Candidate artifact is available;
 - `用上一版源码继续修改`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
+
+For revision A/B, the UI may locally collect one choice (`A_MUCH_BETTER`, `A_SLIGHTLY_BETTER`, `NO_CLEAR_DIFFERENCE`, `B_SLIGHTLY_BETTER`, `B_MUCH_BETTER`, or `INCONCLUSIVE`) and human notes. Do not write that choice by itself. Persist it only as `review.record.revision_comparison` together with the user's explicit Review `PASS` or `FAIL`. The trusted domain layer resolves A/B order back to a current-relative verdict and verifies that the referenced previous Candidate is the authoritative immediate predecessor.
 
 If an action is disabled, do not silently reinterpret it. Explain the missing prerequisite in normal language.
 

@@ -538,6 +538,7 @@ def game_exp_review_record(
     request_id: str,
     candidate_id: str,
     comparison: dict[str, Any] | None = None,
+    revision_comparison: dict[str, Any] | None = None,
     actor_claim: str | None = None,
     repo: str | None = None,
 ) -> dict[str, Any]:
@@ -552,6 +553,7 @@ def game_exp_review_record(
         outcome=outcome,
         notes=notes,
         comparison=comparison,
+        revision_comparison=revision_comparison,
         actor_claim=actor_claim,
         request_id=request_id,
     )

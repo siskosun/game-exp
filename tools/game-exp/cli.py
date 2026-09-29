@@ -315,6 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--notes", required=True)
     review.add_argument("--candidate-id", required=True)
     review.add_argument("--comparison-json")
+    review.add_argument("--revision-comparison-json")
     review.add_argument("--request-id", required=True)
     review.add_argument("--actor-claim")
 
@@ -646,17 +647,30 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "review":
             comparison = None
+            revision_comparison = None
+            if args.comparison_json and args.revision_comparison_json:
+                raise ValueError(
+                    "--comparison-json and --revision-comparison-json are mutually exclusive"
+                )
             if args.comparison_json:
                 value = json.loads(args.comparison_json)
                 if not isinstance(value, dict):
                     raise ValueError("--comparison-json must decode to an object")
                 comparison = value
+            if args.revision_comparison_json:
+                value = json.loads(args.revision_comparison_json)
+                if not isinstance(value, dict):
+                    raise ValueError(
+                        "--revision-comparison-json must decode to an object"
+                    )
+                revision_comparison = value
             result = client.review_record(
                 args.experiment_id,
                 candidate_id=args.candidate_id,
                 outcome=args.outcome,
                 notes=args.notes,
                 comparison=comparison,
+                revision_comparison=revision_comparison,
                 actor_claim=args.actor_claim,
                 request_id=args.request_id,
             )
