@@ -112,7 +112,7 @@ ACTION_KEYS = {
 
 ACTION_OPTIONAL_KEYS = {
     "work_release": {"handoff"},
-    "review_record": {"comparison"},
+    "review_record": {"comparison", "revision_comparison"},
 }
 
 
@@ -587,6 +587,8 @@ def execute_action(
         }
         if command.get("comparison") is not None:
             input_value["comparison"] = command["comparison"]
+        if command.get("revision_comparison") is not None:
+            input_value["revision_comparison"] = command["revision_comparison"]
         payload = build_operation_payload(
             "review.record",
             input_value,
