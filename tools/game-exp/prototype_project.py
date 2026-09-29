@@ -111,6 +111,7 @@ def _materialize_template(
         spec = _companion_spec("godot-prototype-studio")
         template_rel = "assets/starter-2d"
 
+    destination.parent.mkdir(parents=True, exist_ok=True)
     tag = _latest_semver_tag(spec.repository)
     archive_url = f"https://codeload.github.com/{spec.repository}/zip/refs/tags/{tag}"
     with tempfile.TemporaryDirectory(prefix="game-exp-project-template-") as td:
@@ -313,6 +314,7 @@ def create_project(
             "authority": "informational-only",
         }
         meta_path = root / ".game-exp" / "prototype-project.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
