@@ -1258,12 +1258,12 @@ class ClientTests(unittest.TestCase):
             delivery_card["changes_zh"],
             ["缩短角色切换反馈", "强化回合归属提示"],
         )
-        self.assertEqual(delivery_card["playable"]["kind"], "LOCAL_URL")
+        self.assertEqual(delivery_card["playable"]["kind"], "SHAREABLE_URL")
         self.assertEqual(
             delivery_card["playable"]["action_zh"],
-            "在当前设备试玩",
+            "立即试玩",
         )
-        self.assertFalse(delivery_card["playable"]["portable"])
+        self.assertTrue(delivery_card["playable"]["portable"])
         self.assertTrue(delivery_card["comparison"]["available"])
         self.assertEqual(
             delivery_card["comparison"]["previous_candidate_id"],
@@ -1274,6 +1274,7 @@ class ClientTests(unittest.TestCase):
         }
         self.assertTrue(actions["继续微调"]["enabled"])
         self.assertTrue(actions["保留这版"]["enabled"])
+        self.assertTrue(actions["A/B 对比试玩"]["enabled"])
         self.assertTrue(actions["我试玩通过了"]["enabled"])
         self.assertFalse(actions["就选这版"]["enabled"])
         self.assertTrue(actions["试玩上一版"]["enabled"])
