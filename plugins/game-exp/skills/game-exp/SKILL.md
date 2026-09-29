@@ -1,6 +1,6 @@
 ---
 name: game-exp
-description: Create, continue, inspect, review, compare, integrate, archive, recover, and diagnose trusted gameplay/prototype experiments across MCP, CLI, and the GitHub Bridge. Also bootstrap or upgrade game-exp repositories. Preserve protected Ledger authority, exact Candidate identity, human lifecycle gates, and recovery by stable operation id.
+description: Create brand-new prototype projects/repositories, continue, inspect, review, compare, integrate, archive, recover, and diagnose trusted gameplay/prototype experiments across MCP, CLI, and the GitHub Bridge. Also bootstrap or upgrade game-exp repositories. Preserve protected Ledger authority, exact Candidate identity, human lifecycle gates, and recovery by stable operation id.
 ---
 
 # game-exp
