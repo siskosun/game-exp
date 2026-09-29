@@ -465,6 +465,15 @@ Authorization failure is not a transport failure and must not trigger an MCP -> 
 
 v0.14 adds a hard `PROJECT_READY` gate for new repositories. Copying game-exp files is no longer considered setup completion.
 
+For a brand-new prototype with no repository, the maintenance 1.0 flow now also exposes:
+
+```bash
+python tools/game-exp/cli.py --json project-create my-prototype --stack h5
+python tools/game-exp/cli.py --json project-create my-godot-prototype --stack godot
+```
+
+This creates a private GitHub repository by default, seeds the latest tagged H5/GPS starter, installs game-exp, pushes `main`, and runs project-init. Use `--visibility public` only when the user explicitly wants a public repository. Existing repositories/directories are never overwritten; an incomplete post-create trust setup is retained for repair rather than recreated.
+
 After bootstrap files are committed to `main`:
 
 ```powershell
