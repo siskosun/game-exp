@@ -188,12 +188,12 @@ jobs:
           tree="$(python -c 'import json; print(json.load(open("rehearsal-scope.json"))["integration_tree_sha"])')"
           test -n "$tree"
           echo "integration_tree_sha=$tree" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.prepare.outputs.adapter == 'node-npm' && needs.prepare.outputs.policy_schema == '1'
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.prepare.outputs.adapter == 'node-npm' && needs.prepare.outputs.policy_schema == '2'
         with:
           node-version: ${{ needs.prepare.outputs.node_version }}

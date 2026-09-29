@@ -214,12 +214,12 @@ jobs:
             tools/game-exp/protocol_core.py
             .game-exp/project-policy.json
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema == '1'
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.resolve.outputs.adapter == 'node-npm' && needs.resolve.outputs.policy_schema != '1'
         with:
           node-version: ${{ needs.resolve.outputs.node_version }}
