@@ -106,7 +106,7 @@ The primary labels must be Chinese. Raw enums and ids may appear as secondary di
 
 ## Iteration delivery card
 
-After a completed implementation iteration, prefer `experiment_panel.delivery_card` as the user-facing completion surface before opening the full Board.
+After a completed implementation iteration, prefer the current experiment's `game_exp_board.experiments[].delivery_card` as the user-facing completion surface before opening the full Board. If the optional advanced single-experiment panel is enabled, `experiment_panel.delivery_card` carries the same projection.
 
 Render, in order:
 
