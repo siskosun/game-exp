@@ -91,6 +91,24 @@ def _write_live_locked_file(path: pathlib.Path, content: bytes) -> None:
         backup.unlink(missing_ok=True)
 
 
+def _write_file_with_live_fallback(path: pathlib.Path, content: bytes) -> str:
+    """Write one managed file, tolerating a Windows reader that denies rename.
+
+    Prefer atomic replacement. When the existing file is live and Windows
+    rejects rename/delete-sharing, use the same backed-up in-place overwrite
+    already used for locked runtime files. Missing targets still fail closed:
+    a denied atomic create is not equivalent to a safe live overwrite.
+    """
+    try:
+        _atomic_write(path, content)
+        return "atomic-replace"
+    except PermissionError:
+        if not path.is_file():
+            raise
+        _write_live_locked_file(path, content)
+        return "live-overwrite"
+
+
 def _sync_tree_filewise(source: pathlib.Path, target: pathlib.Path) -> bool:
     """Fallback for Windows when a live process keeps the target directory open.
 
@@ -104,10 +122,8 @@ def _sync_tree_filewise(source: pathlib.Path, target: pathlib.Path) -> bool:
         rel = src.relative_to(source)
         dst = target / rel
         content = src.read_bytes()
-        try:
-            _atomic_write(dst, content)
-        except PermissionError:
-            _write_live_locked_file(dst, content)
+        mode = _write_file_with_live_fallback(dst, content)
+        if mode == "live-overwrite":
             used_live_overwrite = True
     return used_live_overwrite
 
@@ -186,7 +202,7 @@ class _InstallSnapshot:
                 if kind == "file":
                     if target.is_dir():
                         shutil.rmtree(target)
-                    _atomic_write(target, backup.read_bytes())
+                    _write_file_with_live_fallback(target, backup.read_bytes())
                     continue
                 if target.is_file():
                     target.unlink()
@@ -595,7 +611,7 @@ class HarnessInstaller:
             text += "\n"
         text += block
         tomllib.loads(text)
-        _atomic_write(path, text.encode("utf-8"))
+        _write_file_with_live_fallback(path, text.encode("utf-8"))
         return path
 
     def _install_json_mcp(self) -> pathlib.Path:
@@ -618,7 +634,7 @@ class HarnessInstaller:
         servers["game-exp"] = self._mcp_json_entry()
         encoded = _json_bytes(value)
         json.loads(encoded.decode("utf-8"))
-        _atomic_write(path, encoded)
+        _write_file_with_live_fallback(path, encoded)
         return path
 
     def _install_config(self) -> pathlib.Path:

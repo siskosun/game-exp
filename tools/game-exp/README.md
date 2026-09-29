@@ -193,10 +193,12 @@ For each Harness the installer:
 - refuses unversioned companion sources instead of silently following a development branch;
 - snapshots all managed targets before mutation and restores them if any game-exp/GPS/H5 install step fails.
 
-On Windows, if a live process keeps the selected runtime or Skill directory
-open, the installer falls back from directory swap to per-file atomic
-replacement and, only when necessary, a backed-up in-place overwrite for the
-locked file. The installed runtime is validated before PASS is reported.
+On Windows, if a live process keeps the selected runtime, Skill directory, or
+existing Harness MCP config file open, the installer falls back from atomic
+replacement to a backed-up in-place overwrite only for the locked existing file.
+The same fallback is used during transaction rollback, so an install failure does
+not leave a partially upgraded config merely because the Harness is still
+running. The installed runtime is validated before PASS is reported.
 
 The installer requires `uv` on PATH. Re-running the same Harness command is
 idempotent at configuration semantics.

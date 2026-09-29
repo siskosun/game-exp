@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 maintenance - 2026-09-29 (Windows live-config rollback)
+
+- Fix Codex/Cursor/Qoder config updates when a running Harness denies Windows rename/delete-sharing on its existing MCP config file.
+- Reuse the backed-up live-file overwrite fallback for transaction rollback, preventing the observed `install failed; rollback also failed` state on a locked `~/.codex/config.toml`.
+- Add regression coverage for both successful locked-config upgrade and rollback of a locked existing config after a later failure.
+- Keep VERSION at 1.1.0; this is an installer reliability repair.
+
 ## 1.1.0 maintenance - 2026-09-29
 
 - Refresh GitHub Actions to the current major versions already proposed by Dependabot while retaining immutable 40-character commit pins.
