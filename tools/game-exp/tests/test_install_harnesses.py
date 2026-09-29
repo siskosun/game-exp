@@ -435,7 +435,7 @@ class HarnessInstallerTests(unittest.TestCase):
             state = {"raised": False}
 
             def locked_config(path, content):
-                if path == config and path.exists() and not state["raised"]:
+                if path.resolve() == config.resolve() and path.exists() and not state["raised"]:
                     state["raised"] = True
                     raise PermissionError("simulated Codex config denying delete-sharing")
                 return original_atomic_write(path, content)
@@ -470,7 +470,7 @@ class HarnessInstallerTests(unittest.TestCase):
 
             def locked_rollback(path, content):
                 if (
-                    path == config
+                    path.resolve() == config.resolve()
                     and content == original
                     and not state["rollback_lock_raised"]
                 ):
