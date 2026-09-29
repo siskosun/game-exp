@@ -4940,10 +4940,57 @@ class GameExpClient:
                 "reason": "experiment_not_found_in_ledger",
             }
 
+        snapshot_head = board.get("snapshot_head")
+        candidate = None
+        candidate_id = row.get("candidate_id")
+        if isinstance(candidate_id, str) and candidate_id:
+            candidate = self.transport.ledger_json(
+                f"experiments/{experiment_id}/candidates/{candidate_id}.json",
+                ref=snapshot_head,
+            )
+
+        delivery_release = None
+        release_id = row.get("last_work_release_id")
+        if isinstance(release_id, str) and release_id:
+            delivery_release = self.transport.ledger_json(
+                f"experiments/{experiment_id}/work-releases/{release_id}.json",
+                ref=snapshot_head,
+            )
+            if not isinstance(delivery_release, dict):
+                delivery_release = None
+
+        previous_candidate = None
+        delivery_value = (
+            delivery_release.get("delivery")
+            if isinstance(delivery_release, dict)
+            and isinstance(delivery_release.get("delivery"), dict)
+            else None
+        )
+        previous_candidate_id = (
+            delivery_value.get("previous_candidate_id")
+            if isinstance(delivery_value, dict)
+            and isinstance(delivery_value.get("previous_candidate_id"), str)
+            else None
+        )
+        if isinstance(previous_candidate_id, str) and previous_candidate_id:
+            previous_candidate = self.transport.ledger_json(
+                f"experiments/{experiment_id}/candidates/{previous_candidate_id}.json",
+                ref=snapshot_head,
+            )
+
+        delivery_card = self._iteration_delivery_card_zh(
+            row=row,
+            delivery_release=delivery_release,
+            candidate=candidate if isinstance(candidate, dict) else None,
+            previous_candidate=(
+                previous_candidate if isinstance(previous_candidate, dict) else None
+            ),
+        )
+
         return {
             "status": "PASS",
             "repo": self.transport.repo,
-            "snapshot_head": board.get("snapshot_head"),
+            "snapshot_head": snapshot_head,
             "experiment_id": experiment_id,
             "overview": {
                 "issue_number": row.get("issue_number"),
@@ -5002,6 +5049,7 @@ class GameExpClient:
                 "integration_id": row.get("integration_id"),
                 "archive_id": row.get("archive_id"),
             },
+            "delivery_card": delivery_card,
             "evidence_zh": {
                 "title_zh": "代码与记录",
                 "rows_zh": [
