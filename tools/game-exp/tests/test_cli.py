@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -27,6 +29,7 @@ class CLIRoutingTests(unittest.TestCase):
         client.experiment_get.return_value = {"status": "PASS", "state": {"current_candidate_id": "C-21-1-1", "last_decision_id": "req_prev"}}
         client.notification_feed.return_value = {"status": "PASS", "notifications": []}
         client.prototype_handoff.return_value = {"status": "PASS"}
+        client.bind.return_value = {"status": "ACCEPTED"}
         client.operation_get.return_value = {"status": "COMMITTED"}
         client.resume_execution.return_value = {"status": "ACCEPTED"}
         client.integrate.return_value = {"status": "ACCEPTED"}
@@ -61,7 +64,7 @@ class CLIRoutingTests(unittest.TestCase):
                     "--stack",
                     "h5",
                     "--visibility",
-                    "private",
+                    "public",
                 ]
             )
         self.assertEqual(code, 0)
@@ -69,7 +72,7 @@ class CLIRoutingTests(unittest.TestCase):
         create.assert_called_once_with(
             name="demo",
             stack="h5",
-            visibility="private",
+            visibility="public",
             owner=None,
             directory=None,
             h5_mode="probe",
@@ -77,6 +80,51 @@ class CLIRoutingTests(unittest.TestCase):
             trust_mode="auto",
             run_selftest=True,
         )
+
+    def test_project_create_defaults_to_public(self):
+        result = {
+            "status": "PASS",
+            "complete": True,
+            "project_readiness": "PROJECT_READY",
+            "repo": "alice/demo",
+        }
+        with (
+            patch("cli.prototype_project_create", return_value=result) as create,
+            patch("cli.GitHubTransport"),
+            patch("cli._print_result"),
+        ):
+            code = cli.main(["project-create", "demo", "--stack", "h5"])
+        self.assertEqual(code, 0)
+        self.assertEqual(create.call_args.kwargs["visibility"], "public")
+
+    def test_text_result_prints_error_and_hint(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            cli._print_result(
+                {
+                    "status": "REJECTED",
+                    "code": "GITHUB_CLI_REQUIRED",
+                    "error": "required command not found: gh",
+                    "hint": "Install GitHub CLI (gh).",
+                },
+                as_json=False,
+            )
+        rendered = output.getvalue()
+        self.assertIn("status: REJECTED", rendered)
+        self.assertIn("code: GITHUB_CLI_REQUIRED", rendered)
+        self.assertIn("error: required command not found: gh", rendered)
+        self.assertIn("hint: Install GitHub CLI (gh).", rendered)
+
+    def test_bind_routes_manifest_to_client(self):
+        manifest = {
+            "operation_id": "req_bind_21",
+            "schema_version": 2,
+        }
+        code, client = self.run_cli(
+            ["bind", "--manifest", json.dumps(manifest)]
+        )
+        self.assertEqual(code, 0)
+        client.bind.assert_called_once_with(manifest, request_id=None)
 
     def test_project_create_incomplete_returns_nonzero(self):
         with (

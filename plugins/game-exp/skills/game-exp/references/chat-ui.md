@@ -112,7 +112,7 @@ Render, in order:
 
 1. `本次改了什么` from `changes_zh`;
 2. one primary playable action from `playable.action_zh`;
-3. `与上一版相比` from `comparison`;
+3. `与上一版相比` from `comparison.summary_zh`; show `comparison.previous_playable` separately when available;
 4. `这次重点感受` from `focus_points_zh`;
 5. enabled natural-language actions from `quick_actions`.
 
@@ -120,8 +120,8 @@ Playable semantics are explicit:
 
 - `SHAREABLE_URL`: `立即试玩`; verified clickable URL, intended to work across devices;
 - `LOCAL_URL`: verified clickable URL only for the current device/network environment;
-- `ARTIFACT_ONLY`: no direct playable link; offer the retained Candidate artifact;
-- `MISSING`: say `试玩入口未生成`; never invent a URL.
+- `ARTIFACT_ONLY`: no direct playable link; offer the retained Candidate artifact. If external testers need one-click access, state that the prototype executor must publish a shareable URL;
+- `MISSING`: say `试玩入口未生成`; never invent a URL. Use `playtest_delivery.next_action_zh` to identify the next delivery step.
 
 The card is read-only and `authoritative=false`. Its quick actions are user-intent shortcuts, not a second state machine:
 
@@ -129,7 +129,8 @@ The card is read-only and `authoritative=false`. Its quick actions are user-inte
 - `保留这版`: no lifecycle mutation; retain the version only;
 - `我试玩通过了`: an explicit human PASS statement only when the exact current Candidate is waiting for Review;
 - `就选这版`: explicit selection intent, but run/refresh required Rehearsal before SELECTED;
-- `回到上一版`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
+- `打开上一版候选包`: opens the retained prior Candidate artifact when available; it never edits source;
+- `用上一版源码继续修改`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
 
 If an action is disabled, do not silently reinterpret it. Explain the missing prerequisite in normal language.
 

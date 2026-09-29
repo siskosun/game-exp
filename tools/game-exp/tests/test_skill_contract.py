@@ -73,6 +73,12 @@ class GameExpSkillContractTests(unittest.TestCase):
             ["python", "tools/game-exp/distribution_check.py", "--json"],
         )
         self.assertTrue((ROOT / "tools" / "game-exp" / "distribution_check.py").is_file())
+        self.assertIn("python>=3.11", install["prerequisites"])
+        self.assertIn("uv", install["prerequisites"])
+        self.assertIn("git", install["prerequisites"])
+        self.assertTrue(
+            any(str(value).startswith("gh ") for value in install["prerequisites"])
+        )
         for harness in ("codex", "qoder", "cursor"):
             command = install["harnesses"][harness]["install_or_upgrade"]
             self.assertIn("--harness", command)
@@ -267,12 +273,12 @@ class GameExpSkillContractTests(unittest.TestCase):
             "RULESETS_PLAN_UNSUPPORTED",
             "Trusted Writer self-test",
             "repo-level `game_exp_doctor` returns `PASS`",
-            "never change repository visibility without explicit user approval",
+            "never silently change an existing repository's visibility",
             "There is no \"weak private Free\" compatibility mode",
         ):
             self.assertIn(phrase, setup)
 
-    def test_project_create_contract_is_private_by_default_and_non_overwriting(self):
+    def test_project_create_contract_is_public_by_default_and_non_overwriting(self):
         skill = SKILL.read_text(encoding="utf-8")
         setup = (
             PLUGIN / "skills" / "game-exp" / "references" / "project-setup.md"
@@ -286,20 +292,20 @@ class GameExpSkillContractTests(unittest.TestCase):
 
         for phrase in (
             "game_exp_project_create",
-            "Default visibility to **private**",
+            "Default visibility to **public**",
             "first-experiment onboarding",
         ):
             self.assertIn(phrase, skill)
         for phrase in (
             "latest tagged companion starter",
-            "default visibility is private",
+            "default visibility is public",
             "Never overwrite an existing local directory or GitHub repository",
-            "Never automatically change a private repository to public",
+            "do not silently change visibility",
         ):
             self.assertIn(phrase, setup)
         for phrase in (
             "game_exp_project_create",
-            "default repository visibility is `private`",
+            "default repository visibility is `public`",
             "never overwritten",
             "shared/streamable HTTP MCP must reject project creation",
         ):
@@ -324,6 +330,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "就选这版",
         ):
             self.assertIn(phrase, skill)
+        self.assertIn("GitHub CLI (`gh`)", skill)
 
         for phrase in (
             "本次改了什么",
@@ -333,6 +340,9 @@ class GameExpSkillContractTests(unittest.TestCase):
             "试玩入口未生成",
             "保留这版",
             "就选这版",
+            "打开上一版候选包",
+            "用上一版源码继续修改",
+            "playtest_delivery.next_action_zh",
         ):
             self.assertIn(phrase, chat)
 

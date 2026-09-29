@@ -23,7 +23,11 @@ from conformance_core import (
     suite_descriptor as conformance_suite_descriptor,
 )
 from protocol_core import ProtocolError, strict_json_loads
-from project_setup import preflight as project_preflight, provision as project_provision
+from project_setup import (
+    ProjectSetupError,
+    preflight as project_preflight,
+    provision as project_provision,
+)
 from prototype_project import PrototypeProjectError, create_project as prototype_project_create
 
 
@@ -49,6 +53,12 @@ def _print_result(result: dict[str, Any], *, as_json: bool) -> None:
 
     status = result.get("status", "UNKNOWN")
     print(f"status: {status}")
+    if result.get("code"):
+        print(f"code: {result['code']}")
+    if result.get("error"):
+        print(f"error: {result['error']}")
+    if result.get("hint"):
+        print(f"hint: {result['hint']}")
     if result.get("request_id"):
         print(f"request_id: {result['request_id']}")
     if result.get("repo"):
@@ -136,8 +146,8 @@ def build_parser() -> argparse.ArgumentParser:
     project_create.add_argument(
         "--visibility",
         choices=("private", "public"),
-        default="private",
-        help="GitHub repository visibility; defaults to private",
+        default="public",
+        help="GitHub repository visibility; defaults to public",
     )
     project_create.add_argument("--owner", help="GitHub user or organization; defaults to current user")
     project_create.add_argument("--directory", help="local destination; defaults to ./<name>")
@@ -199,6 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "experiment-template",
         help="show current project policy and self-describing Manifest blueprint",
+    )
+
+    bind = sub.add_parser("bind", help="bind one Manifest using manifest.operation_id")
+    bind.add_argument("--manifest")
+    bind.add_argument("--manifest-file")
+    bind.add_argument(
+        "--request-id",
+        help="optional compatibility check; must equal manifest.operation_id",
     )
 
     board = sub.add_parser("board", help="show one consistent experiment Board snapshot")
@@ -523,6 +541,15 @@ def main(argv: list[str] | None = None) -> int:
                 }
             else:
                 result = client.experiment_template()
+        elif args.command == "bind":
+            manifest = _load_object(
+                args.manifest,
+                args.manifest_file,
+                label="manifest",
+            )
+            if not manifest:
+                raise ProtocolError("bind requires --manifest or --manifest-file")
+            result = client.bind(manifest, request_id=args.request_id)
         elif args.command == "board":
             result = client.board(
                 query=args.query,
@@ -717,11 +744,30 @@ def main(argv: list[str] | None = None) -> int:
         }
         _print_result(result, as_json=args.json)
         return 1
-    except (ProtocolError, ClientError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        ProtocolError,
+        ClientError,
+        ProjectSetupError,
+        PrototypeProjectError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        message = str(exc)
         result = {
             "status": "REJECTED",
-            "error": str(exc),
+            "error": message,
         }
+        if (
+            "required command not found: gh" in message
+            or "GitHub CLI (gh) is required" in message
+        ):
+            result.update(
+                {
+                    "code": "GITHUB_CLI_REQUIRED",
+                    "hint": "Install GitHub CLI (gh), then authenticate with gh auth login.",
+                }
+            )
         _print_result(result, as_json=args.json)
         return 2
 

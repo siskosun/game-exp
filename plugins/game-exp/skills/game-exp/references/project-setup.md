@@ -99,6 +99,10 @@ The Trusted Writer Deploy Key may bypass only the narrow rules required to opera
 
 Doctor validates the required minimum Ruleset semantics, not only Ruleset names. Weakening a required rule or adding writer authority where it is forbidden makes Doctor fail. Stricter user protection—such as extra reviewers, CODEOWNERS, resolved-review requirements, signatures, or narrower merge methods—is preserved and remains valid.
 
+## Local prerequisites
+
+CLI and local stdio MCP setup require Python 3.11+, Git, `uv`, and GitHub CLI (`gh`). Authenticate `gh` before running setup with `gh auth login`.
+
 ## New-project sequence
 
 ### Preferred path for a brand-new prototype
@@ -111,13 +115,13 @@ The command:
 2. fetches the latest tagged companion starter (GPS for Godot, H5 Game Prototype Agent for H5);
 3. creates an isolated local Git working tree on `main`;
 4. installs game-exp workflows/runtime and a valid repository-root project policy;
-5. creates and pushes a GitHub repository with the requested visibility; default visibility is private;
+5. creates and pushes a GitHub repository with the requested visibility; default visibility is public;
 6. runs project-init, Trusted Writer self-test and final Doctor;
 7. returns `PROJECT_READY` or an explicit blocker while preserving the created repository for repair/resume.
 
 For H5, `probe` is the default starter for a new gameplay idea; `slice` uses the minimal DOM slice starter. For Godot, project-create uses the canonical GPS 2D starter plus a repository-root source-bundle policy. Runtime/playable evidence still comes from GPS.
 
-Never overwrite an existing local directory or GitHub repository. Never automatically change a private repository to public to bypass a Ruleset-plan blocker. If setup stops after repository creation, resume with project-init instead of creating another repository.
+Never overwrite an existing local directory or GitHub repository. New prototype repositories default to public so the normal free-plan Ruleset path is available. For an existing private repository, do not silently change visibility; report the protection/plan blocker and let the user decide. If setup stops after repository creation, resume with project-init instead of creating another repository.
 
 ### Existing/manual repository path
 
@@ -152,10 +156,10 @@ If GitHub reports that required Rulesets are unavailable for the repository/acco
 
 - return `BLOCKED_PLAN / RULESETS_PLAN_UNSUPPORTED`;
 - do not create a degraded writer path;
-- surface the material plan/visibility choices;
-- never change repository visibility without explicit user approval.
+- for a private existing repository, surface the material plan/visibility choices;
+- never silently change an existing repository's visibility.
 
-There is no "weak private Free" compatibility mode. game-exp requires enforceable repository protection for a protected Ledger.
+New repositories default to public. There is no "weak private Free" compatibility mode. game-exp requires enforceable repository protection for a protected Ledger.
 
 ## Admin identity boundary
 

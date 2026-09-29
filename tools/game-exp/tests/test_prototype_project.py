@@ -59,7 +59,7 @@ class PrototypeProjectTests(unittest.TestCase):
 
         return materialize
 
-    def test_new_h5_project_defaults_to_private_and_project_ready(self):
+    def test_new_h5_project_defaults_to_public_and_project_ready(self):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td) / "demo"
             bootstrap = mock.MagicMock()
@@ -91,7 +91,7 @@ class PrototypeProjectTests(unittest.TestCase):
             self.assertTrue(result["complete"])
             self.assertEqual(result["project_readiness"], "PROJECT_READY")
             self.assertEqual(result["repo"], "alice/demo")
-            self.assertEqual(result["visibility"], "private")
+            self.assertEqual(result["visibility"], "public")
             self.assertEqual(result["h5_mode"], "probe")
             self.assertEqual(result["next_step"], "DESCRIBE_FIRST_EXPERIMENT")
             bootstrap.install.assert_called_once_with()
@@ -100,10 +100,10 @@ class PrototypeProjectTests(unittest.TestCase):
             )
             commands = [call.args[0] for call in run.call_args_list]
             repo_create = next(argv for argv in commands if argv[:3] == ["gh", "repo", "create"])
-            self.assertIn("--private", repo_create)
-            self.assertNotIn("--public", repo_create)
+            self.assertIn("--public", repo_create)
+            self.assertNotIn("--private", repo_create)
 
-    def test_public_visibility_must_be_explicit(self):
+    def test_private_visibility_remains_explicit_compatibility_option(self):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td) / "demo"
             with (
@@ -127,12 +127,13 @@ class PrototypeProjectTests(unittest.TestCase):
                 module.create_project(
                     name="demo",
                     stack="h5",
-                    visibility="public",
+                    visibility="private",
                     directory=str(root),
                 )
             commands = [call.args[0] for call in run.call_args_list]
             repo_create = next(argv for argv in commands if argv[:3] == ["gh", "repo", "create"])
-            self.assertIn("--public", repo_create)
+            self.assertIn("--private", repo_create)
+            self.assertNotIn("--public", repo_create)
 
     def test_existing_remote_repository_is_never_overwritten(self):
         with (
