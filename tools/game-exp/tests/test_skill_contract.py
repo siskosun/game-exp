@@ -214,7 +214,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             "需要处理",
             "当前进行",
             "仓库级/未指定原型",
-            "禁止继续；重建实验",
+            "记录异常；先修复再继续",
             "DO_NOT_USE_RECREATE_EXPERIMENT",
             "views.overview.attention_ids",
             "views.prototypes.groups",
