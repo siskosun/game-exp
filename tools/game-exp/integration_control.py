@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import os
+import pathlib
 import re
 import urllib.error
 import urllib.parse
@@ -252,7 +253,9 @@ def finalize(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def request_payload(args: argparse.Namespace) -> dict[str, Any]:
-    context = json.loads(open(args.context_json, encoding="utf-8").read())
+    context = json.loads(
+        pathlib.Path(args.context_json).read_text(encoding="utf-8")
+    )
     if not isinstance(context, dict):
         raise IntegrationControlError("integration context must be an object")
     experiment_id = context.get("experiment_id")
