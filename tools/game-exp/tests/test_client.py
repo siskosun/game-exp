@@ -16,7 +16,7 @@ from client import (  # noqa: E402
     _recommended_prototype_executor,
     _runtime_version,
 )
-from protocol_core import digest_object  # noqa: E402
+from protocol_core import decode_payload_b64, digest_object  # noqa: E402
 from trust_policy import ruleset_templates  # noqa: E402
 
 
@@ -2061,7 +2061,8 @@ class ClientTests(unittest.TestCase):
             request_id="req_release_delivery_7",
         )
         self.assertEqual(result["status"], "ACCEPTED")
-        payload = transport.dispatched[-1]
+        dispatch = transport.dispatched[-1]
+        payload = decode_payload_b64(dispatch["payload_b64"])
         self.assertEqual(payload["input"]["delivery"], delivery)
 
     def test_async_mutation_requires_stable_request_id(self):
