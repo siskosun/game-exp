@@ -303,6 +303,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(
             names,
             {
+                "game_exp_project_create",
                 "game_exp_project_init",
                 "game_exp_status",
                 "game_exp_experiment_template",
