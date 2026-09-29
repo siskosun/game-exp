@@ -488,13 +488,13 @@ class MCPServerTests(unittest.TestCase):
             result = mcp_server.game_exp_project_create(
                 "demo",
                 "h5",
-                visibility="private",
+                visibility="public",
             )
         self.assertEqual(result["status"], "PASS")
         create.assert_called_once_with(
             name="demo",
             stack="h5",
-            visibility="private",
+            visibility="public",
             owner=None,
             directory=None,
             h5_mode="probe",
