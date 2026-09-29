@@ -52,7 +52,7 @@ The cleanup flag is intentionally invalid for a single-Harness install.
 
 Each Harness gets an independent runtime under `~/.game-exp/runtimes/<harness>`, an independent game-exp Skill copy, and only its own MCP configuration is changed. Upgrading one Harness does not rewrite the others.
 
-The 1.2 install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
+The install/upgrade command also synchronizes the **latest semantic-version tags** of two companion Skills into that same Harness:
 
 - `godot-prototype-studio` from `https://github.com/siskosun/godot-prototype-studio`
 - `h5-game-prototype-agent` from `https://github.com/siskosun/h5-game-prototype-agent`
