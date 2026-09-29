@@ -885,6 +885,29 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(delivery_card["playable"]["kind"], "LOCAL_URL")
         self.assertEqual(delivery_card["playable"]["action_zh"], "在当前设备试玩")
         self.assertTrue(delivery_card["comparison"]["available"])
+        self.assertIn("本轮：缩短角色切换反馈", delivery_card["comparison"]["summary_zh"])
+        self.assertEqual(
+            delivery_card["comparison"]["previous_playable"]["artifact_url"],
+            "https://github.com/owner/repo/releases/tag/candidate-old",
+        )
+        previous_action = next(
+            action
+            for action in delivery_card["quick_actions"]
+            if action["intent"] == "OPEN_PREVIOUS_VERSION"
+        )
+        self.assertTrue(previous_action["enabled"])
+        self.assertEqual(previous_action["label_zh"], "打开上一版候选包")
+        revise_action = next(
+            action
+            for action in delivery_card["quick_actions"]
+            if action["intent"] == "REVISE_FROM_PREVIOUS"
+        )
+        self.assertEqual(revise_action["label_zh"], "用上一版源码继续修改")
+        self.assertFalse(delivery_card["playtest_delivery"]["external_share_ready"])
+        self.assertIn(
+            "原型执行器发布可分享试玩地址",
+            delivery_card["playtest_delivery"]["next_action_zh"],
+        )
         self.assertTrue(
             delivery_card["quick_action_contract"]["keep_version_is_not_selected"]
         )
@@ -1268,7 +1291,11 @@ class ClientTests(unittest.TestCase):
         self.assertIn("分支与引用保护：正常", display["trust_summary_zh"])
         self.assertIn("可信写入部署密钥：正常", display["trust_summary_zh"])
         self.assertIn("可信写入私钥：正常", display["trust_summary_zh"])
+        self.assertIn("信任模式核验：正常", display["trust_summary_zh"])
+        self.assertIn("可信写入环境：正常", display["trust_summary_zh"])
         self.assertIn("发布保护：正常", display["trust_summary_zh"])
+        self.assertTrue(display["trust_summary_zh"].startswith("7/7 项通过 · "))
+        self.assertNotIn("其他检查项", display["trust_summary_zh"])
         render_contract = display["render_contract"]
         self.assertEqual(render_contract["primary_copy"], "display")
         self.assertEqual(
