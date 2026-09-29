@@ -836,6 +836,22 @@ def _parse_args() -> argparse.Namespace:
         help="custom runtime path; valid only when installing one Harness",
     )
     parser.add_argument(
+        "--channel",
+        choices=("stable", "development"),
+        default="stable",
+        help=(
+            "install source channel; stable resolves a published non-prerelease "
+            "semantic-version Release, development uses the current checkout"
+        ),
+    )
+    parser.add_argument(
+        "--release",
+        help=(
+            "explicit published stable Release such as v1.3.0; valid only with "
+            "--channel stable"
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="report install/upgrade status without writing files",
@@ -859,9 +875,16 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    resolved: ResolvedInstallSource | None = None
     try:
-        source_root = pathlib.Path(args.source_root)
+        launcher_root = pathlib.Path(args.source_root)
         home = pathlib.Path(args.home)
+        resolved = resolve_install_source(
+            launcher_root,
+            channel=args.channel,
+            release=args.release,
+        )
+        source_root = resolved.root
         if args.harness == "all":
             if args.runtime_dir:
                 raise HarnessInstallError("--runtime-dir cannot be combined with --harness all")
@@ -875,6 +898,9 @@ def main() -> int:
                     home,
                     harness=harness,
                     allow_downgrade=args.allow_downgrade,
+                    source_channel=resolved.channel,
+                    source_ref=resolved.ref,
+                    release_url=resolved.release_url,
                 )
                 for harness in SUPPORTED_HARNESSES
             ]
@@ -882,6 +908,9 @@ def main() -> int:
                 result = {
                     "status": "PASS",
                     "version": installers[0].version,
+                    "source_channel": resolved.channel,
+                    "source_ref": resolved.ref,
+                    "release_url": resolved.release_url,
                     "harness": "all",
                     "updated_harnesses": [],
                     "plans": {
@@ -899,6 +928,9 @@ def main() -> int:
                     SUPPORTED_HARNESSES,
                     allow_downgrade=args.allow_downgrade,
                     cleanup_legacy_shared=args.cleanup_legacy_shared,
+                    source_channel=resolved.channel,
+                    source_ref=resolved.ref,
+                    release_url=resolved.release_url,
                 )
         else:
             if args.cleanup_legacy_shared:
@@ -911,10 +943,14 @@ def main() -> int:
                 harness=args.harness,
                 runtime_dir=pathlib.Path(args.runtime_dir) if args.runtime_dir else None,
                 allow_downgrade=args.allow_downgrade,
+                source_channel=resolved.channel,
+                source_ref=resolved.ref,
+                release_url=resolved.release_url,
             )
             result = installer.plan() if args.check else installer.install()
     except (
         HarnessInstallError,
+        ReleaseSourceError,
         CompanionSkillSyncError,
         OSError,
         ValueError,
@@ -926,11 +962,15 @@ def main() -> int:
         else:
             print(f"FAIL\t{exc}", file=sys.stderr)
         return 1
+    finally:
+        if resolved is not None:
+            resolved.close()
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"PASS\tgame-exp {result['version']}")
+        print(f"source\t{result['source_channel']}:{result['source_ref']}")
         print("updated\t" + ",".join(result["updated_harnesses"]))
         if result.get("runtime_dir"):
             print(f"runtime\t{result['runtime_dir']}")
