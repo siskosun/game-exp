@@ -165,6 +165,22 @@ Human comparison does not itself choose the Review outcome. The user still expli
 
 A comparison-driven negative conclusion should normally be represented by an explicit human FAIL Review / REJECTED decision as appropriate. `ABANDONED` remains for stopping work without asserting an evaluative failure.
 
+## Same-experiment revision A/B
+
+Revision A/B is separate from the cross-experiment incumbent/challenger protocol above. It exists for normal iteration inside one experiment, where a substantive source revision creates a new Candidate but the hypothesis, success/kill criteria, core mechanic and target experience remain the same.
+
+The comparison pair is authoritative and narrow:
+
+- challenger side is the experiment's exact current Candidate;
+- baseline side is the immediate previous Candidate derived from protected Candidate history, ordered by Candidate run id/attempt;
+- a participant-reported `work.release.delivery.previous_candidate_id` is only a hint and cannot choose the pair;
+- both versions need verified shareable playables for one-click blind A/B presentation;
+- Review persistence re-validates the previous Candidate identity and artifact digest from the protected Ledger.
+
+Primary UI exposes only `版本 A` / `版本 B`. The stable presentation order is hidden from the human until the choice is made. Allowed choices are `A_MUCH_BETTER`, `A_SLIGHTLY_BETTER`, `NO_CLEAR_DIFFERENCE`, `B_SLIGHTLY_BETTER`, `B_MUCH_BETTER`, and `INCONCLUSIVE`. The trusted Review path normalizes the blind slot choice into a current-relative verdict such as `CURRENT_SLIGHTLY_BETTER` or `CURRENT_MUCH_WORSE`.
+
+The stored source is `HUMAN_REPORTED`. The A/B choice does not itself choose Review PASS/FAIL, does not emit PROMISING/REJECTED/SELECTED, and does not create a score or persistent ranking. It may be persisted only inside the current Candidate's explicit human Review as `revision_comparison`.
+
 ## Small candidate comparison
 
 For 2-4 variants, do not add Elo/Bradley-Terry solely for ranking convenience.
