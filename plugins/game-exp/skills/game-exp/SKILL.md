@@ -52,7 +52,7 @@ For installation or upgrade, read root `INSTALL.json`. Update only the current H
 
 ## Complete project setup
 
-Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion.
+Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion. Local CLI and stdio MCP flows require GitHub CLI (`gh`) to be installed and authenticated (`gh auth login`).
 
 When the user asks for a **brand-new prototype** and has not selected an existing repository, prefer `game_exp_project_create` or CLI `project-create` instead of asking them to create GitHub/Git/configuration manually. Default visibility to **public**. Existing private repositories remain usable only when their GitHub plan exposes the required protection; do not silently change an existing repository's visibility.
 
