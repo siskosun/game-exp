@@ -2391,6 +2391,7 @@ class GameExpClient:
         request_id: str,
         result_source_sha: str | None = None,
         handoff: dict[str, Any] | None = None,
+        delivery: dict[str, Any] | None = None,
         actor_claim: str | None = None,
     ) -> dict[str, Any]:
         input_value: dict[str, Any] = {
@@ -2403,6 +2404,8 @@ class GameExpClient:
             input_value["result_source_sha"] = result_source_sha
         if handoff is not None:
             input_value["handoff"] = handoff
+        if delivery is not None:
+            input_value["delivery"] = delivery
         return self.submit(
             operation="work.release",
             input_value=input_value,
