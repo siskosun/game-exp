@@ -299,7 +299,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, setup)
         for phrase in (
             "game_exp_project_create",
-            "default repository visibility is \`private\`",
+            "default repository visibility is `private`",
             "never overwritten",
             "shared/streamable HTTP MCP must reject project creation",
         ):
