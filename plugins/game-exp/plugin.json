@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "game-exp",
-  "version": "1.3.0",
-  "description": "Stable 1.3 trusted game experiment control plane with blind same-experiment revision A/B Review evidence, managed shareable playables, protected Ledger authority, and human lifecycle gates.",
+  "version": "1.4.0",
+  "description": "Stable 1.4 trusted game experiment control plane with Release-pinned installation, blind revision A/B Review evidence, managed shareable playables, protected Ledger authority, and human lifecycle gates.",
   "repository": "https://github.com/siskosun/game-exp",
   "keywords": [
     "game-development",
@@ -17,7 +17,7 @@
       "interface": {
         "displayName": "game-exp",
         "shortDescription": "可信实验控制 · 快照读取 · 多Harness协作",
-        "longDescription": "Stable 1.3 control plane for gameplay/prototype experiments: blind current-vs-immediate-previous Candidate revision A/B evidence, managed GitHub Actions Pages deployment for immutable shareable playables, protected Ledger authority, immutable workflow pins, runtime build identity, companion Skill synchronization, trusted Candidate/evaluation evidence, resumable collaboration, and explicit human Review/selection gates.",
+        "longDescription": "Stable 1.4 control plane for gameplay/prototype experiments: stable Release-pinned installation by default, explicit development-channel opt-in for main/current checkout, blind same-experiment revision A/B evidence, managed GitHub Actions Pages delivery, protected Ledger authority, runtime build identity, companion Skill synchronization, and explicit human Review/selection gates.",
         "developerName": "game-exp",
         "category": "Productivity",
         "capabilities": [

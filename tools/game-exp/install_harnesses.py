@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -12,12 +13,16 @@ import tomllib
 import uuid
 from typing import Any
 
-from bootstrap import _managed_paths
 from companion_skills import (
     CompanionSkillSyncError,
     CompanionSkillSynchronizer,
     companion_target_paths,
     companion_targets,
+)
+from release_source import (
+    ReleaseSourceError,
+    ResolvedInstallSource,
+    resolve_install_source,
 )
 
 
@@ -143,9 +148,66 @@ def _copy_tree_atomic(source: pathlib.Path, target: pathlib.Path) -> str:
             shutil.rmtree(stage)
 
 
-def _managed_digest(root: pathlib.Path) -> str:
+def _managed_paths_for_source(root: pathlib.Path) -> list[str]:
+    bootstrap_path = root / "tools" / "game-exp" / "bootstrap.py"
+    try:
+        tree = ast.parse(bootstrap_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+        raise HarnessInstallError(
+            f"cannot read managed-file manifest from source bootstrap.py: {exc}"
+        ) from exc
+
+    values: dict[str, tuple[str, ...]] = {}
+    wanted = {"PRODUCTION_WORKFLOWS", "PRODUCTION_TOOLS", "PLUGIN_FILES"}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in wanted:
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, TypeError, SyntaxError) as exc:
+            raise HarnessInstallError(
+                f"source bootstrap.py has non-literal {target.id}"
+            ) from exc
+        if (
+            not isinstance(value, tuple)
+            or not all(isinstance(item, str) for item in value)
+        ):
+            raise HarnessInstallError(
+                f"source bootstrap.py has invalid {target.id}"
+            )
+        values[target.id] = value
+
+    missing = wanted - set(values)
+    if missing:
+        raise HarnessInstallError(
+            "source bootstrap.py is missing managed-file declarations: "
+            + ", ".join(sorted(missing))
+        )
+
+    paths = [
+        f".github/workflows/{name}"
+        for name in values["PRODUCTION_WORKFLOWS"]
+    ]
+    paths += [
+        f"tools/game-exp/{name}"
+        for name in values["PRODUCTION_TOOLS"]
+    ]
+    paths += list(values["PLUGIN_FILES"])
+    paths += ["plugins/game-exp/plugin.json"]
+    if len(paths) != len(set(paths)):
+        raise HarnessInstallError("source managed-file manifest contains duplicates")
+    return paths
+
+
+def _managed_digest(
+    root: pathlib.Path,
+    managed_paths: list[str],
+) -> str:
     digest = hashlib.sha256()
-    for rel in sorted(_managed_paths()):
+    for rel in sorted(managed_paths):
         path = root / rel
         if not path.is_file():
             raise HarnessInstallError(f"managed runtime file is missing: {rel}")
@@ -252,6 +314,9 @@ class HarnessInstaller:
         harness: str,
         runtime_dir: pathlib.Path | None = None,
         allow_downgrade: bool = False,
+        source_channel: str = "development",
+        source_ref: str = "working-tree",
+        release_url: str | None = None,
     ):
         if harness not in SUPPORTED_HARNESSES:
             raise HarnessInstallError(
@@ -262,6 +327,9 @@ class HarnessInstaller:
         self.home = home.resolve()
         self.harness = harness
         self.allow_downgrade = allow_downgrade
+        self.source_channel = source_channel
+        self.source_ref = source_ref
+        self.release_url = release_url
         self.runtime_dir = (
             runtime_dir.resolve()
             if runtime_dir is not None
@@ -270,6 +338,7 @@ class HarnessInstaller:
         self.plugin_path = self.source_root / "plugins" / "game-exp" / "plugin.json"
         self.skill_source = self.source_root / "plugins" / "game-exp" / "skills" / "game-exp"
         self.version = self._load_version()
+        self.managed_paths = _managed_paths_for_source(self.source_root)
 
     def _load_version(self) -> str:
         try:
@@ -282,9 +351,37 @@ class HarnessInstaller:
         return version
 
     def _validate_source(self) -> None:
+        try:
+            marker = (self.source_root / "VERSION.txt").read_text(
+                encoding="utf-8"
+            ).strip()
+            install = json.loads(
+                (self.source_root / "INSTALL.json").read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HarnessInstallError(
+                f"source release metadata is invalid: {exc}"
+            ) from exc
+        install_version = (
+            install.get("version") if isinstance(install, dict) else None
+        )
+        install_source = (
+            install.get("source_of_truth") if isinstance(install, dict) else None
+        )
+        if marker != self.version or install_version != self.version:
+            raise HarnessInstallError(
+                "source version metadata is inconsistent: "
+                f"plugin={self.version!r}, VERSION.txt={marker!r}, "
+                f"INSTALL.json={install_version!r}"
+            )
+        if install_source != CANONICAL_SOURCE:
+            raise HarnessInstallError(
+                f"source_of_truth is unexpected: {install_source!r}"
+            )
+
         missing = [
             rel
-            for rel in _managed_paths()
+            for rel in self.managed_paths
             if not (self.source_root / rel).is_file()
         ]
         if missing:
@@ -306,18 +403,21 @@ class HarnessInstaller:
         stage.parent.mkdir(parents=True, exist_ok=True)
         stage.mkdir(parents=False, exist_ok=False)
         try:
-            for rel in _managed_paths():
+            for rel in self.managed_paths:
                 src = self.source_root / rel
                 dst = stage / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
-            source_digest = _managed_digest(self.source_root)
+            source_digest = _managed_digest(self.source_root, self.managed_paths)
             (stage / "VERSION.txt").write_text(self.version + "\n", encoding="utf-8")
             (stage / "INSTALL_SOURCE.json").write_text(
                 json.dumps(
                     {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "source": CANONICAL_SOURCE,
+                        "source_channel": self.source_channel,
+                        "source_ref": self.source_ref,
+                        "release_url": self.release_url,
                         "version": self.version,
                         "harness": self.harness,
                         "source_digest": source_digest,
@@ -348,11 +448,14 @@ class HarnessInstaller:
         provenance = json.loads(
             (root / "INSTALL_SOURCE.json").read_text(encoding="utf-8")
         )
-        expected_digest = _managed_digest(self.source_root)
-        actual_digest = _managed_digest(root)
+        expected_digest = _managed_digest(self.source_root, self.managed_paths)
+        actual_digest = _managed_digest(root, self.managed_paths)
         if provenance != {
-            "schema_version": 2,
+            "schema_version": 3,
             "source": CANONICAL_SOURCE,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "version": self.version,
             "harness": self.harness,
             "source_digest": expected_digest,
@@ -484,7 +587,7 @@ class HarnessInstaller:
 
     def plan(self) -> dict[str, Any]:
         self._validate_source()
-        source_digest = _managed_digest(self.source_root)
+        source_digest = _managed_digest(self.source_root, self.managed_paths)
         installed = self.installed_version()
         installed_digest = None
         reason = None
@@ -518,6 +621,9 @@ class HarnessInstaller:
             "status": "PASS",
             "harness": self.harness,
             "source": CANONICAL_SOURCE,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "source_version": self.version,
             "source_digest": source_digest,
             "installed_version": installed,
@@ -652,6 +758,9 @@ class HarnessInstaller:
         return {
             "status": "PASS",
             "version": self.version,
+            "source_channel": self.source_channel,
+            "source_ref": self.source_ref,
+            "release_url": self.release_url,
             "harness": self.harness,
             "updated_harnesses": [self.harness],
             "runtime_dir": str(self.runtime_dir),
@@ -706,6 +815,9 @@ def install_many(
     *,
     allow_downgrade: bool = False,
     cleanup_legacy_shared: bool = False,
+    source_channel: str = "development",
+    source_ref: str = "working-tree",
+    release_url: str | None = None,
 ) -> dict[str, Any]:
     installers = [
         HarnessInstaller(
@@ -713,6 +825,9 @@ def install_many(
             home,
             harness=harness,
             allow_downgrade=allow_downgrade,
+            source_channel=source_channel,
+            source_ref=source_ref,
+            release_url=release_url,
         )
         for harness in harnesses
     ]
@@ -771,6 +886,9 @@ def install_many(
     return {
         "status": "PASS",
         "version": next(iter(versions)),
+        "source_channel": source_channel,
+        "source_ref": source_ref,
+        "release_url": release_url,
         "harness": "all",
         "updated_harnesses": list(harnesses),
         "results": results,
@@ -804,6 +922,22 @@ def _parse_args() -> argparse.Namespace:
         help="custom runtime path; valid only when installing one Harness",
     )
     parser.add_argument(
+        "--channel",
+        choices=("stable", "development"),
+        default="stable",
+        help=(
+            "install source channel; stable resolves a published non-prerelease "
+            "semantic-version Release, development uses the current checkout"
+        ),
+    )
+    parser.add_argument(
+        "--release",
+        help=(
+            "explicit published stable Release such as v1.3.0; valid only with "
+            "--channel stable"
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="report install/upgrade status without writing files",
@@ -827,9 +961,16 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    resolved: ResolvedInstallSource | None = None
     try:
-        source_root = pathlib.Path(args.source_root)
+        launcher_root = pathlib.Path(args.source_root)
         home = pathlib.Path(args.home)
+        resolved = resolve_install_source(
+            launcher_root,
+            channel=args.channel,
+            release=args.release,
+        )
+        source_root = resolved.root
         if args.harness == "all":
             if args.runtime_dir:
                 raise HarnessInstallError("--runtime-dir cannot be combined with --harness all")
@@ -843,6 +984,9 @@ def main() -> int:
                     home,
                     harness=harness,
                     allow_downgrade=args.allow_downgrade,
+                    source_channel=resolved.channel,
+                    source_ref=resolved.ref,
+                    release_url=resolved.release_url,
                 )
                 for harness in SUPPORTED_HARNESSES
             ]
@@ -850,6 +994,9 @@ def main() -> int:
                 result = {
                     "status": "PASS",
                     "version": installers[0].version,
+                    "source_channel": resolved.channel,
+                    "source_ref": resolved.ref,
+                    "release_url": resolved.release_url,
                     "harness": "all",
                     "updated_harnesses": [],
                     "plans": {
@@ -867,6 +1014,9 @@ def main() -> int:
                     SUPPORTED_HARNESSES,
                     allow_downgrade=args.allow_downgrade,
                     cleanup_legacy_shared=args.cleanup_legacy_shared,
+                    source_channel=resolved.channel,
+                    source_ref=resolved.ref,
+                    release_url=resolved.release_url,
                 )
         else:
             if args.cleanup_legacy_shared:
@@ -879,10 +1029,14 @@ def main() -> int:
                 harness=args.harness,
                 runtime_dir=pathlib.Path(args.runtime_dir) if args.runtime_dir else None,
                 allow_downgrade=args.allow_downgrade,
+                source_channel=resolved.channel,
+                source_ref=resolved.ref,
+                release_url=resolved.release_url,
             )
             result = installer.plan() if args.check else installer.install()
     except (
         HarnessInstallError,
+        ReleaseSourceError,
         CompanionSkillSyncError,
         OSError,
         ValueError,
@@ -894,11 +1048,15 @@ def main() -> int:
         else:
             print(f"FAIL\t{exc}", file=sys.stderr)
         return 1
+    finally:
+        if resolved is not None:
+            resolved.close()
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"PASS\tgame-exp {result['version']}")
+        print(f"source\t{result['source_channel']}:{result['source_ref']}")
         print("updated\t" + ",".join(result["updated_harnesses"]))
         if result.get("runtime_dir"):
             print(f"runtime\t{result['runtime_dir']}")

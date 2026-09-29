@@ -30,7 +30,7 @@ Start unfamiliar sessions with `game_exp_status`. It is the compact 1.0 handshak
 
 Canonical source: https://github.com/siskosun/game-exp
 
-For installation or upgrade, read root `INSTALL.json`. Update only the current Harness by default. The canonical installer also synchronizes the latest semantic-version-tagged `godot-prototype-studio` and `h5-game-prototype-agent` Skills into that same Harness. Do not synchronize application repositories, sandboxes, or other Harnesses as a release side effect. Use `--harness all` only when explicitly requested. Preserve legacy shared copies during a single-Harness upgrade; remove them only through explicit `--cleanup-legacy-shared`.
+For installation or upgrade, read root `INSTALL.json`. The default installer channel is `stable`: resolve the latest published, non-prerelease semantic-version GitHub Release and install from that Release tag's source archive, not from `main` or an arbitrary current checkout. Use `--release vX.Y.Z` for an explicit published Release and `--channel development` only when the user explicitly wants to test the current checkout/main. Update only the current Harness by default. The canonical installer also synchronizes the latest semantic-version-tagged `godot-prototype-studio` and `h5-game-prototype-agent` Skills into that same Harness. Do not synchronize application repositories, sandboxes, or other Harnesses as a release side effect. Use `--harness all` only when explicitly requested. Preserve legacy shared copies during a single-Harness upgrade; remove them only through explicit `--cleanup-legacy-shared`.
 
 ## Task routing
 
