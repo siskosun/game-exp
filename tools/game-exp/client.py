@@ -1103,6 +1103,8 @@ class GameExpClient:
         check_labels = {
             "ledger_ref": "实验记录",
             "rulesets": "分支与引用保护",
+            "trust_mode_verification": "信任模式核验",
+            "trusted_writer_environment": "可信写入环境",
             "trusted_writer_deploy_key": "可信写入部署密钥",
             "trusted_writer_secret": "可信写入私钥",
             "immutable_releases": "发布保护",
@@ -2922,12 +2924,28 @@ class GameExpClient:
         comparison_available = bool(
             previous_candidate_id and isinstance(previous_candidate, dict)
         )
-        current_candidate_id = row.get("candidate_id")
-        comparison_zh = (
-            f"{previous_candidate_id} → {current_candidate_id or '当前源码'}"
-            if comparison_available
-            else "暂无可对照的上一候选版本"
+        previous_retention = (
+            previous_candidate.get("retention")
+            if isinstance(previous_candidate, dict)
+            and isinstance(previous_candidate.get("retention"), dict)
+            else {}
         )
+        previous_release_url = (
+            previous_retention.get("release_url")
+            if isinstance(previous_retention.get("release_url"), str)
+            else None
+        )
+        current_candidate_id = row.get("candidate_id")
+        if comparison_available:
+            comparison_zh = (
+                f"{previous_candidate_id} → {current_candidate_id or '当前源码'}"
+            )
+            if changes:
+                comparison_zh += "；本轮：" + "；".join(
+                    str(value) for value in changes[:3]
+                )
+        else:
+            comparison_zh = "暂无可对照的上一候选版本"
 
         lifecycle = str(row.get("lifecycle") or "")
         next_gate = str(row.get("next_gate") or "")
@@ -2973,7 +2991,16 @@ class GameExpClient:
                 "note_zh": "这是明确选择意图；仍需满足主干集成验证等现有前置条件。",
             },
             {
-                "label_zh": "回到上一版",
+                "label_zh": "打开上一版候选包",
+                "intent": "OPEN_PREVIOUS_VERSION",
+                "enabled": bool(previous_release_url),
+                "direct_lifecycle_mutation": False,
+                "route": "OPEN_PREVIOUS_CANDIDATE_ARTIFACT",
+                "url": previous_release_url,
+                "note_zh": "只打开上一候选版本的保留产物，不修改源码或实验状态。",
+            },
+            {
+                "label_zh": "用上一版源码继续修改",
                 "intent": "REVISE_FROM_PREVIOUS",
                 "enabled": (
                     comparison_available
@@ -2981,6 +3008,7 @@ class GameExpClient:
                 ),
                 "direct_lifecycle_mutation": False,
                 "route": "RETURN_TO_ACTIVE_IF_NEEDED_THEN_RESTORE_PREVIOUS_SOURCE",
+                "note_zh": "这是源码回退/继续修改，不是打开旧版试玩入口。",
             },
         ]
 
@@ -3013,6 +3041,23 @@ class GameExpClient:
                 "action_zh": action_zh,
                 "scope_zh": scope_zh,
             },
+            "playtest_delivery": {
+                "owner": (
+                    delivery.get("producer")
+                    if isinstance(delivery, dict)
+                    and isinstance(delivery.get("producer"), str)
+                    else "prototype-executor"
+                ),
+                "external_share_ready": playable_kind == "SHAREABLE_URL",
+                "next_action_zh": (
+                    None
+                    if playable_kind == "SHAREABLE_URL"
+                    else (
+                        "如需外部测试者直接试玩，由原型执行器发布可分享试玩地址并回填 SHAREABLE_URL。"
+                    )
+                ),
+                "game_exp_hosts_playable": False,
+            },
             "comparison": {
                 "available": comparison_available,
                 "previous_candidate_id": previous_candidate_id,
@@ -3020,6 +3065,16 @@ class GameExpClient:
                     current_candidate_id if candidate_matches_current else None
                 ),
                 "summary_zh": comparison_zh,
+                "changes_zh": changes,
+                "previous_playable": {
+                    "kind": "ARTIFACT_ONLY" if previous_release_url else "MISSING",
+                    "artifact_url": previous_release_url,
+                    "action_zh": (
+                        "打开上一版候选包"
+                        if previous_release_url
+                        else "上一版试玩入口不可用"
+                    ),
+                },
             },
             "focus_points_zh": focus_points[:3],
             "producer": (
@@ -4228,15 +4283,15 @@ class GameExpClient:
             if isinstance(row, dict) and row.get("status") == "PASS"
         )
         if trust_fragments_zh:
-            trust_summary_zh = " · ".join(trust_fragments_zh)
-            if passed_trust_checks == len(trust_checks):
-                trust_summary_zh += (
-                    f"（{passed_trust_checks}/{len(trust_checks)} 项通过）"
-                )
-            else:
-                trust_summary_zh += (
-                    f"（{passed_trust_checks}/{len(trust_checks)} 项正常）"
-                )
+            count_label = (
+                "项通过"
+                if passed_trust_checks == len(trust_checks)
+                else "项正常"
+            )
+            trust_summary_zh = (
+                f"{passed_trust_checks}/{len(trust_checks)} {count_label} · "
+                + " · ".join(trust_fragments_zh)
+            )
         else:
             trust_summary_zh = "暂无可显示的仓库检查结果"
 
