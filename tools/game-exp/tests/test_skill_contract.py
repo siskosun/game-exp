@@ -15,7 +15,7 @@ class GameExpSkillContractTests(unittest.TestCase):
     def test_portable_plugin_manifest(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "game-exp")
-        self.assertEqual(manifest["version"], "1.3.0")
+        self.assertEqual(manifest["version"], "1.4.0")
         self.assertEqual(
             manifest["$schema"],
             "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -68,6 +68,21 @@ class GameExpSkillContractTests(unittest.TestCase):
         )
         self.assertFalse(install["policy"]["updates_other_harnesses"])
         self.assertFalse(install["policy"]["updates_consumer_repositories"])
+        self.assertEqual(install["policy"]["default_install_channel"], "stable")
+        self.assertTrue(install["policy"]["main_is_development_only"])
+        source_selection = install["source_selection"]
+        self.assertEqual(source_selection["default_channel"], "stable")
+        self.assertEqual(
+            source_selection["stable_selector"],
+            "latest_published_non_prerelease_semver_release",
+        )
+        self.assertTrue(source_selection["explicit_release_supported"])
+        self.assertTrue(source_selection["development_requires_explicit_channel"])
+        self.assertEqual(
+            source_selection["development_argument"],
+            "--channel development",
+        )
+        self.assertEqual(source_selection["main_policy"], "development_only")
         self.assertEqual(
             install["distribution_check"],
             ["python", "tools/game-exp/distribution_check.py", "--json"],
