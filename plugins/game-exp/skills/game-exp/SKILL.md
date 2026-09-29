@@ -92,7 +92,7 @@ Before editing an existing experiment, read `game_exp_collaboration_context`, th
 
 Release with `game_exp_work_release`: `COMPLETED`, `ABANDONED`, or `HANDED_OFF`. Handoff text is participant-reported context, not authority. Unpublished local edits are not recoverable through game-exp.
 
-After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; an advanced `experiment_panel.delivery_card` is the same projection when that tool is enabled. Present the card instead of dumping the full Board. The card is an intent surface only: `保留这版` never means SELECTED; `我试玩通过了` records PASS only when the exact current Candidate is already waiting for human Review; `就选这版` preserves Rehearsal/selection prerequisites.
+After each completed implementation iteration, include structured `delivery` evidence when the executor can provide it: player-visible changes, a verified playable entry or explicit `MISSING`, 1-3 focus points, producer/build identity, and an optional previous Candidate id. Prefer the current experiment's `game_exp_board.experiments[].delivery_card` from the default MCP surface; an advanced `experiment_panel.delivery_card` is the same projection when that tool is enabled. Present the card instead of dumping the full Board. The card is an intent surface only: `保留这版` never means SELECTED; `A/B 对比试玩` opens a blind comparison between the exact current Candidate and its authoritative immediate previous Candidate when both have verified shareable playables; `我试玩通过了` records PASS only when the exact current Candidate is already waiting for human Review; `就选这版` preserves Rehearsal/selection prerequisites. A/B preference is HUMAN_REPORTED evidence and never substitutes for an explicit Review PASS/FAIL.
 
 ## Prototype implementation handoff
 
@@ -111,7 +111,7 @@ For project-policy schema v3, use a content-addressed Evaluation Profile and obt
 
 Trusted evaluation runs against frozen Candidate bytes in a clean trusted job. Keep `TRUSTED_OBSERVED`, `PARTICIPANT_REPORTED`, and `HUMAN_REPORTED` distinct.
 
-At game-exp level, v1 compares a challenger only with its declared `supersedes` incumbent. Human blind A/B uses review protocol `incumbent-challenger-blind-ab-v1`, binds exact Candidate/artifact/Profile identities, and records per-dimension outcomes. Do not add Elo for the small 2-candidate decision.
+Evaluation Evidence v1 still compares a challenger only with its declared `supersedes` incumbent. Separately, same-experiment revision A/B may compare the exact current Candidate with the authoritative immediate previous Candidate when both immutable playables exist. The revision comparison is stored inside the current human Review as `revision_comparison`, binds exact Candidate/artifact identities, and uses blind A/B slot choices. It does not create a persistent Comparison Set, Review outcome, PROMISING, or SELECTED. Do not add Elo for either small 2-candidate decision.
 
 ## Review and lifecycle
 
