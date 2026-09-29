@@ -2702,6 +2702,279 @@ class GameExpClient:
             "raw_machine_codes_hidden_by_default": True,
         }
 
+    @classmethod
+    def _iteration_delivery_card_zh(
+        cls,
+        *,
+        row: dict[str, Any],
+        delivery_release: dict[str, Any] | None,
+        candidate: dict[str, Any] | None,
+        previous_candidate: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        delivery = (
+            delivery_release.get("delivery")
+            if isinstance(delivery_release, dict)
+            and isinstance(delivery_release.get("delivery"), dict)
+            else None
+        )
+        delivery_source_sha = (
+            delivery_release.get("result_source_sha")
+            if isinstance(delivery_release, dict)
+            and isinstance(delivery_release.get("result_source_sha"), str)
+            else None
+        )
+        candidate_source_sha = (
+            candidate.get("source_sha")
+            if isinstance(candidate, dict)
+            and isinstance(candidate.get("source_sha"), str)
+            else None
+        )
+        current_source_sha = delivery_source_sha or candidate_source_sha
+        candidate_matches_current = bool(
+            isinstance(candidate, dict)
+            and current_source_sha
+            and candidate_source_sha == current_source_sha
+        )
+
+        if delivery_source_sha and candidate_source_sha:
+            version_state = (
+                "CANDIDATE_BOUND"
+                if delivery_source_sha == candidate_source_sha
+                else "SOURCE_AHEAD_OF_CANDIDATE"
+            )
+        elif delivery_source_sha:
+            version_state = "SOURCE_ONLY"
+        elif candidate_source_sha:
+            version_state = "CANDIDATE_ONLY"
+        else:
+            version_state = "NO_DELIVERY"
+
+        changes = (
+            list(delivery.get("changes") or [])
+            if isinstance(delivery, dict)
+            else []
+        )
+        if not changes and isinstance(delivery_release, dict):
+            notes = delivery_release.get("notes")
+            if isinstance(notes, str) and notes.strip():
+                changes = [notes.strip()]
+
+        focus_points = (
+            list(delivery.get("focus_points") or [])
+            if isinstance(delivery, dict)
+            else []
+        )
+        if not focus_points:
+            criteria = row.get("success_criteria")
+            if isinstance(criteria, list):
+                focus_points = [
+                    str(value).strip()
+                    for value in criteria
+                    if isinstance(value, str) and value.strip()
+                ][:3]
+        if not focus_points:
+            hypothesis = row.get("hypothesis")
+            if isinstance(hypothesis, str) and hypothesis.strip():
+                focus_points = [hypothesis.strip()]
+
+        playable = (
+            dict(delivery.get("playable"))
+            if isinstance(delivery, dict)
+            and isinstance(delivery.get("playable"), dict)
+            else None
+        )
+        retention = (
+            candidate.get("retention")
+            if isinstance(candidate, dict)
+            and isinstance(candidate.get("retention"), dict)
+            else {}
+        )
+        candidate_release_url = (
+            retention.get("release_url")
+            if isinstance(retention.get("release_url"), str)
+            else None
+        )
+
+        if playable is None:
+            playable = {
+                "kind": "ARTIFACT_ONLY" if candidate_release_url else "MISSING",
+                "verified": bool(candidate_release_url),
+                "portable": bool(candidate_release_url),
+                "url": None,
+                "artifact_url": candidate_release_url,
+                "launch_hint": None,
+                "source": (
+                    "trusted_candidate_retention"
+                    if candidate_release_url
+                    else "none"
+                ),
+            }
+        else:
+            playable["source"] = "participant_reported_delivery"
+            if (
+                playable.get("kind") == "MISSING"
+                and candidate_matches_current
+                and candidate_release_url
+            ):
+                playable = {
+                    "kind": "ARTIFACT_ONLY",
+                    "verified": True,
+                    "portable": True,
+                    "url": None,
+                    "artifact_url": candidate_release_url,
+                    "launch_hint": playable.get("launch_hint"),
+                    "source": "trusted_candidate_retention_fallback",
+                }
+
+        playable_kind = playable.get("kind")
+        action_zh = {
+            "SHAREABLE_URL": "立即试玩",
+            "LOCAL_URL": "在当前设备试玩",
+            "ARTIFACT_ONLY": "下载候选包",
+            "MISSING": "试玩入口未生成",
+        }.get(playable_kind, "试玩入口未知")
+        scope_zh = {
+            "SHAREABLE_URL": "可跨设备访问",
+            "LOCAL_URL": "仅当前设备/网络环境",
+            "ARTIFACT_ONLY": "可下载产物；需要对应运行环境",
+            "MISSING": "当前没有可用试玩入口",
+        }.get(playable_kind, "未知")
+
+        previous_candidate_id = (
+            delivery.get("previous_candidate_id")
+            if isinstance(delivery, dict)
+            and isinstance(delivery.get("previous_candidate_id"), str)
+            else None
+        )
+        comparison_available = bool(
+            previous_candidate_id and isinstance(previous_candidate, dict)
+        )
+        current_candidate_id = row.get("candidate_id")
+        comparison_zh = (
+            f"{previous_candidate_id} → {current_candidate_id or '当前源码'}"
+            if comparison_available
+            else "暂无可对照的上一候选版本"
+        )
+
+        lifecycle = str(row.get("lifecycle") or "")
+        next_gate = str(row.get("next_gate") or "")
+        has_current = bool(current_source_sha)
+        quick_actions = [
+            {
+                "label_zh": "继续微调",
+                "intent": "CONTINUE_REVISION",
+                "enabled": lifecycle in {"ACTIVE", "REVIEW", "PROMISING"},
+                "direct_lifecycle_mutation": False,
+                "route": "RETURN_TO_ACTIVE_IF_NEEDED_THEN_CLAIM_WORK",
+            },
+            {
+                "label_zh": "保留这版",
+                "intent": "KEEP_CURRENT_VERSION",
+                "enabled": has_current,
+                "direct_lifecycle_mutation": False,
+                "route": "NO_OP_RETAIN_CURRENT",
+                "note_zh": "只保留当前版本，不等于晋级或选中。",
+            },
+            {
+                "label_zh": "我试玩通过了",
+                "intent": "REVIEW_PASS",
+                "enabled": (
+                    next_gate == "HUMAN_REVIEW"
+                    and isinstance(current_candidate_id, str)
+                    and candidate_matches_current
+                ),
+                "direct_lifecycle_mutation": False,
+                "route": "RECORD_REVIEW_PASS_FOR_CURRENT_CANDIDATE",
+                "note_zh": "只有当前候选版本明确且正在等待人工评审时才能记录。",
+            },
+            {
+                "label_zh": "就选这版",
+                "intent": "SELECT_CURRENT_VERSION",
+                "enabled": (
+                    lifecycle == "PROMISING"
+                    and isinstance(current_candidate_id, str)
+                    and candidate_matches_current
+                ),
+                "direct_lifecycle_mutation": False,
+                "route": "ENSURE_FRESH_REHEARSAL_THEN_SUBMIT_SELECTED",
+                "note_zh": "这是明确选择意图；仍需满足主干集成验证等现有前置条件。",
+            },
+            {
+                "label_zh": "回到上一版",
+                "intent": "REVISE_FROM_PREVIOUS",
+                "enabled": (
+                    comparison_available
+                    and lifecycle in {"ACTIVE", "REVIEW", "PROMISING"}
+                ),
+                "direct_lifecycle_mutation": False,
+                "route": "RETURN_TO_ACTIVE_IF_NEEDED_THEN_RESTORE_PREVIOUS_SOURCE",
+            },
+        ]
+
+        return {
+            "schema_version": 1,
+            "locale": "zh-CN",
+            "authoritative": False,
+            "authority_note_zh": (
+                "交付卡只整理试玩与反馈入口；Candidate、Review、晋级、选择仍以 "
+                "game-exp 受保护状态和人工决定为准。"
+            ),
+            "title_zh": "本轮交付",
+            "experiment_id": row.get("experiment_id"),
+            "prototype_name": row.get("prototype_name"),
+            "source_sha": current_source_sha,
+            "candidate_id": (
+                current_candidate_id if candidate_matches_current else None
+            ),
+            "version_state": version_state,
+            "version_state_zh": {
+                "CANDIDATE_BOUND": "本轮源码已生成当前候选版本",
+                "SOURCE_AHEAD_OF_CANDIDATE": "本轮源码已更新，候选版本待重建",
+                "SOURCE_ONLY": "本轮源码已完成，尚未生成候选版本",
+                "CANDIDATE_ONLY": "当前有候选版本，但缺少结构化交付说明",
+                "NO_DELIVERY": "尚无本轮交付记录",
+            }.get(version_state, version_state),
+            "changes_zh": changes,
+            "playable": {
+                **playable,
+                "action_zh": action_zh,
+                "scope_zh": scope_zh,
+            },
+            "comparison": {
+                "available": comparison_available,
+                "previous_candidate_id": previous_candidate_id,
+                "current_candidate_id": (
+                    current_candidate_id if candidate_matches_current else None
+                ),
+                "summary_zh": comparison_zh,
+            },
+            "focus_points_zh": focus_points[:3],
+            "producer": (
+                delivery.get("producer") if isinstance(delivery, dict) else None
+            ),
+            "build_id": (
+                delivery.get("build_id") if isinstance(delivery, dict) else None
+            ),
+            "delivery_release_id": (
+                delivery_release.get("release_id")
+                if isinstance(delivery_release, dict)
+                else None
+            ),
+            "delivery_trust": (
+                delivery_release.get("delivery_trust")
+                if isinstance(delivery_release, dict)
+                else None
+            ),
+            "quick_actions": quick_actions,
+            "quick_action_contract": {
+                "intent_only": True,
+                "card_does_not_mutate": True,
+                "keep_version_is_not_selected": True,
+                "human_review_requires_explicit_user_statement": True,
+                "selection_preserves_existing_prerequisites": True,
+            },
+        }
+
     @staticmethod
     def _board_relationship_type_zh(relation_type: str) -> str:
         return {
