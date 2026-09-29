@@ -245,7 +245,7 @@ def create_project(
     *,
     name: str,
     stack: str,
-    visibility: str = "private",
+    visibility: str = "public",
     owner: str | None = None,
     directory: str | None = None,
     h5_mode: str = "probe",
@@ -403,7 +403,7 @@ def create_project(
             "next_prompt_zh": (
                 "仓库已经准备好。现在直接描述第一版想验证的玩法变化和希望玩家产生的体验即可。"
                 if ready
-                else "仓库已经创建，但 game-exp 信任控制尚未完整。先处理 setup.blockers 后重新运行 project-init；不会自动删除仓库或改成公开。"
+                else "仓库已经创建，但 game-exp 信任控制尚未完整。先处理 setup.blockers 后重新运行 project-init；不会自动删除或重建仓库。"
             ),
         }
     except ProjectSetupError as exc:
@@ -425,7 +425,7 @@ def create_project(
                 "next_step": "RETRY_PROJECT_INIT",
                 "next_prompt_zh": (
                     "仓库和源码已经保留。修复权限、套餐或仓库配置后重新运行 project-init；"
-                    "不要重新创建仓库，也不要自动改变可见性。"
+                    "不要重新创建仓库。"
                 ),
             }
         raise PrototypeProjectError(str(exc)) from exc
