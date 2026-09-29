@@ -1,4 +1,4 @@
-# game-exp Phase 2 request core
+# game-exp runtime and trusted workflow client
 
 This directory contains the minimal trusted request client built on the frozen V1.3 protocol.
 
