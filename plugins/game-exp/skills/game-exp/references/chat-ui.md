@@ -121,7 +121,7 @@ Playable semantics are explicit:
 
 - `SHAREABLE_URL`: `立即试玩`; verified clickable URL, intended to work across devices;
 - `LOCAL_URL`: verified clickable URL only for the current device/network environment;
-- `ARTIFACT_ONLY`: no direct playable link; offer the retained Candidate artifact. If external testers need one-click access, state that the prototype executor must publish a shareable URL;
+- `ARTIFACT_ONLY`: no direct playable link; offer the retained试玩包. If external testers need one-click access, state that the prototype executor must publish a shareable URL;
 - `MISSING`: say `试玩入口未生成`; never invent a URL. Use `playtest_delivery.next_action_zh` to identify the next delivery step.
 
 The card is read-only and `authoritative=false`. Its quick actions are user-intent shortcuts, not a second state machine:
@@ -129,11 +129,11 @@ The card is read-only and `authoritative=false`. Its quick actions are user-inte
 - `继续微调`: continue the same experiment; return to ACTIVE when the current lifecycle allows it, then claim source work;
 - `保留这版`: no lifecycle mutation; retain the version only;
 - `A/B 对比试玩`: open `comparison.revision_ab_session`; render only 版本 A / 版本 B, the focus points, and the provided rating options. The hidden Candidate/slot binding is machine data and must not be revealed before the human choice;
-- `我试玩通过了`: an explicit human PASS statement only when the exact current Candidate is waiting for Review;
-- `就选这版`: explicit selection intent, but run/refresh required Rehearsal before SELECTED;
-- `试玩上一版`: when a historical verified `SHAREABLE_URL` matches the previous Candidate source SHA, open that immutable playable; it never edits source;
-- `打开上一版候选包`: fallback when no historical shareable URL exists but the retained prior Candidate artifact is available;
-- `用上一版源码继续修改`: source-revision intent using the referenced prior Candidate; it does not rewrite Ledger history.
+- `我试玩通过了`: an explicit human pass statement for the exact current试玩版本; bind it to the internal Candidate/Review records without exposing those terms in primary copy;
+- `就选这版`: explicit selection intent; complete the required internal merge-readiness check automatically before selection;
+- `试玩上一版`: open the immutable previous playable when available; it never edits source;
+- `打开上一版保留包`: fallback when no previous shareable URL exists but a retained package is available;
+- `用上一版源码继续修改`: source-revision intent using the referenced previous version; it does not rewrite experiment history.
 
 For revision A/B, the UI may locally collect one choice (`A_MUCH_BETTER`, `A_SLIGHTLY_BETTER`, `NO_CLEAR_DIFFERENCE`, `B_SLIGHTLY_BETTER`, `B_MUCH_BETTER`, or `INCONCLUSIVE`) and human notes. Do not write that choice by itself. Persist it only as `review.record.revision_comparison` together with the user's explicit Review `PASS` or `FAIL`. The trusted domain layer resolves A/B order back to a current-relative verdict and verifies that the referenced previous Candidate is the authoritative immediate predecessor.
 
@@ -151,7 +151,7 @@ The inline UI may perform only local presentation actions by itself:
 
 It must not directly mutate lifecycle state or protected refs.
 
-For actions such as Review, PROMISING, SELECTED, Integration, or Archive, the UI may show the currently valid next action, but execution must be handed back to the trusted MCP/workflow path and must preserve existing human gates.
+For internal actions such as Review, PROMISING, SELECTED, Integration, or Archive, the UI should show the corresponding user intent instead: 试玩结果、保留为待选版本、选定这版、合入主版本、归档. Execution must still be handed back to the trusted MCP/workflow path and preserve existing human gates.
 
 ## Empty and failure states
 
@@ -173,6 +173,16 @@ The interactive UI is a presentation layer, not a new protocol or authority laye
 
 Render each experiment card from `experiments[].card_zh`. This precomposed Chinese projection includes experiment, prototype, initiator, contributors, branch, progress, health, and next action.
 
-## Rehearsal terminology
+## Internal terminology boundary
 
-`Rehearsal` is the protocol name for validating the candidate's integration result against the latest main branch. Chinese primary UI copy should express that meaning as `主干集成验证`; keep raw `rehearsal_id` only as a protocol/diagnostic identifier.
+`Candidate`, `Review`, `Rehearsal`, `Binding`, `PROMISING`, `SELECTED`, lifecycle enums, and their ids are protocol vocabulary. Primary UI copy must not require the user to understand them.
+
+Use:
+- Candidate -> `试玩版本`
+- Review -> `试玩结果`
+- Rehearsal -> `合入前检查`
+- Binding -> `实验登记`
+- PROMISING -> `待选择`
+- SELECTED -> `已选定`
+
+Keep raw ids and protocol names only in expandable diagnostics or when the user explicitly asks for them.

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Help a new user reach a valid first experiment without requiring them to understand Ledger internals, request ids, lifecycle enums, or protected refs.
+Help a new user reach a valid first experiment without requiring them to understand Ledger internals, Binding, Candidate, Review, Rehearsal, request ids, lifecycle enums, PROMISING/SELECTED, or protected refs. The visible mental model is: `原型 → 修改 → 试玩 → 继续修改 / 保留这版 / 就选这版 / 放弃`.
 
 First-experiment onboarding assumes the repository is already `PROJECT_READY` under `references/project-setup.md`. If the user is starting a brand-new prototype with no repository, use project-create first and carry the original prototype goal forward into onboarding. If repository trust prerequisites are incomplete, return to project setup instead of continuing onboarding.
 
@@ -61,14 +61,14 @@ Do not repeatedly force onboarding after the repository already has experiments.
    - resolve the selected stack before implementation: prefer Godot Prototype Studio for Godot and H5 Game Prototype Agent for H5/browser work when those Skills are available;
    - the canonical Harness installer normally synchronizes both companion Skills, but host availability still must be checked at runtime;
    - H5 PROBE outcomes are implementation evidence only; `READY_FOR_PLAYTEST` never equals Review PASS or PROMISING;
-   - when implementation is ready, move to REVIEW and build Candidate;
-   - explain that automated checks mean “ready to review,” not “experiment passed.”
+   - when implementation is ready, internally move to REVIEW and build Candidate, but tell the user only that the试玩版本 is ready;
+   - explain that automated checks mean “可以开始试玩”，not “已经通过.”
 
-6. `人工决定`
-   - user supplies PASS/FAIL Review;
-   - PASS does not auto-promote;
-   - if the user explicitly promotes, continue with Rehearsal -> Selection -> Integration;
-   - when finished, archive with explicit branch-retention choice.
+6. `试玩与选择`
+   - user says whether the current试玩版本通过、未通过、还要继续改，或只想保留这一版;
+   - a试玩通过 does not automatically select the version;
+   - when the user says `就选这版`, perform the internal Rehearsal/selection prerequisites automatically and report only actionable blockers;
+   - when finished, ask only the material archive choice: whether to keep the development branch.
 
 ## Inline UI
 
@@ -96,8 +96,12 @@ Accept simple user intents such as:
 - `新建一个 Godot 原型项目`
 - `帮我创建第一个实验`
 - `我要给 flip-match 做一个实验：失配后提示下一位玩家`
-- `这个实验开发完成，进入评审`
-- `我试玩过了，PASS`
+- `这个版本做好了，准备试玩`
+- `我试玩过了，通过`
+- `继续改这版`
+- `保留这版`
+- `就选这版`
+- `放弃这个实验`
 
 Translate these intents to the existing trusted workflow. Do not require users to name MCP tools, lifecycle enums, or request ids. The agent must still generate and preserve stable ids internally for every mutation.
 
