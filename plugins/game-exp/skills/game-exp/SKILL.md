@@ -82,7 +82,7 @@ Do not ask the user to choose between internal labels on every iteration. Revisi
 
 After substantive revision, create a new Candidate. The prior current Review binding does not carry forward to that new Candidate.
 
-For a public repository, `game_exp_prototype_handoff` may set `delivery_request.prefer_shareable_url=true`. That is a delivery preference, not lifecycle authority: the selected prototype executor owns publishing and must verify both the immutable deployment and the actual browser/player path before returning a verified `SHAREABLE_URL`. game-exp never hosts the playable itself.
+For a public repository, `game_exp_prototype_handoff` may set `delivery_request.prefer_shareable_url=true`. That is a delivery preference, not lifecycle authority: the selected prototype executor stores immutable static bytes on `gh-pages`, dispatches the managed `.github/workflows/game-exp-pages.yml` Actions deployment, and must verify both that workflow deployment and the actual browser/player path before returning a verified `SHAREABLE_URL`. game-exp never hosts the playable itself.
 
 ## Collaboration preflight for source work
 
