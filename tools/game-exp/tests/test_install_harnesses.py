@@ -82,6 +82,62 @@ class HarnessInstallerTests(unittest.TestCase):
                 ):
                     installer.preflight()
 
+    def test_cli_defaults_to_stable_channel(self):
+        module = __import__("install_harnesses")
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["install_harnesses.py", "--harness", "codex"],
+        ):
+            args = module._parse_args()
+        self.assertEqual(args.channel, "stable")
+        self.assertIsNone(args.release)
+
+    def test_cli_development_channel_must_be_explicit(self):
+        module = __import__("install_harnesses")
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "install_harnesses.py",
+                "--harness",
+                "codex",
+                "--channel",
+                "development",
+            ],
+        ):
+            args = module._parse_args()
+        self.assertEqual(args.channel, "development")
+
+    def test_stable_source_metadata_is_written_to_provenance(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td)
+            installer = HarnessInstaller(
+                ROOT,
+                home,
+                harness="codex",
+                source_channel="stable",
+                source_ref="v1.4.0",
+                release_url=(
+                    "https://github.com/siskosun/game-exp/releases/tag/v1.4.0"
+                ),
+            )
+            with mock.patch("install_harnesses.shutil.which", return_value="uv"):
+                result = installer.install()
+            provenance = json.loads(
+                (installer.runtime_dir / "INSTALL_SOURCE.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(result["source_channel"], "stable")
+            self.assertEqual(result["source_ref"], "v1.4.0")
+            self.assertEqual(provenance["source_channel"], "stable")
+            self.assertEqual(provenance["source_ref"], "v1.4.0")
+            self.assertEqual(
+                provenance["release_url"],
+                "https://github.com/siskosun/game-exp/releases/tag/v1.4.0",
+            )
+
     def test_codex_install_is_isolated_from_other_harnesses(self):
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td)
