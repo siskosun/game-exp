@@ -93,15 +93,20 @@ jobs:
 
           stale_payload='{"case":"stale-head","schema_version":1,"type":"trusted-writer-selftest"}'
           stale_b64="$(printf '%s' "$stale_payload" | base64 -w0)"
-          set +e
-          python "$writer"             --repo "$repo" --request-id "req-selftest-stale-$run_id" --expected-head "$head0"             --payload-b64 "$stale_b64" --ssh-key "$GAME_EXP_WRITER_KEY_PATH"             --run-id "$run_id" --run-attempt "$attempt"             --workflow-source-sha "$WORKFLOW_SOURCE_SHA" > evidence/stale-head.json
-          stale_code=$?
-          set -e
-          test "$stale_code" -eq 42
-          python - <<'PY'
-          import json
+          # A stale client head triggers planning against the current Ledger, not a global CAS rejection.
+          python "$writer"             --repo "$repo" --request-id "req-selftest-stale-$run_id" --expected-head "$head0"             --payload-b64 "$stale_b64" --ssh-key "$GAME_EXP_WRITER_KEY_PATH"             --run-id "$run_id" --run-attempt "$attempt"             --workflow-source-sha "$WORKFLOW_SOURCE_SHA" | tee evidence/stale-head.json
+          stale_head="$(python -c 'import json; print(json.load(open("evidence/stale-head.json"))["ledger_head"])')"
+          git clone --single-branch --branch game-exp/ledger "https://github.com/$repo.git" "$RUNNER_TEMP/selftest-ledger"
+          git -C "$RUNNER_TEMP/selftest-ledger" show "$stale_head:operations/req-selftest-stale-$run_id.json" > evidence/stale-head-record.json
+          EXPECTED_HEAD="$head0" python - <<'PY'
+          import json, os
           x=json.load(open("evidence/stale-head.json",encoding="utf-8"))
-          assert x["status"]=="HEAD_CONFLICT", x
+          record=json.load(open("evidence/stale-head-record.json",encoding="utf-8"))
+          assert x["status"]=="COMMITTED" and x["replayed"] is False, x
+          assert record["expected_head"]==os.environ["EXPECTED_HEAD"], record
+          assert record["writer_base_head"]!=record["expected_head"], record
+          assert record["writer_rebased_before_plan"] is True, record
+          assert record["payload_digest"]==x["payload_digest"], record
           PY
 
           head1="$(git ls-remote "https://github.com/$repo.git" refs/heads/game-exp/ledger | cut -f1)"
@@ -143,9 +148,11 @@ jobs:
           test "$code" -ne 0
           grep -Eq 'GH013|Cannot update this protected ref|rule violations' "$RUNNER_TEMP/token-push.out"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: game-exp-trusted-writer-selftest-${{ github.run_id }}
           path: evidence/*.json
           retention-days: 30
           if-no-files-found: error
+
