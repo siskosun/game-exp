@@ -48,34 +48,24 @@ jobs:
       group: game-exp-pages
       cancel-in-progress: false
     steps:
-      - name: Create isolated static fixture and exact marker
-        env:
-          PROBE_SHA: ${{ github.sha }}
-          PROBE_RUN: ${{ github.run_id }}
-          PROBE_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/pages-probe"
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          root = Path(os.environ["RUNNER_TEMP"]) / "pages-probe"
-          marker = f"pages-actions-compat:{os.environ['PROBE_SHA']}:{os.environ['PROBE_RUN']}:{os.environ['PROBE_ATTEMPT']}\n"
-          (root / "marker.txt").write_text(marker)
-          (root / "index.html").write_text("<!doctype html><title>Pages action compatibility probe</title><p>Temporary static deployment test.</p>")
-          PY
+      - name: Checkout initialized immutable playable store
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: gh-pages
+          persist-credentials: false
 
-      - name: Upload fixture using exact candidate pin
+      - name: Upload store using exact candidate pin
         id: upload
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         with:
-          path: ${{ runner.temp }}/pages-probe
+          path: .
 
-      - name: Require artifact ID and unchanged tar marker
+      - name: Require artifact ID and unchanged bootstrap marker
         env:
           ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
         run: |
           test -n "$ARTIFACT_ID"
-          tar -xOf "$RUNNER_TEMP/artifact.tar" ./marker.txt | cmp - "$RUNNER_TEMP/pages-probe/marker.txt"
+          tar -xOf "$RUNNER_TEMP/artifact.tar" ./bootstrap.txt | cmp - bootstrap.txt
 
       - name: Configure existing Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
@@ -84,7 +74,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
 
-      - name: Require served exact marker
+      - name: Require served bootstrap marker
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
@@ -93,19 +83,19 @@ jobs:
           import time
           import urllib.request
           from pathlib import Path
-          expected = (Path(os.environ["RUNNER_TEMP"]) / "pages-probe/marker.txt").read_bytes()
-          url = os.environ["PAGE_URL"].rstrip("/") + "/marker.txt"
+          expected = Path("bootstrap.txt").read_bytes()
+          url = os.environ["PAGE_URL"].rstrip("/") + "/bootstrap.txt"
           for attempt in range(24):
               try:
                   request = urllib.request.Request(url + f"?probe={os.environ['GITHUB_RUN_ID']}&attempt={attempt}", headers={"Cache-Control": "no-cache"})
                   with urllib.request.urlopen(request, timeout=15) as response:
                       actual = response.read()
                   if actual == expected:
-                      print(f"PASS served marker: {url}")
+                      print(f"PASS served bootstrap marker: {url}")
                       break
               except Exception as exc:
                   print(f"Marker attempt {attempt + 1}: {exc}")
               time.sleep(5)
           else:
-              raise SystemExit("FAIL: served marker did not match uploaded fixture")
+              raise SystemExit("FAIL: served bootstrap marker did not match gh-pages")
           PY
