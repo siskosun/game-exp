@@ -84,7 +84,7 @@ jobs:
               "title": "Client trusted bind canary",
               "subject": {
                   "type": "repository",
-                  "id": "client-e2e-canary",
+                  "id": "repository",
                   "name": "Client E2E Canary",
                   "root_path": ".",
               },
