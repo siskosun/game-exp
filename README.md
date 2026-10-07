@@ -85,7 +85,7 @@ Before merging a release change, run core tests, MCP tests, and the standing Con
 
 v0.21 adds Evaluation Evidence v1: content-addressed Evaluation Profiles, trusted replay/check evidence against frozen Candidate bytes, tri-state human-comparison eligibility, and optional incumbent/challenger human A/B annotations. Automated screening remains evidence only and never changes lifecycle.
 
-Current version: `1.5.0`.
+Current version: `1.5.1`.
 
 After a completed implementation iteration, game-exp projects a unified Chinese delivery card from `work.release.delivery`: what changed, a verified immediate/local playable entry or retained artifact fallback, previous-version context, 1-3 playtest focus points, and natural-language next intents. In 1.2.1, public-repository handoff stores immutable executor-produced versions on `gh-pages` and deploys them through a managed GitHub Actions Pages workflow keyed by source SHA; the Board can recover an older verified shareable URL for the previous Candidate. The card is read-only; `保留这版` never means SELECTED, and Review/selection still use the existing human gates. In 1.3.0, when the exact current Candidate and its authoritative immediate previous Candidate both have verified shareable playables, the card also exposes a blind `版本 A / 版本 B` revision comparison. The preference is HUMAN_REPORTED evidence only and can be persisted only together with an explicit current-Candidate Review PASS/FAIL; it never auto-ranks, promotes, rejects, or selects a Candidate.
 
@@ -94,7 +94,7 @@ For a brand-new prototype with no existing repository, local CLI/stdio MCP can n
 Release history: see `CHANGELOG.md`.
 
 
-## 1.5.0 pre-merge gate
+## Pre-merge gate
 
 Before merging a release change, run:
 

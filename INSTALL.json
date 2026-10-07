@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "game-exp",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "source_of_truth": "https://github.com/siskosun/game-exp",
   "policy": {
     "default_update_scope": "current_harness_only",
