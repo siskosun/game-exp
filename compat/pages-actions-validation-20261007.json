@@ -57,7 +57,10 @@
     "id": 11465905930,
     "name": "github-pages",
     "digest": "sha256:129436210163e93aabc28770ee6a164e299f590e4cdd3ef16a26a0fe8acc9cae",
-    "archive_marker": "PASS"
+    "archive_marker": "PASS",
+    "downloaded_digest_check": "PASS",
+    "downloaded_container": "single artifact.tar",
+    "downloaded_exact_run_marker": "PASS"
   },
   "pages_configuration": "BLOCKED_PAGES_NOT_ENABLED",
   "deployment": "NOT_RUN",
