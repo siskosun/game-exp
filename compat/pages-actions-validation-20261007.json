@@ -1,0 +1,66 @@
+{
+  "repository": "siskosun/game-exp",
+  "base_sha": "2a2956706e221b3979c32df384f9524e53473f5e",
+  "probe_branch": "compat/pages-actions-20261007",
+  "tested_sha": "e81d1c66da582b4905faca85bff6e7705a830340",
+  "run_id": 37583099710,
+  "run_url": "https://github.com/siskosun/game-exp/actions/runs/37583099710",
+  "pr_heads": [
+    {
+      "pr": 35,
+      "head_sha": "19d255f3bf9be7c05d4280a819b8f8e34de69ca4"
+    },
+    {
+      "pr": 36,
+      "head_sha": "8812cce7b0a2c848552c26b9ce753fbf33775975"
+    },
+    {
+      "pr": 37,
+      "head_sha": "8ee9dd3d49c96a1e2400b27ede5ebfd9aefcec0c"
+    }
+  ],
+  "action_pins": {
+    "configure_pages": "45bfe0192ca1faeb007ade9deae92b16b8254a0d",
+    "upload_pages_artifact": "fc324d3547104276b827a68afc52ff2a11cc49c9",
+    "deploy_pages": "368f82528645a54fb793d4d04e342629a3f51346"
+  },
+  "tests": [
+    {
+      "name": "tests (ubuntu-latest, 3.12)",
+      "result": "success",
+      "job_id": 112667031066
+    },
+    {
+      "name": "tests (ubuntu-latest, 3.11)",
+      "result": "success",
+      "job_id": 112667031311
+    },
+    {
+      "name": "tests (windows-latest, 3.12)",
+      "result": "success",
+      "job_id": 112667031317
+    },
+    {
+      "name": "tests (macos-latest, 3.12)",
+      "result": "success",
+      "job_id": 112667031435
+    }
+  ],
+  "local_premerge": {
+    "status": "PASS",
+    "unit_tests": 493,
+    "distribution_checks": 20,
+    "conformance_tests": 15,
+    "standing_scenarios": 7
+  },
+  "artifact": {
+    "id": 11465905930,
+    "name": "github-pages",
+    "digest": "sha256:129436210163e93aabc28770ee6a164e299f590e4cdd3ef16a26a0fe8acc9cae",
+    "archive_marker": "PASS"
+  },
+  "pages_configuration": "BLOCKED_PAGES_NOT_ENABLED",
+  "deployment": "NOT_RUN",
+  "served_marker": "NOT_RUN",
+  "merge_status": "NOT_MERGED_FULL_CHAIN_PRECONDITION_UNMET"
+}
