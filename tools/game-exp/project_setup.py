@@ -367,7 +367,8 @@ def _environment_secret_names(repo: str) -> set[str]:
 def _ensure_writer_environment(repo: str) -> dict[str, Any]:
     desired = {
         "wait_timer": 0,
-        "prevent_self_review": False,
+        # Leave reviewer settings untouched. GitHub rejects prevent_self_review
+        # without required reviewers, even when its value is False.
         "deployment_branch_policy": {
             "protected_branches": False,
             "custom_branch_policies": True,
