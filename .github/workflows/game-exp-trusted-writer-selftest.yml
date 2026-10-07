@@ -1,6 +1,14 @@
 name: game-exp trusted writer selftest
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/game-exp-trusted-writer-selftest.yml'
+      - '.github/workflows/game-exp-trusted-writer.yml'
+      - 'tools/game-exp/trusted_writer.py'
+      - 'tools/game-exp/protocol_core.py'
+      - 'tools/game-exp/domain_core.py'
   workflow_dispatch:
   workflow_run:
     workflows: ["game-exp cross-platform probe"]
@@ -12,8 +20,8 @@ permissions:
 
 jobs:
   trusted-writer-selftest:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-26.04
     environment: game-exp-trusted-writer
     timeout-minutes: 10
     steps:
