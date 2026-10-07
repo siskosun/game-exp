@@ -279,6 +279,11 @@ class ProjectSetupTests(unittest.TestCase):
         ]
 
         def fake_api(repo, suffix, **kwargs):
+            body = kwargs.get("body") or {}
+            if "prevent_self_review" in body and not body.get("reviewers"):
+                raise project_setup.ProjectSetupError(
+                    "Required reviewers must have at least one reviewer to set prevent_self_review."
+                )
             calls.append((suffix, kwargs.get("method", "GET"), kwargs.get("body")))
             return responses.pop(0)
 
@@ -286,6 +291,9 @@ class ProjectSetupTests(unittest.TestCase):
             result = project_setup._ensure_writer_environment("owner/repo")
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["branch_policies"], ["main"])
+        environment_body = calls[0][2]
+        self.assertNotIn("reviewers", environment_body)
+        self.assertNotIn("prevent_self_review", environment_body)
         self.assertIn(
             (
                 "environments/game-exp-trusted-writer/deployment-branch-policies",
@@ -295,6 +303,15 @@ class ProjectSetupTests(unittest.TestCase):
             calls,
         )
 
+
+    def test_ensure_ledger_reuses_existing_head_on_setup_retry(self):
+        head = "a" * 40
+        with patch("project_setup._ledger_head", return_value=head), patch(
+            "project_setup._gh_api"
+        ) as api:
+            result = project_setup._ensure_ledger("owner/repo")
+        self.assertEqual(result, {"status": "PASS", "changed": False, "ledger_head": head})
+        api.assert_not_called()
 
     def test_provision_stops_before_mutation_when_preflight_blocks(self):
         blocked = {
