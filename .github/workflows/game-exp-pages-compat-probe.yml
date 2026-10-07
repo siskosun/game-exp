@@ -51,32 +51,6 @@ jobs:
       group: game-exp-pages
       cancel-in-progress: false
     steps:
-      - name: Prepare temporary Pages site
-        id: pages-site
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          set +e
-          gh api "repos/$GITHUB_REPOSITORY/pages" > "$RUNNER_TEMP/pages-before.json" 2> "$RUNNER_TEMP/pages-before.err"
-          rc=$?
-          set -e
-          if [ "$rc" -eq 0 ]; then
-            build_type="$(python -c 'import json,os; print(json.load(open(os.environ["RUNNER_TEMP"]+"/pages-before.json")).get("build_type",""))')"
-            if [ "$build_type" != "workflow" ]; then
-              echo "Existing Pages site is not workflow-managed; refusing to mutate it." >&2
-              exit 1
-            fi
-            echo "created=false" >> "$GITHUB_OUTPUT"
-          elif grep -q "HTTP 404" "$RUNNER_TEMP/pages-before.err"; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow > "$RUNNER_TEMP/pages-created.json"
-            echo "created=true" >> "$GITHUB_OUTPUT"
-          else
-            cat "$RUNNER_TEMP/pages-before.err" >&2
-            exit "$rc"
-          fi
-
       - name: Create isolated static fixture and exact marker
         env:
           PROBE_SHA: ${{ github.sha }}
@@ -138,12 +112,3 @@ jobs:
           else:
               raise SystemExit("FAIL: served marker did not match uploaded fixture")
           PY
-
-      - name: Restore disabled Pages state
-        if: always() && steps.pages-site.outputs.created == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api --method DELETE "repos/$GITHUB_REPOSITORY/pages"
