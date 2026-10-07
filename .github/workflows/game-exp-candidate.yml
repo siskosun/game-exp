@@ -22,7 +22,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       primary: ${{ steps.guard.outputs.primary }}
       primary_run_id: ${{ steps.guard.outputs.primary_run_id }}
@@ -60,7 +60,7 @@ jobs:
     if: needs.dedupe.outputs.primary == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       experiment_id: ${{ steps.resolve.outputs.experiment_id }}
       issue_number: ${{ steps.resolve.outputs.issue_number }}
@@ -195,7 +195,7 @@ jobs:
     needs: resolve
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout exact experiment source
@@ -243,7 +243,7 @@ jobs:
     needs: [resolve, build]
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout trusted evaluator control source
@@ -317,7 +317,7 @@ jobs:
     needs: [resolve, build]
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout trusted project policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -355,7 +355,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout trusted Candidate control source

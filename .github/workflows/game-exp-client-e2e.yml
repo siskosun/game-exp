@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   client-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GAME_EXP_E2E_TOKEN }}
