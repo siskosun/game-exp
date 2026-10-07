@@ -1,6 +1,12 @@
 name: game-exp client e2e
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/game-exp/**'
+      - '.github/workflows/game-exp-client-e2e.yml'
+      - '.github/workflows/game-exp-trusted-writer.yml'
   workflow_dispatch:
 
 permissions:
@@ -8,7 +14,7 @@ permissions:
 
 jobs:
   client-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GAME_EXP_E2E_TOKEN }}
@@ -19,6 +25,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Route Trusted Writer to compatibility branch
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          WRITER_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path("tools/game-exp/client.py")
+          text = path.read_text(encoding="utf-8")
+          old = '                "--ref",\n                "main",'
+          ref_literal = repr(os.environ["WRITER_REF"])
+          new = f'                "--ref",\n                {ref_literal},'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"unexpected writer ref pattern count: {count}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
