@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.1 - 2026-10-07
+
+- Fix the client E2E repository subject ID to use the current Domain contract's stable `repository` identity.
+- Omit reviewer-only fields when provisioning the Trusted Writer Environment, avoiding GitHub HTTP 422 when no required reviewers are configured.
+- Align Trusted Writer selftest with stale-head replanning: verify the committed operation and its binding to the actual replanned Ledger head.
+- Include the independently verified SHA-pinned Pages action upgrades: configure-pages 6.0.0, upload-pages-artifact 5.0.0, and deploy-pages 5.0.1.
+- Freeze this patch on the validated `dd8a634` source plus release metadata; later Ubuntu runner migration/pinning changes are excluded.
+- Preserve protected Ledger authority, Trusted Writer boundaries, human lifecycle gates, and stable Release-pinned installation.
+
 ## 1.5.0 - 2026-09-29
 
 - Make `game_exp_experiment_panel`, `game_exp_subject_panel`, and `game_exp_notifications` part of the default read-only MCP surface, increasing the normal surface from 24 to 27 tools.
