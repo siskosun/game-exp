@@ -13,7 +13,7 @@ permissions:
 jobs:
   trusted-writer-selftest:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: game-exp-trusted-writer
     timeout-minutes: 10
     steps:

@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       request_id: ${{ steps.validate.outputs.request_id }}
@@ -70,7 +70,7 @@ jobs:
       contents: read
       issues: write
       actions: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Checkout trusted Bridge execution source

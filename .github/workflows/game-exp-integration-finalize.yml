@@ -31,7 +31,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       primary: ${{ steps.guard.outputs.primary }}
       primary_run_id: ${{ steps.guard.outputs.primary_run_id }}
@@ -68,7 +68,7 @@ jobs:
   finalize:
     needs: dedupe
     if: needs.dedupe.outputs.primary == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: game-exp-trusted-writer
     timeout-minutes: 10
     steps:
