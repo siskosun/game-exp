@@ -36,6 +36,7 @@ jobs:
         run: python -m pip install -r tools/game-exp/requirements-mcp.txt uv
       - name: Full standing premerge gate
         run: python tools/game-exp/premerge.py --json
+
   pages:
     needs: tests
     runs-on: ubuntu-latest
@@ -50,6 +51,45 @@ jobs:
       group: game-exp-pages
       cancel-in-progress: false
     steps:
+      - name: Prepare temporary Pages site
+        id: pages-site
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GAME_EXP_E2E_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GAME_EXP_E2E_TOKEN is required for the isolated Pages settings probe." >&2
+            exit 1
+          fi
+          login="$(gh api user --jq '.login')"
+          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq '.permission')"
+          case "$permission" in
+            admin|maintain) ;;
+            *)
+              echo "E2E actor $login lacks repository Pages-management permission: $permission" >&2
+              exit 1
+              ;;
+          esac
+          set +e
+          gh api "repos/$GITHUB_REPOSITORY/pages" > "$RUNNER_TEMP/pages-before.json" 2> "$RUNNER_TEMP/pages-before.err"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            build_type="$(python -c 'import json,os; print(json.load(open(os.environ["RUNNER_TEMP"]+"/pages-before.json")).get("build_type",""))')"
+            if [ "$build_type" != "workflow" ]; then
+              echo "Existing Pages site is not workflow-managed; refusing to mutate it." >&2
+              exit 1
+            fi
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          elif grep -q "HTTP 404" "$RUNNER_TEMP/pages-before.err"; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow > "$RUNNER_TEMP/pages-created.json"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/pages-before.err" >&2
+            exit "$rc"
+          fi
+
       - name: Create isolated static fixture and exact marker
         env:
           PROBE_SHA: ${{ github.sha }}
@@ -65,22 +105,27 @@ jobs:
           (root / "marker.txt").write_text(marker)
           (root / "index.html").write_text("<!doctype html><title>Pages action compatibility probe</title><p>Temporary static deployment test.</p>")
           PY
+
       - name: Upload fixture using exact candidate pin
         id: upload
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         with:
           path: ${{ runner.temp }}/pages-probe
+
       - name: Require artifact ID and unchanged tar marker
         env:
           ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
         run: |
           test -n "$ARTIFACT_ID"
           tar -xOf "$RUNNER_TEMP/artifact.tar" ./marker.txt | cmp - "$RUNNER_TEMP/pages-probe/marker.txt"
-      - name: Configure existing Pages (never enable or change settings)
+
+      - name: Configure existing Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
+
       - name: Deploy exact uploaded artifact
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+
       - name: Require served exact marker
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
@@ -106,3 +151,12 @@ jobs:
           else:
               raise SystemExit("FAIL: served marker did not match uploaded fixture")
           PY
+
+      - name: Restore disabled Pages state
+        if: always() && steps.pages-site.outputs.created == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GAME_EXP_E2E_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/pages"
