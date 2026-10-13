@@ -45,6 +45,8 @@ Do not repeatedly force onboarding after the repository already has experiments.
    - use the current repository's project policy and recommended Manifest schema returned or documented there;
    - do not search toy2game, another repository, or historical Ledger experiments merely to discover runtime fields or copy a Manifest shape;
    - draft hypothesis, success criteria, kill criteria, scope and subject from the user's goal;
+   - before defining the Manifest, apply `references/requirement-clarification.md`: distinguish confirmed user intent, experimental hypotheses, reversible agent defaults, and blocking ambiguities; ask only for a materially unresolved player/product decision;
+   - do not invent requirements or insist that subjective playtest questions be answered before the experiment;
    - use the returned schema-v2 runtime default `{adapter, policy_path}` and review default unless the user has a real reason to choose another review protocol;
    - ask only when a missing user-owned choice would materially change the experiment;
    - otherwise present the drafted definition in plain Chinese.
