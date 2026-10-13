@@ -37,6 +37,10 @@ When classification is ambiguous, ask one question about the actual design inten
 
 Explicit user classification wins. Existing lifecycle rules remain authoritative; routing policy does not bypass human gates or reopen terminal/selected work.
 
+## Intent alignment during revisions
+
+Before editing, compare the request with the current authoritative Manifest and follow `requirement-clarification.md`. Ask only when competing meanings would change the hypothesis, core player experience, success criteria, scope, or irreversible decision. Keep experimentally testable unknowns as hypotheses and ordinary UI choices as reversible defaults. At Review, show where the playable matches the user goal, what remains untested, and which assumptions were not user-confirmed; automated passing checks alone do not establish intent fit. This is guidance inside existing stages, not a new transition or approval gate.
+
 ## Collaboration coordination
 
 Before editing an existing experiment, read `game_exp_collaboration_context`. When the Harness knows its current source SHA, pass it as `observed_source_sha`.
