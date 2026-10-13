@@ -743,7 +743,7 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, reference)
         for section in (onboarding, workflow, handoff):
             self.assertIn("requirement-clarification.md", section)
-        self.assertIn("no new transition or approval gate", workflow)
+        self.assertIn("not a new transition or approval gate", workflow)
 
 
 
