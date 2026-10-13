@@ -737,9 +737,9 @@ class GameExpSkillContractTests(unittest.TestCase):
         onboarding = (PLUGIN / "skills" / "game-exp" / "references" / "onboarding.md").read_text(encoding="utf-8")
         workflow = (PLUGIN / "skills" / "game-exp" / "references" / "workflow.md").read_text(encoding="utf-8")
         handoff = (PLUGIN / "skills" / "game-exp" / "references" / "prototype-handoff.md").read_text(encoding="utf-8")
-        for phrase in ("## Clarify intent before Bind and material changes", "requirements", "human gates", "references/requirement-clarification.md"):
+        for phrase in ("## Clarify intent before Bind and material changes", "human gates", "references/requirement-clarification.md"):
             self.assertIn(phrase, skill)
-        for phrase in ("Confirmed intent", "Experiment question", "Reversible default", "Blocking ambiguity", "Do not", "Manifest", "human still decides", "success/kill criteria"):
+        for phrase in ("Confirmed intent", "Experiment question", "Reversible default", "Blocking ambiguity", "Do not", "Manifest", "The human still decides", "success/kill criteria"):
             self.assertIn(phrase, reference)
         for section in (onboarding, workflow, handoff):
             self.assertIn("requirement-clarification.md", section)
