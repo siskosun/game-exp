@@ -48,6 +48,14 @@ Route from the user's intent first. Internal lifecycle terms belong in the workf
 | 诊断 / 修复仓库 | Doctor, `game_exp_project_init`; optional advanced preflight when explicitly enabled | `references/project-setup.md` |
 | GitHub Issue bridge / conformance | use only for the matching fallback or diagnostic task | `references/github-bridge.md`, `references/conformance.md` |
 
+## Clarify intent before Bind and material changes
+
+Before creating an experiment or materially changing a prototype, apply the one-pass triage in `references/requirement-clarification.md`. Distinguish **user-confirmed intent**, **questions the experiment should test**, **reversible agent defaults**, and **blocking ambiguities**. Consult the current repository/Manifest before asking anything already answered.
+
+Ask a focused player/product question only when competing interpretations would materially alter the experiment goal, core experience, criteria, authorized scope, or an irreversible action. Otherwise proceed with a reversible default; do not turn "fun" or feel into a demanded up-front answer. Keep the existing Manifest schema and human gates; add no new approval step, required field, or persistent clarification state.
+
+At Candidate Review, relate actual playable behavior and evidence back to the original intended player outcome. Clearly separate tested behavior, subjective questions for human playtest, and material assumptions; a successful build is not proof of requirement fit.
+
 ## Complete project setup
 
 Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion. Local CLI and stdio MCP flows require GitHub CLI (`gh`) to be installed and authenticated (`gh auth login`).
@@ -148,6 +156,7 @@ Conformance is screening only. When explicitly enabled, follow `references/confo
 - `references/project-setup.md` — trust bootstrap, repair, Doctor
 - `references/board.md`, `references/chat-ui.md` — Board/presentation
 - `references/onboarding.md` — first-use flow
+- `references/requirement-clarification.md` — pre-Bind intent triage, assumptions, and Review alignment
 - `references/collaboration.md` — work intent, freshness, handoff
 - `references/evaluation.md` — Evaluation Profile/evidence/human comparison
 - `references/prototype-handoff.md` — Godot/H5 executor handoff boundary
