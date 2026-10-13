@@ -44,23 +44,3 @@ jobs:
         run: |
           python -m pip install uv
           python tools/game-exp/premerge.py --json
-      - name: Package Skill for verified handoff
-        if: runner.os == 'Linux' && matrix.python == '3.12'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile, ZIP_DEFLATED
-          root = Path("plugins/game-exp/skills/game-exp")
-          with ZipFile("skill.zip", "w", ZIP_DEFLATED) as z:
-              for p in sorted(root.rglob("*")):
-                  if p.is_file():
-                      z.write(p, Path("game-exp") / p.relative_to(root))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: runner.os == 'Linux' && matrix.python == '3.12'
-        with:
-          name: skill-package-v1.5.2
-          path: skill.zip
-          if-no-files-found: error
-          retention-days: 1
