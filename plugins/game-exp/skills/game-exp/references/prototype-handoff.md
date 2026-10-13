@@ -76,6 +76,10 @@ Therefore, when an H5 workspace contains several nested probes:
 
 Do not claim that setting `subject.root_path` alone gives per-subdirectory Candidate builds.
 
+## Preserve requirement intent across the executor boundary
+
+Before handing implementation off, use `requirement-clarification.md` to separate user-confirmed player outcomes, open gameplay hypotheses, and reversible implementation assumptions. Send these as explanatory context alongside the existing authoritative handoff package, without changing the handoff schema or adding unsupported protected Manifest fields. The executor may choose technical details within scope, but must not silently decide a blocking user-owned gameplay choice. On return, compare actual playable behavior and reported evidence to the intended user outcome before Review; label untested subjective claims explicitly.
+
 ## Handoff schema v2
 
 Handoff schema v2 remains the stable cross-interface contract. Use `game_exp_prototype_handoff(experiment_id)` when available.
