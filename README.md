@@ -1,5 +1,7 @@
 # game-exp
 
+**Languages:** English | [简体中文](README.zh-CN.md)
+
 `game-exp` is the canonical standalone source repository for the trusted game experiment control plane.
 
 Repository: `https://github.com/siskosun/game-exp`
