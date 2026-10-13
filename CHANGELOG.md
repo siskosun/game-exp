@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.2 - 2026-10-13
+
+- Introduce a lightweight requirement-clarification step before experiment binding and material revisions, inspired by ReqClarifyBench.
+- Separate confirmed user intent, gameplay hypotheses to test, reversible implementation defaults, and blocking ambiguities; only ask when a player/product decision materially changes the experiment.
+- Reconcile Candidate evidence with the originally intended player outcome before human Review, without equating automated build success to product fit.
+- Integrate the guidance into onboarding, revision routing, prototype handoff, and skill contract checks.
+- Carry forward previously merged maintenance updates on main. Preserve protected Ledger authority, Manifest schema, Trusted Writer, human lifecycle gates, and Release-pinned installation.
+
 ## 1.5.1 - 2026-10-07
 
 - Fix the client E2E repository subject ID to use the current Domain contract's stable `repository` identity.
