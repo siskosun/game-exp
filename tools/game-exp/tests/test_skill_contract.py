@@ -731,5 +731,21 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, evaluation)
 
 
+    def test_requirement_clarification_preserves_existing_gates(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        reference = (PLUGIN / "skills" / "game-exp" / "references" / "requirement-clarification.md").read_text(encoding="utf-8")
+        onboarding = (PLUGIN / "skills" / "game-exp" / "references" / "onboarding.md").read_text(encoding="utf-8")
+        workflow = (PLUGIN / "skills" / "game-exp" / "references" / "workflow.md").read_text(encoding="utf-8")
+        handoff = (PLUGIN / "skills" / "game-exp" / "references" / "prototype-handoff.md").read_text(encoding="utf-8")
+        for phrase in ("## Clarify intent before Bind and material changes", "requirements", "human gates", "references/requirement-clarification.md"):
+            self.assertIn(phrase, skill)
+        for phrase in ("Confirmed intent", "Experiment question", "Reversible default", "Blocking ambiguity", "Do not", "Manifest", "human still decides", "success/kill criteria"):
+            self.assertIn(phrase, reference)
+        for section in (onboarding, workflow, handoff):
+            self.assertIn("requirement-clarification.md", section)
+        self.assertIn("no new transition or approval gate", workflow)
+
+
+
 if __name__ == "__main__":
     unittest.main()
