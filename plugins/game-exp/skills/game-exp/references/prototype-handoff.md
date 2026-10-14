@@ -129,6 +129,10 @@ A local filesystem path may be valid in one Harness but is not durable cross-Har
 
 Checks must state the source SHA/build identity they validate. Evidence for an older artifact does not automatically validate later code.
 
+## Optional upstream player-behavior observations (game-opportunity v0.4)
+
+When the developer supplies a predeclared local validation plan and an actual aggregated observation, preserve the ordinary opportunity/plan IDs, plan SHA-256, **reported** source digest, exact unique-player numerator/denominator, population/segment, window, recruitment limitations and any independently **verified** Candidate/source identities in accompanying context only. `MEETS_DECLARED_CONTINUE_SIGNAL_NOT_A_DECISION` and `MEETS_DECLARED_STOP_SIGNAL_NOT_A_DECISION` are research signals, **not** game-exp human Review, Evaluation Profile `ELIGIBLE`, Candidate quality or lifecycle decisions. A local hash match cannot establish that thresholds were fixed before observing outcomes. Do not add these research fields to the strict protected Manifest or handoff schema, ingest personal-level player data into the Ledger, or infer a human decision. Existing game-exp interfaces and explicit human gates remain unchanged.
+
 ## Resume game-exp
 
 After implementation evidence is returned:
