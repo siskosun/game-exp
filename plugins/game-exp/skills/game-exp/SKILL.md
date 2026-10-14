@@ -56,6 +56,8 @@ Ask a focused player/product question only when competing interpretations would 
 
 At Candidate Review, relate actual playable behavior and evidence back to the original intended player outcome. Clearly separate tested behavior, subjective questions for human playtest, and material assumptions; a successful build is not proof of requirement fit.
 
+An optional upstream `game-opportunity` card can provide cited market/player context when the user supplies one. It is **not** a prerequisite for creating or editing a prototype, a Manifest field, or Ledger authority. Carry forward a card's precise hypothesis and stop criterion only when this experiment tests the **same question**; otherwise state the genuinely new next-stage hypothesis and preserve a source link. Never route ordinary code changes, bug fixes, tuning, or an explicit build request into mandatory market research.
+
 ## Complete project setup
 
 Before a first experiment, the repository must be `PROJECT_READY`. Installing files alone is not completion. Local CLI and stdio MCP flows require GitHub CLI (`gh`) to be installed and authenticated (`gh auth login`).

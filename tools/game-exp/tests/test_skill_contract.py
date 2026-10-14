@@ -747,5 +747,19 @@ class GameExpSkillContractTests(unittest.TestCase):
 
 
 
+    def test_opportunity_card_is_optional_context_only(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        for phrase in (
+            "An optional upstream `game-opportunity` card",
+            "not",
+            "Manifest field",
+            "Ledger authority",
+            "same question",
+            "new next-stage hypothesis",
+            "Never route ordinary code changes",
+        ):
+            self.assertIn(phrase, skill)
+
+
 if __name__ == "__main__":
     unittest.main()
