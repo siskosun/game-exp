@@ -1,0 +1,66 @@
+name: Publish stable game-exp Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - VERSION.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-stable-game-exp-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Test canonical game-exp source and distribution
+        run: |
+          python -m unittest discover -s tools/game-exp/tests -v
+          python tools/game-exp/distribution_check.py --json
+      - name: Check MCP SDK integration
+        run: |
+          python -m pip install -r tools/game-exp/requirements-mcp.txt
+          python -m unittest tools/game-exp/tests/test_mcp_server.py -v
+      - name: Validate consistent patch version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION.txt)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid semver' >&2; exit 1; }
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          version = Path("VERSION.txt").read_text(encoding="utf-8").strip()
+          assert json.loads(Path("INSTALL.json").read_text(encoding="utf-8"))["version"] == version
+          assert json.loads(Path("plugins/game-exp/plugin.json").read_text(encoding="utf-8"))["version"] == version
+          PY
+      - name: Publish immutable GitHub Release from tested commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION.txt)"
+          tag="v${version}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists; refusing to replace or retarget." >&2
+            exit 1
+          fi
+          gh release create "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "${tag}" \
+            --notes "Stable game-exp source Release pinned to tested commit ${GITHUB_SHA}. Includes optional game-opportunity research context only. Protected Ledger, strict Manifest and explicit human gates unchanged."
