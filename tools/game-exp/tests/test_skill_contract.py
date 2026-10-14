@@ -761,5 +761,14 @@ class GameExpSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, skill)
 
 
+    def test_v04_upstream_player_signal_never_grants_review_or_select(self):
+        skill = SKILL.read_text(encoding="utf-8")
+        handoff = (PLUGIN / "skills" / "game-exp" / "references" / "prototype-handoff.md").read_text(encoding="utf-8")
+        for marker in ("game-opportunity", "MEETS_DECLARED_", "operator-reported", "human Review", "Candidate"):
+            self.assertIn(marker.casefold(), (skill + handoff).casefold())
+        self.assertIn("Never call `game_exp_review_record`", skill)
+        self.assertIn("Do not add these research fields", handoff)
+
+
 if __name__ == "__main__":
     unittest.main()

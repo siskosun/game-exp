@@ -56,6 +56,9 @@ Ask a focused player/product question only when competing interpretations would 
 
 At Candidate Review, relate actual playable behavior and evidence back to the original intended player outcome. Clearly separate tested behavior, subjective questions for human playtest, and material assumptions; a successful build is not proof of requirement fit.
 
+
+When an upstream `game-opportunity` validation-cycle v0.4 aggregate is supplied, treat its pretest plan hash, numerator/denominator, population/window and `MEETS_DECLARED_*_SIGNAL_NOT_A_DECISION` as **operator-reported research context only**. Neither a matched hash nor a positive aggregate signal proves actual human Review, trusted Candidate evaluation, or independent pretest timing. Never call `game_exp_review_record`, promote, select or reject based on that signal. Keep exact Candidate/source identity and user-owned human gates authoritative.
+
 An optional upstream `game-opportunity` card can provide cited market/player context when the user supplies one. It is **not** a prerequisite for creating or editing a prototype, a Manifest field, or Ledger authority. Carry forward a card's precise hypothesis and stop criterion only when this experiment tests the **same question**; otherwise state the genuinely new next-stage hypothesis and preserve a source link. Never route ordinary code changes, bug fixes, tuning, or an explicit build request into mandatory market research.
 
 ## Complete project setup
