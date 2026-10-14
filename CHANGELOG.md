@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.3 - 2026-10-14
+
+- Publish optional upstream game-opportunity (v0.4) player validation aggregate as non-authoritative research context, preserving exact cohort, pretest plan references and actual Candidate provenance.
+- A local research threshold and matching digest never replace independent pretest timing proof, trusted Ledger/Candidate, or explicit human Review.
+- Carry forward previously merged optional game-opportunity context and contract tests. Strict Manifest, Trusted Writer, human selection, source scope and recovery semantics are unchanged.
+- Add a tested, version-file-triggered Release workflow. The stable default installer remains published-Release pinned, never developer main.
+
+
 ## 1.5.2 - 2026-10-13
 
 - Introduce a lightweight requirement-clarification step before experiment binding and material revisions, inspired by ReqClarifyBench.

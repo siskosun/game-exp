@@ -101,7 +101,7 @@ python tools/game-exp/distribution_check.py --json
 
 v0.21 引入了 **Evaluation Evidence v1（评估证据机制）**：通过内容寻址的 Evaluation Profile，对固定 Candidate 产物进行可信重放与检查，提供三态的人类比较资格判断，并支持可选的现有方案与挑战方案的人类 A/B 比较注释。自动筛选只产生证据，**不会自动改变实验的生命周期状态**。
 
-当前源码版本：**`1.5.2`**。
+当前源码版本：**`1.5.3`**。
 
 ### 试玩版本交付
 
