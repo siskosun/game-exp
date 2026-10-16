@@ -43,7 +43,9 @@ class VettedCompanionPinsTest(unittest.TestCase):
 
     def transport(self, url, *, timeout=30):
         if url == m.VETTED_LOCK_URL:
-            return json.dumps({"schema_version":1,"policy":"released-pins-only","components":self.entries}).encode()
+            return json.dumps({"schema_version":1,"policy":"released-pins-only","components":{
+                **self.entries, "game-exp":{"repository":"siskosun/game-exp",
+                                             "version":"1.5.4", "tag":"v1.5.4"}}}).encode()
         for spec in m.COMPANION_SKILLS:
             entry = self.entries[spec.name]
             base = f"{m.GITHUB_API}/repos/{spec.repository}"
@@ -54,6 +56,19 @@ class VettedCompanionPinsTest(unittest.TestCase):
             if url == f"{m.GITHUB_CODELOAD}/{spec.repository}/zip/{entry['commit_sha']}":
                 return self.archives[entry["commit_sha"]]
         raise AssertionError("unexpected GitHub endpoint " + url)
+
+    def test_self_version_not_in_vetted_combination_fails_before_writes(self):
+        previous = self.transport
+        def incompatible(url, *, timeout=30):
+            if url == m.VETTED_LOCK_URL:
+                return json.dumps({"schema_version":1,"policy":"released-pins-only","components":{
+                    **self.entries, "game-exp":{"repository":"siskosun/game-exp",
+                                                 "version":"1.5.3", "tag":"v1.5.3"}}}).encode()
+            return previous(url, timeout=timeout)
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=incompatible):
+            with self.assertRaisesRegex(m.CompanionSkillSyncError, "not included in the vetted"):
+                m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
+            self.assertFalse((pathlib.Path(td) / ".codex/skills").exists())
 
     def test_pins_and_exact_commit_archive_are_installed(self):
         with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=self.transport):

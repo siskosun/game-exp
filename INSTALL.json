@@ -138,6 +138,7 @@
   ],
   "companion_skill_sync": {
     "mode": "vetted_lock_pins",
+    "requires_self_version_in_lock": true,
     "same_harness_only": true,
     "skills": [
       {

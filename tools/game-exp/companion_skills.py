@@ -129,6 +129,16 @@ def _vetted_companion_pins(specs: tuple[CompanionSkillSpec, ...]) -> dict[str, d
     components = lock.get("components")
     if not isinstance(components, dict):
         raise CompanionSkillSyncError("vetted compatibility components unavailable")
+    self_row = components.get("game-exp")
+    self_version_file = pathlib.Path(__file__).resolve().parents[2] / "VERSION.txt"
+    try:
+        current_version = self_version_file.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise CompanionSkillSyncError("game-exp source version is unavailable") from exc
+    if (not isinstance(self_row, dict) or self_row.get("repository") != "siskosun/game-exp"
+        or self_row.get("version") != current_version
+        or self_row.get("tag") != f"v{current_version}"):
+        raise CompanionSkillSyncError("game-exp is not included in the vetted four-Skill combination")
     result: dict[str, dict[str, str]] = {}
     for spec in specs:
         entry = components.get(spec.name)
