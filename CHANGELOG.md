@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.4 - 2026-10-16
+
+- Ship read-only, independently runnable version awareness with the installed game-exp Skill.
+- Official companion sync uses an immutable, release-bundled companion snapshot (H5 v0.2.6 and Godot v1.0.7); validates stable published Releases and commit/entrypoint identities before installing. The independent game-opportunity compatibility lock is updated after cross-Skill integration CI, avoiding circular release dependencies.
+- Keep all protected Ledger, Candidate, human Review and Trusted Writer authorization rules unchanged.
+- Old static installations are not forcibly updated; unknown/offline versions never count as trusted execution evidence.
+
+
 ## 1.5.3 - 2026-10-14
 
 - Publish optional upstream game-opportunity (v0.4) player validation aggregate as non-authoritative research context, preserving exact cohort, pretest plan references and actual Candidate provenance.

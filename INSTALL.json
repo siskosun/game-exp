@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "game-exp",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "source_of_truth": "https://github.com/siskosun/game-exp",
   "policy": {
     "default_update_scope": "current_harness_only",
@@ -94,7 +94,7 @@
     "CLI、本地 stdio MCP 和 project-create 依赖已登录的 GitHub CLI（gh）；先执行 gh auth login。",
     "安装与升级使用同一命令。",
     "默认只更新当前 Harness；不要顺带更新其他 Harness。",
-    "安装或升级当前 Harness 的 game-exp 时，会从两个独立 GitHub 仓库读取最新语义版本标签，并同步当前 Harness 下的 Godot Prototype Studio 与 H5 Game Prototype Agent；不会联动修改其他 Harness。",
+    "安装或升级当前 Harness 的 game-exp 时，按 game-exp 当前稳定 Release 内自带的已审核固定快照安装当前 Harness 的 Godot Prototype Studio 和 H5 Game Prototype Agent；game-opportunity 后续联合验收更新统一版本锁；不自动追逐未经验证的新标签；不会联动修改其他 Harness。",
     "安装/升级对 game-exp runtime、Skill、MCP 配置以及 GPS/H5 两个伴随 Skill 使用事务回滚；任一步失败时恢复受管目标到安装前状态。",
     "同版本 CURRENT 不再只比较版本号；还会核对托管运行时摘要、必需入口、game-exp Skill 和当前 Harness MCP 配置。",
     "不要在普通升级中同步 toy2game、game-exp-sandbox 或其他消费仓库。",
@@ -137,7 +137,8 @@
     "--json"
   ],
   "companion_skill_sync": {
-    "mode": "latest_semver_tag",
+    "mode": "vetted_release_snapshot",
+    "requires_self_version_in_snapshot": true,
     "same_harness_only": true,
     "skills": [
       {
