@@ -87,6 +87,7 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         "VERSION.txt": version,
         "plugin.json": plugin.get("version"),
         "INSTALL.json": install.get("version"),
+        "installed-Skill VERSION": (root / "plugins/game-exp/skills/game-exp/VERSION").read_text(encoding="utf-8").strip(),
     }
     add(
         "version_alignment",
@@ -150,7 +151,7 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
     }
     add(
         "companion_skill_sync_policy",
-        companion.get("mode") == "latest_semver_tag"
+        companion.get("mode") == "vetted_lock_pins"
         and companion.get("same_harness_only") is True
         and companion.get("runtime_filter") == "skill-runtime-allowlist"
         and companion.get("unversioned_source_policy") == "reject"

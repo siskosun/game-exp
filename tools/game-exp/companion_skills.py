@@ -104,6 +104,73 @@ def _latest_semver_tag(repository: str) -> str:
     return candidates[-1][1]
 
 
+
+VETTED_LOCK_URL = "https://raw.githubusercontent.com/siskosun/game-opportunity/main/skills/game-opportunity/compatibility.lock.json"
+_SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _vetted_companion_pins(specs: tuple[CompanionSkillSpec, ...]) -> dict[str, dict[str, str]]:
+    """Use only reviewed, immutable released pins for the actual shipped companions.
+
+    Custom test/dev specs retain the existing latest-tag route. Invalid lock,
+    moved tag, or missing published Release fails before any local Skill writes.
+    """
+    if tuple(specs) != COMPANION_SKILLS:
+        return {}
+    raw = _request_bytes(VETTED_LOCK_URL)
+    if len(raw) > 128 * 1024:
+        raise CompanionSkillSyncError("vetted compatibility lock exceeds size limit")
+    try:
+        lock = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise CompanionSkillSyncError("invalid vetted compatibility lock") from exc
+    if not isinstance(lock, dict) or lock.get("schema_version") != 1 or lock.get("policy") != "released-pins-only":
+        raise CompanionSkillSyncError("unapproved companion compatibility policy")
+    components = lock.get("components")
+    if not isinstance(components, dict):
+        raise CompanionSkillSyncError("vetted compatibility components unavailable")
+    result: dict[str, dict[str, str]] = {}
+    for spec in specs:
+        entry = components.get(spec.name)
+        if not isinstance(entry, dict) or entry.get("repository") != spec.repository:
+            raise CompanionSkillSyncError("vetted companion repository does not match")
+        tag, v = entry.get("tag"), entry.get("version")
+        sha, skill_hash = entry.get("commit_sha"), entry.get("skill_git_blob_sha1")
+        if (not isinstance(tag, str) or not _SEMVER_TAG.fullmatch(tag) or
+            not isinstance(v, str) or tag.lstrip("v") != v or
+            not isinstance(sha, str) or not _SHA40.fullmatch(sha) or
+            not isinstance(skill_hash, str) or not _SHA40.fullmatch(skill_hash)):
+            raise CompanionSkillSyncError("invalid pinned companion tag, version, or digest")
+        release_raw = _request_bytes(f"{GITHUB_API}/repos/{spec.repository}/releases/tags/{tag}")
+        try:
+            release = json.loads(release_raw.decode("utf-8"))
+        except (ValueError, UnicodeError) as exc:
+            raise CompanionSkillSyncError("companion Release metadata invalid") from exc
+        if (not isinstance(release, dict) or release.get("tag_name") != tag or
+            release.get("draft") or release.get("prerelease")):
+            raise CompanionSkillSyncError("pinned companion must be a stable published Release")
+        ref_raw = _request_bytes(f"{GITHUB_API}/repos/{spec.repository}/git/ref/tags/{tag}")
+        try:
+            ref = json.loads(ref_raw.decode("utf-8"))
+            obj = ref["object"]
+            if obj.get("type") == "tag":
+                tag_raw = _request_bytes(f"{GITHUB_API}/repos/{spec.repository}/git/tags/{obj['sha']}")
+                obj = json.loads(tag_raw.decode("utf-8"))["object"]
+            actual = obj["sha"] if obj["type"] == "commit" else None
+        except (KeyError, TypeError, ValueError, UnicodeError) as exc:
+            raise CompanionSkillSyncError("pinned companion tag cannot be resolved") from exc
+        if actual != sha:
+            raise CompanionSkillSyncError("pinned companion tag moved; refusing install")
+        result[spec.name] = {"tag": tag, "version": v, "sha": sha, "skill_blob": skill_hash}
+    return result
+
+
+def _git_blob_sha(path: pathlib.Path) -> str:
+    import hashlib
+    data = path.read_bytes()
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
 def _safe_extract(archive_path: pathlib.Path, target: pathlib.Path) -> pathlib.Path:
     target_root = target.resolve()
     with zipfile.ZipFile(archive_path) as archive:
@@ -284,13 +351,16 @@ class CompanionSkillSynchronizer:
         self.specs = specs
 
     def sync(self) -> list[dict[str, Any]]:
+        pins = _vetted_companion_pins(self.specs)
         results: list[dict[str, Any]] = []
         skill_root = _skill_root(self.home, self.harness)
         skill_root.mkdir(parents=True, exist_ok=True)
         for spec in self.specs:
-            tag = _latest_semver_tag(spec.repository)
+            approved = pins.get(spec.name)
+            tag = approved["tag"] if approved else _latest_semver_tag(spec.repository)
             archive_url = (
-                f"{GITHUB_CODELOAD}/{spec.repository}/zip/refs/tags/{tag}"
+                f"{GITHUB_CODELOAD}/{spec.repository}/zip/{approved['sha']}"
+                if approved else f"{GITHUB_CODELOAD}/{spec.repository}/zip/refs/tags/{tag}"
             )
             with tempfile.TemporaryDirectory(prefix="game-exp-companion-") as td:
                 temp = pathlib.Path(td)
@@ -300,6 +370,8 @@ class CompanionSkillSynchronizer:
                 extract_root.mkdir()
                 source = _safe_extract(archive_path, extract_root)
                 version = _validate_skill(source, spec, tag)
+                if approved and _git_blob_sha(source / "SKILL.md") != approved["skill_blob"]:
+                    raise CompanionSkillSyncError("pinned companion entrypoint digest mismatch")
                 target = skill_root / spec.name
                 mode = _copy_runtime_tree(source, target)
             results.append(
@@ -310,6 +382,7 @@ class CompanionSkillSynchronizer:
                     "version": version,
                     "target": str(target),
                     "update_mode": mode,
+                    "compatibility_basis": "vetted_release_lock" if approved else "custom_latest_semver_tag",
                 }
             )
         return results

@@ -24,6 +24,10 @@ Detailed rules live in the references below. Read only the reference needed for 
 
 ## Repository identity and version handshake
 
+Before a version-dependent cross-Skill handoff, make one read-only freshness check per task. Local Python Harness: `python plugins/game-exp/skills/game-exp/scripts/standalone_version_check.py --json` in source checkout, or `python <installed-skill-root>/scripts/standalone_version_check.py --json`. To verify a required H5/Godot installed peer, add `--harness codex --peer h5-game-prototype-agent --gate` (actual Harness/peer). In ChatGPT web, consult game-opportunity's vetted public compatibility lock and published stable Releases via GitHub, but do not claim to verify local installed files.
+
+This check is advisory for standalone read-only work. Unknown/incompatible peer versions stop only version-dependent cross-Skill handoffs, never the protected server on an unauthenticated self-report. An installed ZIP cannot force an update; no automatic install, no hidden startup hook, and no change to protected Ledger, official runtime/repository handshake, Doctor, Candidate or human Review.
+
 Global MCP registration must not hard-code one repository. Resolve an exact GitHub `owner/name` and Pass that `repo` explicitly, or intentionally bind `GAME_EXP_REPO` in a repository-local configuration. Never reuse a repository remembered from another chat.
 
 Start unfamiliar sessions with `game_exp_status`. It is the compact 1.0 handshake for Ledger head, access, runtime version, repository version, and protocol versions. If runtime/repository versions differ, align versions before mutation.

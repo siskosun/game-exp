@@ -57,6 +57,8 @@ PRODUCTION_TOOLS = (
 
 PLUGIN_FILES = (
     "plugins/game-exp/skills/game-exp/SKILL.md",
+    "plugins/game-exp/skills/game-exp/VERSION",
+    "plugins/game-exp/skills/game-exp/scripts/standalone_version_check.py",
     "plugins/game-exp/skills/game-exp/agents/openai.yaml",
     "plugins/game-exp/skills/game-exp/assets/icon.svg",
     "plugins/game-exp/skills/game-exp/references/workflow.md",
