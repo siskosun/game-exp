@@ -151,7 +151,8 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
     }
     add(
         "companion_skill_sync_policy",
-        companion.get("mode") == "vetted_lock_pins"
+        companion.get("mode") == "vetted_release_snapshot"
+        and companion.get("requires_self_version_in_snapshot") is True
         and companion.get("same_harness_only") is True
         and companion.get("runtime_filter") == "skill-runtime-allowlist"
         and companion.get("unversioned_source_policy") == "reject"
@@ -159,6 +160,29 @@ def run_checks(root: pathlib.Path = ROOT) -> dict[str, Any]:
         and actual_companions == expected_companions,
         companion,
     )
+
+    try:
+        snapshot = _read_json(root / "tools/game-exp/companion-compatibility.lock.json")
+        components = snapshot.get("components", {})
+        valid_snapshot = (
+            snapshot.get("schema_version") == 1
+            and snapshot.get("policy") == "released-pins-only"
+            and snapshot.get("game_exp_version") == version
+            and isinstance(components, dict)
+            and set(components) == {"godot-prototype-studio", "h5-game-prototype-agent"}
+            and all(
+                isinstance(row, dict)
+                and row.get("repository") == "siskosun/" + name
+                and isinstance(row.get("version"), str)
+                and row.get("tag") == "v" + row["version"]
+                and all(isinstance(row.get(k), str) and re.fullmatch(r"[0-9a-f]{40}", row[k]) is not None
+                        for k in ("commit_sha", "skill_git_blob_sha1"))
+                for name, row in components.items()
+            )
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        valid_snapshot = False
+    add("shipped_vetted_companion_snapshot", valid_snapshot)
 
     harnesses = install.get("harnesses")
     harnesses = harnesses if isinstance(harnesses, dict) else {}

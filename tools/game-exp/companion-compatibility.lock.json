@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "policy": "released-pins-only",
+  "game_exp_version": "1.5.4",
+  "assurance": "SHIP_TIME_PINS_NOT_FOUR_SKILL_END_TO_END_CERTIFIED",
+  "source": "game-exp-v1.5.4-release-snapshot",
+  "components": {
+    "godot-prototype-studio": {
+      "repository": "siskosun/godot-prototype-studio",
+      "tag": "v1.0.7",
+      "version": "1.0.7",
+      "commit_sha": "8c3356ee42c0d8a07fd550eb9caf95bf9a95f61c",
+      "skill_git_blob_sha1": "748f2a7a557a1c58eaa197828d185c13d359dffc"
+    },
+    "h5-game-prototype-agent": {
+      "repository": "siskosun/h5-game-prototype-agent",
+      "tag": "v0.2.6",
+      "version": "0.2.6",
+      "commit_sha": "fffe6579867e0f4f71c221ed0da836dbe418b835",
+      "skill_git_blob_sha1": "eb6b4cd96d5e7f468426c629d6af4ddd8e3ade3f"
+    }
+  }
+}

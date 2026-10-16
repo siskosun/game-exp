@@ -105,8 +105,27 @@ def _latest_semver_tag(repository: str) -> str:
 
 
 
-VETTED_LOCK_URL = "https://raw.githubusercontent.com/siskosun/game-opportunity/main/skills/game-opportunity/compatibility.lock.json"
+_SNAPSHOT_FILE = pathlib.Path(__file__).with_name("companion-compatibility.lock.json")
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _load_vetted_snapshot() -> dict[str, Any]:
+    """Ship-time pinned companion baseline, not a mutable live GO-main dependency."""
+    if _SNAPSHOT_FILE.is_symlink() or not _SNAPSHOT_FILE.is_file():
+        raise CompanionSkillSyncError("companion compatibility snapshot is missing")
+    try:
+        raw = _SNAPSHOT_FILE.read_bytes()
+    except OSError as exc:
+        raise CompanionSkillSyncError("cannot read companion compatibility snapshot") from exc
+    if len(raw) > 128 * 1024:
+        raise CompanionSkillSyncError("companion snapshot exceeds size limit")
+    try:
+        lock = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise CompanionSkillSyncError("invalid companion snapshot") from exc
+    if not isinstance(lock, dict):
+        raise CompanionSkillSyncError("invalid companion snapshot object")
+    return lock
 
 
 def _vetted_companion_pins(specs: tuple[CompanionSkillSpec, ...]) -> dict[str, dict[str, str]]:
@@ -117,28 +136,19 @@ def _vetted_companion_pins(specs: tuple[CompanionSkillSpec, ...]) -> dict[str, d
     """
     if tuple(specs) != COMPANION_SKILLS:
         return {}
-    raw = _request_bytes(VETTED_LOCK_URL)
-    if len(raw) > 128 * 1024:
-        raise CompanionSkillSyncError("vetted compatibility lock exceeds size limit")
-    try:
-        lock = json.loads(raw.decode("utf-8"))
-    except (ValueError, UnicodeError) as exc:
-        raise CompanionSkillSyncError("invalid vetted compatibility lock") from exc
-    if not isinstance(lock, dict) or lock.get("schema_version") != 1 or lock.get("policy") != "released-pins-only":
+    lock = _load_vetted_snapshot()
+    if lock.get("schema_version") != 1 or lock.get("policy") != "released-pins-only":
         raise CompanionSkillSyncError("unapproved companion compatibility policy")
     components = lock.get("components")
     if not isinstance(components, dict):
         raise CompanionSkillSyncError("vetted compatibility components unavailable")
-    self_row = components.get("game-exp")
     self_version_file = pathlib.Path(__file__).resolve().parents[2] / "VERSION.txt"
     try:
         current_version = self_version_file.read_text(encoding="utf-8").strip()
     except OSError as exc:
         raise CompanionSkillSyncError("game-exp source version is unavailable") from exc
-    if (not isinstance(self_row, dict) or self_row.get("repository") != "siskosun/game-exp"
-        or self_row.get("version") != current_version
-        or self_row.get("tag") != f"v{current_version}"):
-        raise CompanionSkillSyncError("game-exp is not included in the vetted four-Skill combination")
+    if lock.get("game_exp_version") != current_version:
+        raise CompanionSkillSyncError("game-exp version does not match shipped companion snapshot")
     result: dict[str, dict[str, str]] = {}
     for spec in specs:
         entry = components.get(spec.name)
@@ -392,7 +402,7 @@ class CompanionSkillSynchronizer:
                     "version": version,
                     "target": str(target),
                     "update_mode": mode,
-                    "compatibility_basis": "vetted_release_lock" if approved else "custom_latest_semver_tag",
+                    "compatibility_basis": "shipped_release_snapshot" if approved else "custom_latest_semver_tag",
                 }
             )
         return results

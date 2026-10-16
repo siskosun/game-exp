@@ -32,6 +32,7 @@ PRODUCTION_TOOLS = (
     "cli.py",
     "client.py",
     "companion_skills.py",
+    "companion-compatibility.lock.json",
     "conformance_core.py",
     "domain_core.py",
     "integration_control.py",

@@ -3,7 +3,7 @@
 ## 1.5.4 - 2026-10-16
 
 - Ship read-only, independently runnable version awareness with the installed game-exp Skill.
-- Official companion sync now resolves the vetted game-opportunity compatibility lock, verifies pinned stable Releases and immutable commit/entrypoint identities before installing H5/Godot.
+- Official companion sync uses an immutable, release-bundled companion snapshot (H5 v0.2.6 and Godot v1.0.7); validates stable published Releases and commit/entrypoint identities before installing. The independent game-opportunity compatibility lock is updated after cross-Skill integration CI, avoiding circular release dependencies.
 - Keep all protected Ledger, Candidate, human Review and Trusted Writer authorization rules unchanged.
 - Old static installations are not forcibly updated; unknown/offline versions never count as trusted execution evidence.
 

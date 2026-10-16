@@ -41,11 +41,11 @@ class VettedCompanionPinsTest(unittest.TestCase):
                 "skill_git_blob_sha1": blob,
             }
 
+    def snapshot(self):
+        return {"schema_version":1, "policy":"released-pins-only",
+                "game_exp_version":"1.5.4", "components":self.entries}
+
     def transport(self, url, *, timeout=30):
-        if url == m.VETTED_LOCK_URL:
-            return json.dumps({"schema_version":1,"policy":"released-pins-only","components":{
-                **self.entries, "game-exp":{"repository":"siskosun/game-exp",
-                                             "version":"1.5.4", "tag":"v1.5.4"}}}).encode()
         for spec in m.COMPANION_SKILLS:
             entry = self.entries[spec.name]
             base = f"{m.GITHUB_API}/repos/{spec.repository}"
@@ -57,24 +57,31 @@ class VettedCompanionPinsTest(unittest.TestCase):
                 return self.archives[entry["commit_sha"]]
         raise AssertionError("unexpected GitHub endpoint " + url)
 
-    def test_self_version_not_in_vetted_combination_fails_before_writes(self):
-        previous = self.transport
-        def incompatible(url, *, timeout=30):
-            if url == m.VETTED_LOCK_URL:
-                return json.dumps({"schema_version":1,"policy":"released-pins-only","components":{
-                    **self.entries, "game-exp":{"repository":"siskosun/game-exp",
-                                                 "version":"1.5.3", "tag":"v1.5.3"}}}).encode()
-            return previous(url, timeout=timeout)
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=incompatible):
-            with self.assertRaisesRegex(m.CompanionSkillSyncError, "not included in the vetted"):
+    def test_self_version_not_in_snapshot_fails_before_writes(self):
+        snapshot = self.snapshot()
+        snapshot["game_exp_version"] = "1.5.3"
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", return_value=snapshot):
+            with self.assertRaisesRegex(m.CompanionSkillSyncError, "does not match shipped"):
                 m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
             self.assertFalse((pathlib.Path(td) / ".codex/skills").exists())
 
+    def test_shipped_snapshot_versions_and_digests(self):
+        actual = m._load_vetted_snapshot()
+        self.assertEqual(actual["game_exp_version"], "1.5.4")
+        expected = {
+            "godot-prototype-studio": ("1.0.7", "8c3356ee42c0d8a07fd550eb9caf95bf9a95f61c"),
+            "h5-game-prototype-agent": ("0.2.6", "fffe6579867e0f4f71c221ed0da836dbe418b835"),
+        }
+        self.assertEqual(set(actual["components"]), set(expected))
+        for name, (version, commit) in expected.items():
+            self.assertEqual(actual["components"][name]["version"], version)
+            self.assertEqual(actual["components"][name]["commit_sha"], commit)
+
     def test_pins_and_exact_commit_archive_are_installed(self):
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=self.transport):
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", side_effect=self.snapshot), mock.patch.object(m, "_request_bytes", side_effect=self.transport):
             result = m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
             self.assertEqual(len(result), 2)
-            self.assertTrue(all(row["compatibility_basis"] == "vetted_release_lock" for row in result))
+            self.assertTrue(all(row["compatibility_basis"] == "shipped_release_snapshot" for row in result))
             for row in result:
                 self.assertTrue((pathlib.Path(row["target"]) / "SKILL.md").exists())
 
@@ -83,7 +90,7 @@ class VettedCompanionPinsTest(unittest.TestCase):
             if "/git/ref/tags/" in url:
                 return json.dumps({"object":{"type":"commit","sha":"f"*40}}).encode()
             return self.transport(url, timeout=timeout)
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=moved):
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", side_effect=self.snapshot), mock.patch.object(m, "_request_bytes", side_effect=moved):
             with self.assertRaisesRegex(m.CompanionSkillSyncError, "tag moved"):
                 m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
             self.assertFalse((pathlib.Path(td) / ".codex/skills").exists())
@@ -93,14 +100,14 @@ class VettedCompanionPinsTest(unittest.TestCase):
             if url.endswith("/releases/tags/v0.2.6"):
                 return json.dumps({"tag_name":"v0.2.6","prerelease":True,"draft":False}).encode()
             return self.transport(url, timeout=timeout)
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=malicious):
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", side_effect=self.snapshot), mock.patch.object(m, "_request_bytes", side_effect=malicious):
             with self.assertRaisesRegex(m.CompanionSkillSyncError, "stable published Release"):
                 m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
 
     def test_modified_entrypoint_archive_fails_deterministically(self):
         first = next(spec for spec in m.COMPANION_SKILLS if spec.name.startswith("godot"))
         self.entries[first.name]["skill_git_blob_sha1"] = "f"*40
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_request_bytes", side_effect=self.transport):
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", side_effect=self.snapshot), mock.patch.object(m, "_request_bytes", side_effect=self.transport):
             with self.assertRaisesRegex(m.CompanionSkillSyncError, "entrypoint digest mismatch"):
                 m.CompanionSkillSynchronizer(pathlib.Path(td), harness="codex").sync()
 
