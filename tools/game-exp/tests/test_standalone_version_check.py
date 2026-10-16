@@ -54,9 +54,9 @@ class StandaloneVersionTests(unittest.TestCase):
 
     def test_missing_companion_dependency_fails_closed(self):
         r = checker.evaluate(self.root, fetch=self.fetch, harness="codex",
-                             home=Path(self.temp.name), peers=("game-exp",))
+                             home=Path(self.temp.name), peers=("h5-game-prototype-agent",))
         self.assertEqual(r["status"], "UNVERIFIED")
-        self.assertEqual(r["peers"]["game-exp"]["status"], "UNVERIFIED")
+        self.assertEqual(r["peers"]["h5-game-prototype-agent"]["status"], "UNVERIFIED")
 
     def test_explicit_stable_release_only(self):
         def prerelease(url):
