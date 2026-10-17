@@ -52,6 +52,18 @@ Route from the user's intent first. Internal lifecycle terms belong in the workf
 | 诊断 / 修复仓库 | Doctor, `game_exp_project_init`; optional advanced preflight when explicitly enabled | `references/project-setup.md` |
 | GitHub Issue bridge / conformance | use only for the matching fallback or diagnostic task | `references/github-bridge.md`, `references/conformance.md` |
 
+## Optional integration viability diagnostic
+
+When a proposed experiment is likely to merge into main, assess the known
+pre-Bind integration blockers **without** adding a new approval gate.
+Read [integration viability preflight](references/integration-viability-preflight.md)
+and, when a filesystem is available, run the read-only
+scripts/preflight_integration.py on the proposed Manifest and verified pinned
+facts. Flag an unintegrated parent base absent from main, scope.avoid patterns
+that ban the initializer's own Manifest, and confirmed PR-creation permission
+gaps. Never turn absent ancestry or permission evidence into a PASS.
+Do not rewrite a bound Manifest, change protected policy or treat this
+advisory as Trusted Writer or Rehearsal evidence.
 ## Clarify intent before Bind and material changes
 
 Before creating an experiment or materially changing a prototype, apply the one-pass triage in `references/requirement-clarification.md`. Distinguish **user-confirmed intent**, **questions the experiment should test**, **reversible agent defaults**, and **blocking ambiguities**. Consult the current repository/Manifest before asking anything already answered.
