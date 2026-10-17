@@ -57,6 +57,7 @@ class BlindOriginStudyTests(unittest.TestCase):
         r=study.report(self.secret)
         self.assertEqual(r["status"],"NO_OBSERVED_PLAYER_PREFERENCES")
         self.assertEqual(r["recorded_responses"],0)
+        self.assertEqual(r["measurement_unit"],"session_reports_not_verified_unique_players")
         self.assertEqual(sum(r["counts_by_operator_declared_origin"].values()),0)
 
     def test_balanced_order_and_public_blinding(self):
