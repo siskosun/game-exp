@@ -113,6 +113,10 @@ v0.21 引入了 **Evaluation Evidence v1（评估证据机制）**：通过内�
 
 自 1.3.0 起，如果当前 Candidate 和受保护记录中紧邻的上一 Candidate 都有已经验证、可分享的试玩版本，交付卡还可以提供匿名的“版本 A / 版本 B”修订对比。用户偏好属于 `HUMAN_REPORTED` 证据，只能与针对**当前 Candidate** 明确提交的 Review `PASS` / `FAIL` 一同保存；不会自动排序、晋级、拒绝或选中任何 Candidate。
 
+### AI 独立设计与人机协作盲测（可选）
+
+新增一个不依赖付费 API 的[本地匿名试玩辅助流程](plugins/game-exp/skills/game-exp/references/blind-origin-study.md)：登记两组作品的来源和固定证据，生成顺序平衡的 A/B 试玩页，记录并汇总玩家的主观选择。它不自动认证所填 Candidate 身份、不证明真实试玩顺序，也不修改 Ledger 或代替人工 Review。仓库的[纯合成示例](examples/blind-origin-synthetic-plan.json)只用于机制测试，没有真实玩家或真实作品。
+
 ### 从零创建原型项目
 
 如果要制作全新原型而尚无项目仓库，本地 CLI / stdio MCP 可以使用 `project-create`，自动创建 GitHub 仓库、以最新已标记版本的 Godot 或 H5 起始模板初始化项目、安装 game-exp、推送 `main`，并完成项目初始化。
