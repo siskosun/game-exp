@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "study_id": "SYNTHETIC-DEMO-NOT-REAL",
+  "brief_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseline_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "evaluation_profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resource_budget": {
+    "model": "synthetic-no-api",
+    "max_minutes": 40,
+    "max_model_calls": 4
+  },
+  "playtest": {
+    "minimum_seconds_per_version": 60,
+    "planned_min_responses": 8,
+    "population": "FAKE/NO PARTICIPANTS",
+    "recruitment": "NO RECRUITMENT / OFFLINE SMOKE TEST",
+    "limitations": "Synthetic fixture only: fake Candidate IDs, hashes, trusted-evaluation claims and non-playable .invalid URLs. Zero human preference results."
+  },
+  "variants": [
+    {
+      "origin": "AI_ONLY",
+      "candidate_id": "SYNTHETIC-C-1",
+      "source_sha": "1111111111111111111111111111111111111111",
+      "artifact_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "baseline_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "design_trace_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "evaluation": {
+        "profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "result_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "screening": "ELIGIBLE",
+        "source": "TRUSTED_OBSERVED"
+      },
+      "delivery_url": "https://example.invalid/demo/1",
+      "usage": {
+        "model": "synthetic-no-api",
+        "minutes": 40,
+        "model_calls": 4
+      }
+    },
+    {
+      "origin": "HUMAN_AI",
+      "candidate_id": "SYNTHETIC-C-2",
+      "source_sha": "2222222222222222222222222222222222222222",
+      "artifact_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "baseline_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "design_trace_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "evaluation": {
+        "profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "result_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "screening": "ELIGIBLE",
+        "source": "TRUSTED_OBSERVED"
+      },
+      "delivery_url": "https://example.invalid/demo/2",
+      "usage": {
+        "model": "synthetic-no-api",
+        "minutes": 40,
+        "model_calls": 4
+      }
+    }
+  ]
+}
