@@ -28,4 +28,19 @@ The private result distinguishes all recorded responses, paired-play self-report
 
 For a **synthetic-only smoke test**, run the prepare and report commands with [the checked-in fake plan](../../../../../examples/blind-origin-synthetic-plan.json). Its Candidate, trusted-evaluation and game URLs are explicitly invented fixtures and MUST NOT be used with real participants, cited as evidence or imported into the protected Ledger.
 
+
+## Repeatable browser smoke test (no real players)
+
+The PR adds `tools/game-exp/tests/test_blind_origin_browser.py`, run in GitHub Actions by `.github/workflows/game-exp-blind-origin-browser.yml`. It hosts two neutral fake games and the A/B pages on temporary **different-port HTTPS servers with a self-signed test certificate**, then uses Chromium to exercise both desktop and mobile flows, iframe gameplay, JSON download, CLI import, reverse mapping and tamper refusal. The browser test creates only **synthetic** participant responses and keeps them in a temporary directory; they are not real player results or Ledger evidence.
+
+For optional local execution on a machine with Python, OpenSSL and compatible Chromium (from the game-exp repository root):
+
+```bash
+python -m pip install playwright==1.55.0
+python -m playwright install chromium
+GAME_EXP_BROWSER_E2E=1 python -m unittest tools/game-exp/tests/test_blind_origin_browser.py -v
+```
+
+This shell syntax is for Bash; on PowerShell, first set `$env:GAME_EXP_BROWSER_E2E='1'` and then run the Python unittest command. The test explicitly ignores its **own local self-signed certificate errors only**. Success does not verify production HTTPS certificates, external game URLs, participant independence or actual creative origin.
+
 No automatic promotion, rejection, Review outcome, commercial willingness-to-pay conclusion, significance test or population inference is produced.
