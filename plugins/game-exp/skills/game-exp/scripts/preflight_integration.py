@@ -43,7 +43,7 @@ def git_glob_match(path: str, pattern: str) -> bool:
         else:
             parts.append(re.escape(c))
         i += 1
-    return re.fullmatch("".join(parts)[1:-1], path) is not None
+    return re.fullmatch("".join(parts)[1:], path) is not None
 
 
 def git_is_ancestor(repo: Path, base: str, head: str) -> bool | None:
