@@ -167,7 +167,25 @@ def _file_digest(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def public_html(study_id: str, session_id: str, urls: list[str], seconds: int) -> str:
+def _session_commitment(plan: dict[str, Any], sid: str, order: list[int], plan_digest: str) -> str:
+    """Opaque, non-authoritative binding of an assigned order to fixed artifacts."""
+    return digest_object({
+        "study_id": plan["study_id"],
+        "session_id": sid,
+        "plan_digest": plan_digest,
+        "ordered_artifact_digests": [plan["variants"][index]["artifact_digest"] for index in order],
+    }).removeprefix("sha256:")
+
+
+def public_html(
+    study_id: str,
+    session_id: str,
+    urls: list[str],
+    seconds: int,
+    *,
+    plan_commitment: str,
+    session_commitment: str,
+) -> str:
     """The exported page contains no design origin, Candidate, or evaluation identifiers."""
     sections = "\n".join(
         f'<section id="version-{slot}"{" hidden" if slot == "B" else ""}><h2>版本 {slot}</h2><p><a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">单独打开版本 {slot}</a></p>'
@@ -182,7 +200,11 @@ def public_html(study_id: str, session_id: str, urls: list[str], seconds: int) -
             ("B_MUCH_BETTER", "B 明显更好"), ("INCONCLUSIVE", "无法判断"),
         )
     )
-    payload = json.dumps({"schema_version": 1, "study_id": study_id, "session_id": session_id}, ensure_ascii=False)
+    payload = json.dumps(
+        {"schema_version": 1, "study_id": study_id, "session_id": session_id,
+         "plan_commitment": plan_commitment, "session_commitment": session_commitment},
+        ensure_ascii=False,
+    )
     payload = payload.replace("<", "\\u003c").replace(">", "\\u003e")
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -237,6 +259,7 @@ def prepare(plan_path: pathlib.Path, private_dir: pathlib.Path, public_dir: path
         private_dir.chmod(0o700)
     except OSError:
         pass
+    plan_digest = digest_object(plan)
     indices = [0, 1] * (n // 2) + ([secrets.randbelow(2)] if n % 2 else [])
     secrets.SystemRandom().shuffle(indices)
     sessions = {}
@@ -245,14 +268,18 @@ def prepare(plan_path: pathlib.Path, private_dir: pathlib.Path, public_dir: path
         while sid in sessions:
             sid = secrets.token_hex(16)
         order = [first, 1 - first]
-        page = public_html(plan["study_id"], sid,
-                           [plan["variants"][j]["delivery_url"] for j in order],
-                           plan["playtest"]["minimum_seconds_per_version"])
+        page = public_html(
+            plan["study_id"], sid,
+            [plan["variants"][j]["delivery_url"] for j in order],
+            plan["playtest"]["minimum_seconds_per_version"],
+            plan_commitment=plan_digest.removeprefix("sha256:"),
+            session_commitment=_session_commitment(plan, sid, order, plan_digest),
+        )
         name = f"play-{sid}.html"
         raw = page.encode("utf-8")
         (public_dir / name).write_bytes(raw)
         sessions[sid] = {"order": order, "public_file": name, "public_digest": _file_digest(raw)}
-    state = {"schema_version": 1, "plan": plan, "plan_digest": digest_object(plan),
+    state = {"schema_version": 1, "plan": plan, "plan_digest": plan_digest,
              "sessions": sessions, "assignment_set_digest": digest_object(sessions)}
     (private_dir / "trial.json").write_bytes(_json_bytes(state))
     try:
@@ -277,12 +304,23 @@ def _state(private_dir: pathlib.Path) -> dict[str, Any]:
 
 
 def validate_response(value: Any, state: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    keys(value, {"schema_version", "study_id", "session_id", "choice", "self_reported_played_both"}, "response")
+    legacy = {"schema_version", "study_id", "session_id", "choice", "self_reported_played_both"}
+    commitments = {"plan_commitment", "session_commitment"}
+    if not isinstance(value, dict) or set(value) not in (legacy, legacy | commitments):
+        raise StudyError("response: invalid schema; both commitments must be present or absent")
     if value["schema_version"] != 1 or value["study_id"] != state["plan"]["study_id"]:
         raise StudyError("response study mismatch")
     sid = value["session_id"]
     if not isinstance(sid, str) or sid not in state["sessions"]:
         raise StudyError("response: session was not allocated")
+    if commitments.issubset(value):
+        expected_plan = state["plan_digest"].removeprefix("sha256:")
+        expected_session = _session_commitment(
+            state["plan"], sid, state["sessions"][sid]["order"], state["plan_digest"]
+        )
+        if (value["plan_commitment"] != expected_plan
+                or value["session_commitment"] != expected_session):
+            raise StudyError("response: plan or assigned-session commitment mismatch")
     if value["choice"] not in CHOICES or type(value["self_reported_played_both"]) is not bool:
         raise StudyError("response: invalid choice or played flag")
     if not value["self_reported_played_both"] and value["choice"] != "INCONCLUSIVE":
@@ -301,6 +339,8 @@ def record(private_dir: pathlib.Path, response_path: pathlib.Path) -> dict[str, 
         json.dump(row, fh, ensure_ascii=False, sort_keys=True, indent=2)
         fh.write("\n")
     return {"status": "RECORDED_UNVERIFIED", "session_id": sid,
+            "client_binding": ("MATCHED_UNTRUSTED" if "plan_commitment" in response
+                               else "LEGACY_NO_CLIENT_COMMITMENT"),
             "record_digest": _file_digest(output.read_bytes())}
 
 
@@ -317,6 +357,8 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
     n = 0
     eligible_n = 0
     not_played_both_n = 0
+    client_bound_n = 0
+    legacy_unbound_n = 0
     record_digests = []
     for file in sorted((private_dir / "responses").glob("*.json")):
         row = _read(file)
@@ -328,6 +370,10 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
             raise StudyError("response provenance/binding mismatch")
         n += 1
         record_digests.append(_file_digest(file.read_bytes()))
+        if "plan_commitment" in answer:
+            client_bound_n += 1
+        else:
+            legacy_unbound_n += 1
         if not answer["self_reported_played_both"]:
             not_played_both_n += 1
             continue  # A non-player report cannot contribute to preference or paired sample.
@@ -357,6 +403,8 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
             "response_set_digest": digest_object(record_digests),
             "allocated_sessions": len(state["sessions"]), "recorded_responses": n,
             "paired_play_reports": eligible_n, "not_played_both_reports": not_played_both_n,
+            "client_commitment_matched_reports": client_bound_n,
+            "legacy_without_client_commitment_reports": legacy_unbound_n,
             "planned_min_responses": plan["playtest"]["planned_min_responses"],
             "status": status, "public_pages_verified": pages_verified,
             "counts_by_operator_declared_origin": counts,
@@ -365,6 +413,7 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
             "actual_reported_resource_usage_equal": usage_equal,
             "playtest": plan["playtest"],
             "limitations": ["Source attribution and Candidate/Evaluation evidence were supplied by the operator, not independently verified by this script.",
+                            "Plan/session commitments detect accidental reassignment, not human identity, honesty or tampering by the operator; legacy unbound responses remain supported.", 
                             "Neither unique-human identity nor independent participant recruitment is verified; paired play, sequence and duration are self-reported; no population inference.",
                             "Candidate links or gameplay may leak provenance; sequential page display guides but cannot prove actual exposure order.",
                             "No Review, lifecycle decision, causal effect or paid willingness-to-pay is inferred."],
