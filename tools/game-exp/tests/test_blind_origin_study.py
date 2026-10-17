@@ -63,7 +63,7 @@ class BlindOriginStudyTests(unittest.TestCase):
         state=self.prepare(10)
         self.assertEqual(sum(v["order"][0]==0 for v in state["sessions"].values()),5)
         for session in state["sessions"].values():
-            page=(self.public/session["public_file"]).read_text()
+            page=(self.public/session["public_file"]).read_text(encoding="utf-8")
             for secret in ("AI_ONLY","HUMAN_AI","sha256:","candidate_id"):
                 self.assertNotIn(secret,page)
             self.assertIn("版本 A",page)
@@ -96,10 +96,10 @@ class BlindOriginStudyTests(unittest.TestCase):
     def test_provenance_digest_tampering_fails(self):
         self.prepare(1)
         path=self.secret/"trial.json"
-        data=json.loads(path.read_text())
+        data=json.loads(path.read_text(encoding="utf-8"))
         sid=next(iter(data["sessions"]))
         data["sessions"][sid]["order"].reverse()
-        path.write_text(json.dumps(data))
+        path.write_text(json.dumps(data), encoding="utf-8")
         with self.assertRaises(study.StudyError):
             study.report(self.secret)
 
@@ -134,7 +134,7 @@ class BlindOriginStudyTests(unittest.TestCase):
             self.prepare()
 
     def test_cannot_mix_public_and_private_directories(self):
-        self.p.write_text(json.dumps(self.plan))
+        self.p.write_text(json.dumps(self.plan), encoding="utf-8")
         with self.assertRaises(study.StudyError):
             study.prepare(self.p,self.secret,self.secret/"pages",2)
 
