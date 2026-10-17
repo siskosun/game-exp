@@ -296,8 +296,14 @@ def record(private_dir: pathlib.Path, response_path: pathlib.Path) -> dict[str, 
             "record_digest": _file_digest(output.read_bytes())}
 
 
-def report(private_dir: pathlib.Path) -> dict[str, Any]:
+def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) -> dict[str, Any]:
     state = _state(private_dir)
+    pages_verified = public_dir is not None
+    if public_dir is not None:
+        for session in state["sessions"].values():
+            path = public_dir / session["public_file"]
+            if path.is_symlink() or not path.is_file() or _file_digest(path.read_bytes()) != session["public_digest"]:
+                raise StudyError("public playtest page missing or digest mismatch")
     counts = {"AI_ONLY": 0, "HUMAN_AI": 0, "NO_CLEAR_DIFFERENCE": 0, "INCONCLUSIVE": 0}
     by_order = {"AI_FIRST": {k: 0 for k in counts}, "HUMAN_FIRST": {k: 0 for k in counts}}
     n = 0
@@ -343,7 +349,8 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
             "allocated_sessions": len(state["sessions"]), "recorded_responses": n,
             "paired_play_reports": eligible_n, "not_played_both_reports": not_played_both_n,
             "planned_min_responses": plan["playtest"]["planned_min_responses"],
-            "status": status, "counts_by_operator_declared_origin": counts,
+            "status": status, "public_pages_verified": pages_verified,
+            "counts_by_operator_declared_origin": counts,
             "order_breakdown": by_order,
             "production_resource_ceiling_shared": True,
             "actual_reported_resource_usage_equal": usage_equal,
@@ -368,6 +375,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--response", type=pathlib.Path, required=True)
     p = sub.add_parser("report")
     p.add_argument("--private-dir", type=pathlib.Path, required=True)
+    p.add_argument("--public-dir", type=pathlib.Path, default=None,
+                   help="optional: verify every generated A/B page against its SHA-256")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "prepare":
@@ -375,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "record":
             result = record(args.private_dir, args.response)
         else:
-            result = report(args.private_dir)
+            result = report(args.private_dir, args.public_dir)
     except (StudyError, OSError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "ERROR", "error": str(exc)}, ensure_ascii=False))
         return 2
