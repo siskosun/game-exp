@@ -184,6 +184,17 @@ class BlindOriginStudyTests(unittest.TestCase):
         with self.assertRaises(study.StudyError):
             self.prepare()
 
+    def test_percent_encoded_source_labels_do_not_break_blindness(self):
+        for suffix in (
+            "human%2Dai/demo",
+            "AI%5FONLY/demo",
+            "%2568uman%252dai/demo",
+        ):
+            with self.subTest(suffix=suffix):
+                self.plan["variants"][0]["delivery_url"]="https://example.org/"+suffix
+                with self.assertRaises(study.StudyError):
+                    self.prepare()
+
     def test_cannot_mix_public_and_private_directories(self):
         self.p.write_text(json.dumps(self.plan), encoding="utf-8")
         with self.assertRaises(study.StudyError):
