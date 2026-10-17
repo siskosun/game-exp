@@ -111,6 +111,31 @@ class BlindOriginStudyTests(unittest.TestCase):
         self.assertEqual(r["counts_by_operator_declared_origin"]["INCONCLUSIVE"],1)
         self.assertEqual(r["paired_play_reports"],1)
 
+    def test_public_pages_are_content_bound_when_audited(self):
+        state=self.prepare(2)
+        r=study.report(self.secret,self.public)
+        self.assertTrue(r["public_pages_verified"])
+        name=next(iter(state["sessions"].values()))["public_file"]
+        path=self.public/name
+        path.write_text(path.read_text(encoding="utf-8")+"<!--tampered-->",encoding="utf-8")
+        with self.assertRaises(study.StudyError):
+            study.report(self.secret,self.public)
+
+    def test_report_without_pages_is_explicitly_unverified(self):
+        self.prepare(1)
+        self.assertFalse(study.report(self.secret)["public_pages_verified"])
+
+    def test_checked_in_synthetic_example_has_no_consumer_results(self):
+        example=ROOT/"examples/blind-origin-synthetic-plan.json"
+        plan=json.loads(example.read_text(encoding="utf-8"))
+        self.assertTrue(plan["study_id"].startswith("SYNTHETIC-"))
+        self.assertTrue(all(".invalid" in v["delivery_url"] for v in plan["variants"]))
+        study.prepare(example,self.secret,self.public,4)
+        summary=study.report(self.secret,self.public)
+        self.assertEqual(summary["status"],"NO_OBSERVED_PLAYER_PREFERENCES")
+        self.assertEqual(summary["recorded_responses"],0)
+        self.assertTrue(summary["public_pages_verified"])
+
     def test_no_false_report_or_unassigned_vote(self):
         state=self.prepare(1)
         with self.assertRaises(study.StudyError):
