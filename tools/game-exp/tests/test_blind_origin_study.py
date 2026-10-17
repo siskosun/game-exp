@@ -72,6 +72,51 @@ class BlindOriginStudyTests(unittest.TestCase):
             self.assertIn('id="vote" hidden', page)
             self.assertIn("getElementById('next-version')", page)
 
+    def test_commitment_bound_vote_matches_exact_assigned_artifact_order(self):
+        state=self.prepare(2)
+        sid=next(iter(state["sessions"]))
+        row={
+            "schema_version":1,"study_id":self.plan["study_id"],"session_id":sid,
+            "choice":"NO_CLEAR_DIFFERENCE","self_reported_played_both":True,
+            "plan_commitment":state["plan_digest"].removeprefix("sha256:"),
+            "session_commitment":study._session_commitment(
+                state["plan"],sid,state["sessions"][sid]["order"],state["plan_digest"]),
+        }
+        f=self.root/"vote.json"
+        f.write_text(json.dumps(row),encoding="utf-8")
+        recorded=study.record(self.secret,f)
+        self.assertEqual(recorded["client_binding"],"MATCHED_UNTRUSTED")
+        summary=study.report(self.secret,self.public)
+        self.assertEqual(summary["client_commitment_matched_reports"],1)
+        self.assertEqual(summary["legacy_without_client_commitment_reports"],0)
+        self.assertEqual(summary["counts_by_operator_declared_origin"]["NO_CLEAR_DIFFERENCE"],1)
+
+    def test_misbound_vote_or_incomplete_commitments_is_rejected(self):
+        state=self.prepare(2)
+        sids=list(state["sessions"])
+        sid=sids[0]
+        row={
+            "schema_version":1,"study_id":self.plan["study_id"],"session_id":sid,
+            "choice":"INCONCLUSIVE","self_reported_played_both":True,
+            "plan_commitment":state["plan_digest"].removeprefix("sha256:"),
+            "session_commitment":study._session_commitment(
+                state["plan"],sids[1],state["sessions"][sids[1]]["order"],state["plan_digest"]),
+        }
+        f=self.root/"vote.json"
+        f.write_text(json.dumps(row),encoding="utf-8")
+        with self.assertRaises(study.StudyError):
+            study.record(self.secret,f)
+        row["session_commitment"]=study._session_commitment(
+            state["plan"],sid,state["sessions"][sid]["order"],state["plan_digest"])
+        row["plan_commitment"]="0"*64
+        f.write_text(json.dumps(row),encoding="utf-8")
+        with self.assertRaises(study.StudyError):
+            study.record(self.secret,f)
+        del row["plan_commitment"]
+        f.write_text(json.dumps(row),encoding="utf-8")
+        with self.assertRaises(study.StudyError):
+            study.record(self.secret,f)
+
     def test_synthetic_decoding_and_one_vote_per_session(self):
         state=self.prepare(2)
         for sid,row in state["sessions"].items():
@@ -79,6 +124,8 @@ class BlindOriginStudyTests(unittest.TestCase):
             self.vote(sid,"A_MUCH_BETTER" if idx==0 else "B_MUCH_BETTER")
         result=study.report(self.secret)
         self.assertEqual(result["counts_by_operator_declared_origin"]["AI_ONLY"],2)
+        self.assertEqual(result["legacy_without_client_commitment_reports"],2)
+        self.assertEqual(result["client_commitment_matched_reports"],0)
         self.assertEqual(result["status"],"DESCRIPTIVE_BELOW_PREDECLARED_MINIMUM")
         with self.assertRaises(FileExistsError):
             self.vote(sid)
