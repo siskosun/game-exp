@@ -177,11 +177,17 @@ class BlindOriginHTTPSBrowserTests(unittest.TestCase):
                 self.assertEqual(vote["study_id"], "SYNTHETIC-DEMO-NOT-REAL")
                 self.assertEqual(vote["choice"], "B_SLIGHTLY_BETTER")
                 self.assertTrue(vote["self_reported_played_both"])
+                self.assertEqual(
+                    vote["plan_commitment"], self.state["plan_digest"].removeprefix("sha256:")
+                )
+                self.assertEqual(len(vote["session_commitment"]), 64)
 
                 recorded = self.cli("record", "--private-dir", str(self.private),
                                     "--response", str(saved_path))
                 self.assertEqual(recorded.returncode, 0, recorded.stdout + recorded.stderr)
-                self.assertEqual(json.loads(recorded.stdout)["status"], "RECORDED_UNVERIFIED")
+                receipt=json.loads(recorded.stdout)
+                self.assertEqual(receipt["status"], "RECORDED_UNVERIFIED")
+                self.assertEqual(receipt["client_binding"], "MATCHED_UNTRUSTED")
                 duplicate = self.cli("record", "--private-dir", str(self.private),
                                      "--response", str(saved_path))
                 self.assertEqual(duplicate.returncode, 2)
@@ -195,6 +201,8 @@ class BlindOriginHTTPSBrowserTests(unittest.TestCase):
         self.assertEqual(result["recorded_responses"], 2)
         self.assertEqual(result["measurement_unit"], "session_reports_not_verified_unique_players")
         self.assertEqual(result["paired_play_reports"], 2)
+        self.assertEqual(result["client_commitment_matched_reports"], 2)
+        self.assertEqual(result["legacy_without_client_commitment_reports"], 0)
         self.assertEqual(result["counts_by_operator_declared_origin"]["AI_ONLY"], 1)
         self.assertEqual(result["counts_by_operator_declared_origin"]["HUMAN_AI"], 1)
         self.assertEqual(result["status"], "DESCRIPTIVE_BELOW_PREDECLARED_MINIMUM")
