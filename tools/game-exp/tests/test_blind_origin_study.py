@@ -67,6 +67,9 @@ class BlindOriginStudyTests(unittest.TestCase):
             for secret in ("AI_ONLY","HUMAN_AI","sha256:","candidate_id"):
                 self.assertNotIn(secret,page)
             self.assertIn("版本 A",page)
+            self.assertIn('id="version-B" hidden', page)
+            self.assertIn('id="vote" hidden', page)
+            self.assertIn("getElementById('next-version')", page)
 
     def test_synthetic_decoding_and_one_vote_per_session(self):
         state=self.prepare(2)
@@ -83,7 +86,30 @@ class BlindOriginStudyTests(unittest.TestCase):
         state=self.prepare(1)
         sid=next(iter(state["sessions"]))
         self.vote(sid,"INCONCLUSIVE",False)
-        self.assertEqual(study.report(self.secret)["counts_by_operator_declared_origin"]["INCONCLUSIVE"],1)
+        r=study.report(self.secret)
+        self.assertEqual(r["counts_by_operator_declared_origin"]["INCONCLUSIVE"],0)
+        self.assertEqual(r["not_played_both_reports"],1)
+        self.assertEqual(r["paired_play_reports"],0)
+        self.assertEqual(r["status"],"NO_OBSERVED_PLAYER_PREFERENCES")
+
+    def test_nonplayers_cannot_fill_predeclared_sample(self):
+        state=self.prepare(5)
+        for sid in state["sessions"]:
+            self.vote(sid,"INCONCLUSIVE",False)
+        r=study.report(self.secret)
+        self.assertEqual(r["recorded_responses"],5)
+        self.assertEqual(r["paired_play_reports"],0)
+        self.assertEqual(r["not_played_both_reports"],5)
+        self.assertEqual(r["status"],"NO_OBSERVED_PLAYER_PREFERENCES")
+        self.assertEqual(sum(r["counts_by_operator_declared_origin"].values()),0)
+
+    def test_played_both_inconclusive_is_a_valid_paired_report(self):
+        state=self.prepare(1)
+        sid=next(iter(state["sessions"]))
+        self.vote(sid,"INCONCLUSIVE",True)
+        r=study.report(self.secret)
+        self.assertEqual(r["counts_by_operator_declared_origin"]["INCONCLUSIVE"],1)
+        self.assertEqual(r["paired_play_reports"],1)
 
     def test_no_false_report_or_unassigned_vote(self):
         state=self.prepare(1)
