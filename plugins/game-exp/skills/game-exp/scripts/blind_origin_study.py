@@ -162,7 +162,7 @@ def _file_digest(data: bytes) -> str:
 def public_html(study_id: str, session_id: str, urls: list[str], seconds: int) -> str:
     """The exported page contains no design origin, Candidate, or evaluation identifiers."""
     sections = "\n".join(
-        f'<section><h2>版本 {slot}</h2><p><a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">单独打开版本 {slot}</a></p>'
+        f'<section id="version-{slot}"{" hidden" if slot == "B" else ""}><h2>版本 {slot}</h2><p><a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">单独打开版本 {slot}</a></p>'
         f'<iframe title="版本 {slot}" loading="lazy" referrerpolicy="no-referrer" src="{html.escape(url, quote=True)}"></iframe></section>'
         for slot, url in zip(("A", "B"), urls)
     )
@@ -183,15 +183,22 @@ body{{font:16px system-ui,sans-serif;max-width:1100px;margin:20px auto;padding:0
 main{{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}}
 section{{border:1px solid #bbb;border-radius:10px;padding:12px}}
 iframe{{width:100%;height:390px;border:1px solid #ddd}}
-label{{display:block;margin:9px 0}}button{{padding:10px 18px}}
+[hidden]{{display:none!important}}label{{display:block;margin:9px 0}}button{{padding:10px 18px}}
 </style></head><body><h1>匿名 A/B 试玩</h1>
 <p>请分别试玩两个版本至少 {seconds} 秒。可用框内操作；若无法嵌入，请打开对应链接。
 仅评价作品本身；不要猜测制作来源。游戏页面自身可能泄漏来源，主持人须预先核查。</p>
-<main>{sections}</main><form id="vote"><h2>您的偏好</h2>{option_lines}
+<main>{sections}</main><p><button type="button" id="next-version">已体验 A，继续版本 B</button></p>
+<form id="vote" hidden><h2>您的偏好</h2>{option_lines}
 <label><input type="checkbox" id="played">我已分别试玩两个版本（自报，系统无法核实）</label>
 <button type="submit">下载匿名评价 JSON</button></form>
 <p id="message" role="status"></p><script>
 const base={payload};
+document.getElementById('next-version').addEventListener('click', ()=>{{
+ document.getElementById('version-A').hidden=true;
+ document.getElementById('version-B').hidden=false;
+ document.getElementById('vote').hidden=false;
+ document.getElementById('next-version').hidden=true;
+}});
 document.getElementById('vote').addEventListener('submit', e=>{{
  e.preventDefault();const choice=document.querySelector('input[name="choice"]:checked');
  const played=document.getElementById('played').checked;
@@ -294,6 +301,8 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
     counts = {"AI_ONLY": 0, "HUMAN_AI": 0, "NO_CLEAR_DIFFERENCE": 0, "INCONCLUSIVE": 0}
     by_order = {"AI_FIRST": {k: 0 for k in counts}, "HUMAN_FIRST": {k: 0 for k in counts}}
     n = 0
+    eligible_n = 0
+    not_played_both_n = 0
     record_digests = []
     for file in sorted((private_dir / "responses").glob("*.json")):
         row = _read(file)
@@ -303,6 +312,12 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
                 or row["public_digest"] != state["sessions"][sid]["public_digest"]
                 or row["evidence_source"] != "PARTICIPANT_REPORTED_UNVERIFIED"):
             raise StudyError("response provenance/binding mismatch")
+        n += 1
+        record_digests.append(_file_digest(file.read_bytes()))
+        if not answer["self_reported_played_both"]:
+            not_played_both_n += 1
+            continue  # A non-player report cannot contribute to preference or paired sample.
+        eligible_n += 1
         first_origin = state["plan"]["variants"][state["sessions"][sid]["order"][0]]["origin"]
         bucket = "AI_FIRST" if first_origin == "AI_ONLY" else "HUMAN_FIRST"
         choice = answer["choice"]
@@ -313,14 +328,12 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
             result = choice
         counts[result] += 1
         by_order[bucket][result] += 1
-        n += 1
-        record_digests.append(_file_digest(file.read_bytes()))
     plan = state["plan"]
     observed = [v["usage"] for v in plan["variants"]]
     usage_equal = observed[0] == observed[1]
-    if n == 0:
+    if eligible_n == 0:
         status = "NO_OBSERVED_PLAYER_PREFERENCES"
-    elif n < plan["playtest"]["planned_min_responses"]:
+    elif eligible_n < plan["playtest"]["planned_min_responses"]:
         status = "DESCRIPTIVE_BELOW_PREDECLARED_MINIMUM"
     else:
         status = "DESCRIPTIVE_ONLY_HUMAN_REVIEW_REQUIRED"
@@ -328,6 +341,7 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
             "plan_digest": state["plan_digest"], "assignment_set_digest": state["assignment_set_digest"],
             "response_set_digest": digest_object(record_digests),
             "allocated_sessions": len(state["sessions"]), "recorded_responses": n,
+            "paired_play_reports": eligible_n, "not_played_both_reports": not_played_both_n,
             "planned_min_responses": plan["playtest"]["planned_min_responses"],
             "status": status, "counts_by_operator_declared_origin": counts,
             "order_breakdown": by_order,
@@ -335,8 +349,8 @@ def report(private_dir: pathlib.Path) -> dict[str, Any]:
             "actual_reported_resource_usage_equal": usage_equal,
             "playtest": plan["playtest"],
             "limitations": ["Source attribution and Candidate/Evaluation evidence were supplied by the operator, not independently verified by this script.",
-                            "Participant reports and play duration are not independently verified; not randomized recruitment or population inference.",
-                            "Candidate links or gameplay may leak provenance; the script only masks presentation labels.",
+                            "Whether the participant played both versions and the actual play order/duration are self-reported, not verified; no population inference.",
+                            "Candidate links or gameplay may leak provenance; sequential page display guides but cannot prove actual exposure order.",
                             "No Review, lifecycle decision, causal effect or paid willingness-to-pay is inferred."],
             "authority": "LOCAL_NON_AUTHORITATIVE_NOT_LEDGER_EVIDENCE"}
 
