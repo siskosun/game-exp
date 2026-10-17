@@ -352,6 +352,7 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
     else:
         status = "DESCRIPTIVE_ONLY_HUMAN_REVIEW_REQUIRED"
     return {"schema_version": 1, "study_id": plan["study_id"],
+            "measurement_unit": "session_reports_not_verified_unique_players",
             "plan_digest": state["plan_digest"], "assignment_set_digest": state["assignment_set_digest"],
             "response_set_digest": digest_object(record_digests),
             "allocated_sessions": len(state["sessions"]), "recorded_responses": n,
