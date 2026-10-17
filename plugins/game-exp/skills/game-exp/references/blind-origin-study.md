@@ -12,6 +12,19 @@ Define `AI_ONLY` as the model designing and implementing without human creative 
 
 H5 Game Prototype Agent and Godot Prototype Studio produce builds and independently test gameplay/browser interactions; game-exp freezes Candidate evidence. game-opportunity may cite aggregate observations, but its preregistered player-behavior signals remain separate. This sidecar introduces no new protected comparison schema.
 
+## Define the scientific question before generating a pair
+
+This minimal tool assesses preference for **two fixed outputs made under declared workflows**. One AI-only game versus one human-AI game cannot establish an average human contribution across games, nor a causal effect of human creativity if the workflows also differ in coding, assets, test effort or implementation quality.
+
+Choose and freeze the comparison unit **before** authoring:
+
+- **Production workflow comparison (default):** supply an identical frozen brief, starter/template, asset access, technology, engine/model version, evaluator Profile, budget ceiling and allowed iteration window to both producers. Human creative interventions are permitted only in HUMAN_AI, while AI_ONLY may use the same declared budget for autonomous revision. Log prompts, actual model calls, elapsed production effort and substantive design changes separately. The output is a within-brief *workflow* comparison, not proof of a pure design effect.
+- **Human design-edit increment (alternative):** begin from one frozen AI design and common implementation baseline. Permit a documented human creative change in HUMAN_AI, and a resource-matched autonomous change in AI_ONLY; build both with the same implementation pipeline. This narrows implementation differences but still estimates only this particular comparison.
+
+The `usage.minutes` field is operator-declared production effort, **not** proof that human and AI costs are equal. Include active human design/edit time and separately retain generation/retry logs outside the protected Ledger. Record actual budget differences; do not conceal unequal resources by noting only identical ceilings.
+
+Freeze the primary endpoint as one adult participant's overall **anonymous, paired playtest choice** (including `NO_CLEAR_DIFFERENCE` and `INCONCLUSIVE`). Randomly assign available session pages without selecting orders based on testers; keep each person to one session using a separately managed eligibility roster rather than claiming this script verifies uniqueness. Finish recruitment and playback before unblinding the private source mapping. Do not revise Candidate artifacts after responses begin. Independently inspect both playable pages for author names, model logos, URL/title clues, broken embeds and materially different playtest instructions. Report recruitment, exposure and attrition limitations even if every technical check passes.
+
 ## Local use
 
 Create a private `plan.json` with `schema_version=1`, unique `study_id`, `brief_digest`, `baseline_digest`, `evaluation_profile_digest` (all sha256 digests), `resource_budget` (`model`, `max_minutes`, `max_model_calls`), `playtest` (`minimum_seconds_per_version`, `planned_min_responses`, `population`, `recruitment`, `limitations`), and exactly two `variants`. Each variant has `origin`, `candidate_id`, `source_sha`, `artifact_digest`, `baseline_digest`, `design_trace_digest`, `delivery_url`, `usage` (`model`, `minutes`, `model_calls`), and `evaluation` (`profile_digest`, `result_digest`, `screening=ELIGIBLE`, `source=TRUSTED_OBSERVED`). Never fabricate these fields for real tests.
