@@ -60,6 +60,7 @@ PLUGIN_FILES = (
     "plugins/game-exp/skills/game-exp/SKILL.md",
     "plugins/game-exp/skills/game-exp/VERSION",
     "plugins/game-exp/skills/game-exp/scripts/standalone_version_check.py",
+    "plugins/game-exp/skills/game-exp/scripts/blind_origin_study.py",
     "plugins/game-exp/skills/game-exp/agents/openai.yaml",
     "plugins/game-exp/skills/game-exp/assets/icon.svg",
     "plugins/game-exp/skills/game-exp/references/workflow.md",
@@ -75,6 +76,7 @@ PLUGIN_FILES = (
     "plugins/game-exp/skills/game-exp/references/project-setup.md",
     "plugins/game-exp/skills/game-exp/references/conformance.md",
     "plugins/game-exp/skills/game-exp/references/evaluation.md",
+    "plugins/game-exp/skills/game-exp/references/blind-origin-study.md",
 )
 
 def node_npm_policy(node_version: str) -> dict[str, object]:
