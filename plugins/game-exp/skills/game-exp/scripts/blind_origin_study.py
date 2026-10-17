@@ -16,7 +16,7 @@ import re
 import secrets
 import sys
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = pathlib.Path(__file__).resolve()
@@ -82,9 +82,17 @@ def https_url(value: Any) -> str:
     if (url.scheme != "https" or not url.hostname or url.username or url.password
             or url.fragment or any(ord(c) < 32 for c in value)):
         raise StudyError("delivery_url: require shareable https URL without credentials/fragment")
-    # Common source labels in URL paths would invalidate the intended blinding.
-    if re.search(r"ai[-_]only|human[-_]ai|human[-_]made|human[-_]design", value, re.I):
-        raise StudyError("delivery_url: producer-origin clue; publish neutral playable URL")
+    # Decode a bounded number of times: percent-encoding must not hide
+    # recognizable producer labels from the participant-facing URL.
+    origin_clue = re.compile(r"ai[-_]only|human[-_]ai|human[-_]made|human[-_]design", re.I)
+    decoded = value
+    for _ in range(5):
+        if origin_clue.search(decoded):
+            raise StudyError("delivery_url: producer-origin clue; publish neutral playable URL")
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
     return value
 
 
