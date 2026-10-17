@@ -193,6 +193,7 @@ class BlindOriginHTTPSBrowserTests(unittest.TestCase):
         self.assertEqual(summary.returncode, 0, summary.stdout + summary.stderr)
         result = json.loads(summary.stdout)
         self.assertEqual(result["recorded_responses"], 2)
+        self.assertEqual(result["measurement_unit"], "session_reports_not_verified_unique_players")
         self.assertEqual(result["paired_play_reports"], 2)
         self.assertEqual(result["counts_by_operator_declared_origin"]["AI_ONLY"], 1)
         self.assertEqual(result["counts_by_operator_declared_origin"]["HUMAN_AI"], 1)
