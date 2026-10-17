@@ -226,3 +226,7 @@ Evaluation Evidence v1 never changes these rules:
 - machine dominance does not authorize REJECTED;
 - human pairwise preference does not authorize SELECTED;
 - SELECTED remains the explicit human choice for integration after PROMISING and fresh Rehearsal requirements.
+
+## Optional AI-only versus human-AI origin study
+
+See [blind-origin-study.md](blind-origin-study.md) for a **local, descriptive, non-authoritative** multi-player preference protocol built on exact Candidate identities and an identical trusted Evaluation Profile. This is separate from the existing human Review A/B annotations. It does not change Ledger, Evidence provenance, lifecycle states or human Review authority.
