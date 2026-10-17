@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - 2026-10-17
+
+- Add optional, read-only pre-Bind integration viability diagnostic for pinned parent/main ancestry, own-Manifest scope conflicts and verified PR creation capabilities.
+- Document identity-preserving PR creation through an independently authorized connector when Actions cannot open the PR; reuse the original trusted workflow attempt and keep human gates intact.
+- Add synthetic regressions covering the Echo Tide EXP-5/6/7 failure modes; no protected Ledger, workflow permission, release version or consumer repository changed.
+
 ## 1.5.4 - 2026-10-16
 
 - Ship read-only, independently runnable version awareness with the installed game-exp Skill.
