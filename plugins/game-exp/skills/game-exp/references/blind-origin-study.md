@@ -1,0 +1,29 @@
+# AI-only vs human-AI blind comparison (optional local sidecar)
+
+Inspired by Conlon and Schwardmann (2026), https://arxiv.org/abs/2610.18921. This is an **observational preference pilot**, not a replication of incentivized willingness-to-pay, a causal estimate, or evidence that AI is superior.
+
+The helper `scripts/blind_origin_study.py` works without a paid API. It does not modify protected Ledger records, lifecycle, Review PASS/FAIL, or selection. Keep Review strictly human-controlled.
+
+## Preconditions and roles
+
+Both variants must come from the same frozen gameplay brief and baseline, share an immutable Evaluation Profile, have independent fixed Candidate artifacts and verified shareable HTTPS playable URLs. Their trusted evaluation screening must be ELIGIBLE. An operator must verify every Candidate SHA/digest/Profile against the protected Ledger; the sidecar **checks consistency of operator-entered values, not their authenticity**.
+
+Define `AI_ONLY` as the model designing and implementing without human creative iteration; `HUMAN_AI` permits human direction and edits. Both arms use the same model/toolchain and declared production time/model-call ceilings; record real consumption including human time. Source files, playable game metadata, game title and URL can unblind participants: audit them before recruitment.
+
+H5 Game Prototype Agent and Godot Prototype Studio produce builds and independently test gameplay/browser interactions; game-exp freezes Candidate evidence. game-opportunity may cite aggregate observations, but its preregistered player-behavior signals remain separate. This sidecar introduces no new protected comparison schema.
+
+## Local use
+
+Create a private `plan.json` with `schema_version=1`, unique `study_id`, `brief_digest`, `baseline_digest`, `evaluation_profile_digest` (all sha256 digests), `resource_budget` (`model`, `max_minutes`, `max_model_calls`), `playtest` (`minimum_seconds_per_version`, `planned_min_responses`, `population`, `recruitment`, `limitations`), and exactly two `variants`. Each variant has `origin`, `candidate_id`, `source_sha`, `artifact_digest`, `baseline_digest`, `design_trace_digest`, `delivery_url`, `usage` (`model`, `minutes`, `model_calls`), and `evaluation` (`profile_digest`, `result_digest`, `screening=ELIGIBLE`, `source=TRUSTED_OBSERVED`). Never fabricate these fields for real tests.
+
+```bash
+python plugins/game-exp/skills/game-exp/scripts/blind_origin_study.py prepare --plan local/plan.json --private-dir local/private --public-dir exports/pages --sessions 20
+python plugins/game-exp/skills/game-exp/scripts/blind_origin_study.py record --private-dir local/private --response local/votes/vote-SESSION.json
+python plugins/game-exp/skills/game-exp/scripts/blind_origin_study.py report --private-dir local/private
+```
+
+The two output directories must not exist before preparation and must be separate. Share **only** the generated `play-SESSION.html` pages; never expose the private `trial.json` mapping. Each page shows A/B in a counterbalanced order and downloads a JSON vote with no identifying user details. Participants should be adults with informed consent and should only be allocated one session. The browser cannot verify actual playtime, and iframe display may be blocked by the game's hosting policy.
+
+The private result reports sample counts (AI_ONLY, HUMAN_AI, NO_CLEAR_DIFFERENCE, INCONCLUSIVE), counterbalancing, plan/assignment/response digests and limitations. With no observations the result is `NO_OBSERVED_PLAYER_PREFERENCES` with zero counts. The digests detect ordinary local drift, **not malicious tampering or true pre-registration**. Source attribution, profile eligibility and responses are operator/participant claims until independently checked.
+
+No automatic promotion, rejection, Review outcome, commercial willingness-to-pay conclusion, significance test or population inference is produced.
