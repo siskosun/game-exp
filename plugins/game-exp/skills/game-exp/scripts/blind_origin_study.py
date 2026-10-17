@@ -364,7 +364,7 @@ def report(private_dir: pathlib.Path, public_dir: pathlib.Path | None = None) ->
             "actual_reported_resource_usage_equal": usage_equal,
             "playtest": plan["playtest"],
             "limitations": ["Source attribution and Candidate/Evaluation evidence were supplied by the operator, not independently verified by this script.",
-                            "Whether the participant played both versions and the actual play order/duration are self-reported, not verified; no population inference.",
+                            "Neither unique-human identity nor independent participant recruitment is verified; paired play, sequence and duration are self-reported; no population inference.",
                             "Candidate links or gameplay may leak provenance; sequential page display guides but cannot prove actual exposure order.",
                             "No Review, lifecycle decision, causal effect or paid willingness-to-pay is inferred."],
             "authority": "LOCAL_NON_AUTHORITATIVE_NOT_LEDGER_EVIDENCE"}
