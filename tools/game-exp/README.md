@@ -318,7 +318,7 @@ v0.5 upgrades the Board from a portfolio list to an action-oriented dashboard:
 - optional `manifest.relationships` models `依赖 / 阻塞 / 替代` while preserving raw machine relation codes for automation;
 - all system-generated panel entries use Chinese as the primary UI text.
 
-The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.5.4`. The official installer uses a versioned, source-bundled `tools/game-exp/companion-compatibility.lock.json` snapshot so an unreviewed newer H5/Godot tag is never silently selected. A separate game-opportunity compatibility lock certifies the tested complete four-Skill bundle once integration CI passes. Installer default source is now the latest published non-prerelease semantic-version Release; using the current checkout/main requires explicit `--channel development`.
+The standalone repository packages the portable game-exp Skill/plugin and machine-readable `INSTALL.json`. Current plugin version: `1.5.5`. The official installer uses a versioned, source-bundled `tools/game-exp/companion-compatibility.lock.json` snapshot so an unreviewed newer H5/Godot tag is never silently selected. A separate game-opportunity compatibility lock certifies the tested complete four-Skill bundle once integration CI passes. Installer default source is now the latest published non-prerelease semantic-version Release; using the current checkout/main requires explicit `--channel development`.
 
 ### Windows UTF-8 compatibility
 
