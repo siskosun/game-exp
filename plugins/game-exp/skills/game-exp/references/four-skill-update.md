@@ -1,0 +1,9 @@
+# Four-game-Skill update policy
+
+The four managed repositories are game-opportunity, game-exp, h5-game-prototype-agent, godot-prototype-studio. On the first invocation of *any* of these in a new local Harness task, check all four latest published stable GitHub Releases, not the default branches or prerelease tags. Run at most once per task.
+
+In supported local Codex/Cursor/Qoder use the shared game-opportunity scripts/auto_update_bundle.py with --harness codex|cursor|qoder --apply --json only when the user has already authorized automatic self-updates (the current user has explicitly requested this). This command may alter the four Skill installations and the selected Harness game-exp runtime/MCP config; do not run it in a restricted environment, different Harness, or without local filesystem and installer permission. If a working update script is missing, report UNVERIFIED and continue ordinary standalone work. In ChatGPT web, make a read-only public Release comparison and report manual installation needed; never claim automatic installation or modify system-managed Skills.
+
+The updater must verify official release metadata and SHA-256 archive digest; compare all four exact latest versions against the game-opportunity vetted compatibility.lock; install through the existing official game-exp/game-opportunity installer and its rollback; verify all installed versions after the transaction. Reject unreviewed latest combinations, suspicious assets, stale metadata, local versions ahead of Release, downgrade and mixed-version partial success. A new latest version is not, by itself, evidence of compatibility.
+
+An updater failure is NOT authority to bypass game-exp Doctor, its protected Ledger, human Review, or any required cross-Skill handshake. Version installation should be followed by a Harness restart when Skill content was cached. Do not run a second updater merely because a session resumed.
