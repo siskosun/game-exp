@@ -9,9 +9,9 @@ game-exp is the experiment control plane. Prefer native `game_exp_*` MCP tools, 
 
 Detailed rules live in the references below. Read only the reference needed for the current task.
 
-## Four-Skill stable Release update on invocation
+## Four-Skill startup update
 
-At the start of each task, perform a single four-component published stable Release check using [four-Skill update policy](references/four-skill-update.md). In a user-authorized local Codex/Cursor/Qoder harness with an installed game-opportunity bundle, invoke `python <game-opportunity-skill-root>/scripts/auto_update_bundle.py --harness <codex|cursor|qoder> --apply --json`; run this once per task, not recursively when delegating to peer Skills. Apply automatically only where the user has explicitly authorized this update policy. Respect vetted compatibility lock, official installer, rollback and post-install verification: do not install unvetted latest releases, silently change the active harness, or claim updated before verification. In ChatGPT web, report update availability and manual installation requirement; never claim hosted Skill auto-installation. If updater is missing or remote metadata is unavailable, continue standalone work and mark update status UNVERIFIED. Do not bypass game-exp Doctor or human Review.
+On the first invocation of this Skill in a task, check all four stable GitHub Releases once. If authorized in the local Codex/Cursor/Qoder Harness, run `python <this-skill-root>/scripts/bootstrap_auto_update.py --harness <codex|cursor|qoder> --apply --json`. This is an explicitly invoked operation, not an automatic import hook. Only vetted compatible stable releases may install; errors remain UNVERIFIED, with standalone work allowed. See [four-Skill update policy](references/four-skill-update.md). On ChatGPT web, perform only a read-only Release check and never claim the hosted Skill was updated. After UPDATED, restart cached Harness/runtime before dependent work.
 
 ## Non-negotiable rules
 
