@@ -11,7 +11,7 @@ Detailed rules live in the references below. Read only the reference needed for 
 
 ## Four-Skill stable Release update on invocation
 
-At the start of each task, perform a single four-component published stable Release check using [four-Skill update policy](references/four-skill-update.md). In a user-authorized local Codex/Cursor/Qoder harness with an installed game-opportunity bundle, invoke `python <game-opportunity-skill-root>/scripts/auto_update_bundle.py --harness <codex|cursor|qoder> --apply --json`; run this once per task, not recursively when delegating to peer Skills. This user requested automatic stable updates. Respect vetted compatibility lock, official installer, rollback and post-install verification: do not install unvetted latest releases, silently change the active harness, or claim updated before verification. In ChatGPT web, report update availability and manual installation requirement; never claim hosted Skill auto-installation. If updater is missing or remote metadata is unavailable, continue standalone work and mark update status UNVERIFIED. Do not bypass game-exp Doctor or human Review.
+At the start of each task, perform a single four-component published stable Release check using [four-Skill update policy](references/four-skill-update.md). In a user-authorized local Codex/Cursor/Qoder harness with an installed game-opportunity bundle, invoke `python <game-opportunity-skill-root>/scripts/auto_update_bundle.py --harness <codex|cursor|qoder> --apply --json`; run this once per task, not recursively when delegating to peer Skills. Apply automatically only where the user has explicitly authorized this update policy. Respect vetted compatibility lock, official installer, rollback and post-install verification: do not install unvetted latest releases, silently change the active harness, or claim updated before verification. In ChatGPT web, report update availability and manual installation requirement; never claim hosted Skill auto-installation. If updater is missing or remote metadata is unavailable, continue standalone work and mark update status UNVERIFIED. Do not bypass game-exp Doctor or human Review.
 
 ## Non-negotiable rules
 
@@ -28,17 +28,7 @@ At the start of each task, perform a single four-component published stable Rele
 
 ## Repository identity and version handshake
 
-Before a version-dependent cross-Skill handoff, make one read-only freshness check per task. Local Python Harness: `python plugins/game-exp/skills/game-exp/scripts/standalone_version_check.py --json` in source checkout, or `python <installed-skill-root>/scripts/standalone_version_check.py --json`. To verify a required H5/Godot installed peer, add `--harness codex --peer h5-game-prototype-agent --gate` (actual Harness/peer). In ChatGPT web, consult game-opportunity's vetted public compatibility lock and published stable Releases via GitHub, but do not claim to verify local installed files.
-
-This check is advisory for standalone read-only work. Unknown/incompatible peer versions stop only version-dependent cross-Skill handoffs, never the protected server on an unauthenticated self-report. An installed ZIP cannot force an update; no automatic install, no hidden startup hook, and no change to protected Ledger, official runtime/repository handshake, Doctor, Candidate or human Review.
-
-Global MCP registration must not hard-code one repository. Resolve an exact GitHub `owner/name` and Pass that `repo` explicitly, or intentionally bind `GAME_EXP_REPO` in a repository-local configuration. Never reuse a repository remembered from another chat.
-
-Start unfamiliar sessions with `game_exp_status`. It is the compact 1.0 handshake for Ledger head, access, runtime version, repository version, and protocol versions. If runtime/repository versions differ, align versions before mutation.
-
-Canonical source: https://github.com/siskosun/game-exp
-
-For installation or upgrade, read root `INSTALL.json`. The default installer channel is `stable`: resolve the latest published, non-prerelease semantic-version GitHub Release and install from that Release tag's source archive, not from `main` or an arbitrary current checkout. Use `--release vX.Y.Z` for an explicit published Release and `--channel development` only when the user explicitly wants to test the current checkout/main. Update only the current Harness by default. The canonical installer also synchronizes the latest semantic-version-tagged `godot-prototype-studio` and `h5-game-prototype-agent` Skills into that same Harness. Do not synchronize application repositories, sandboxes, or other Harnesses as a release side effect. Use `--harness all` only when explicitly requested. Preserve legacy shared copies during a single-Harness upgrade; remove them only through explicit `--cleanup-legacy-shared`.
+The startup four-Release update check is distinct from trusted game-exp runtime/repository status. For a dependent H5/Godot handoff, verify installed peer integrity using `scripts/standalone_version_check.py --harness <codex|cursor|qoder> --peer <name> --gate --json` when available. Runtime status, Doctor and protected Ledger remain authoritative; a static update check cannot grant lifecycle permission.
 
 ## Task routing
 
