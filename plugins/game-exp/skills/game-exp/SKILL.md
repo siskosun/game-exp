@@ -9,6 +9,10 @@ game-exp is the experiment control plane. Prefer native `game_exp_*` MCP tools, 
 
 Detailed rules live in the references below. Read only the reference needed for the current task.
 
+## Four-Skill startup update
+
+On the first invocation of this Skill in a task, check all four stable GitHub Releases once. If authorized in the local Codex/Cursor/Qoder Harness, run `python <this-skill-root>/scripts/bootstrap_auto_update.py --harness <codex|cursor|qoder> --apply --json`. This is an explicitly invoked operation, not an automatic import hook. Only vetted compatible stable releases may install; errors remain UNVERIFIED, with standalone work allowed. See [four-Skill update policy](references/four-skill-update.md). On ChatGPT web, perform only a read-only Release check and never claim the hosted Skill was updated. After UPDATED, restart cached Harness/runtime before dependent work.
+
 ## Non-negotiable rules
 
 1. Treat the protected Ledger as authoritative. Local files, Issue labels, branch names, rendered Board output, chat history, Agent memory, and `actor_claim` are not authority.
@@ -24,9 +28,7 @@ Detailed rules live in the references below. Read only the reference needed for 
 
 ## Repository identity and version handshake
 
-Before a version-dependent cross-Skill handoff, make one read-only freshness check per task. Local Python Harness: `python plugins/game-exp/skills/game-exp/scripts/standalone_version_check.py --json` in source checkout, or `python <installed-skill-root>/scripts/standalone_version_check.py --json`. To verify a required H5/Godot installed peer, add `--harness codex --peer h5-game-prototype-agent --gate` (actual Harness/peer). In ChatGPT web, consult game-opportunity's vetted public compatibility lock and published stable Releases via GitHub, but do not claim to verify local installed files.
-
-This check is advisory for standalone read-only work. Unknown/incompatible peer versions stop only version-dependent cross-Skill handoffs, never the protected server on an unauthenticated self-report. An installed ZIP cannot force an update; no automatic install, no hidden startup hook, and no change to protected Ledger, official runtime/repository handshake, Doctor, Candidate or human Review.
+For a version-dependent H5/Godot handoff, independently verify installed peer integrity with `scripts/standalone_version_check.py --harness <codex|cursor|qoder> --peer <name> --gate --json`. This complements the one-time four-Release startup check; it does not replace trusted runtime/repository status or Doctor.
 
 Global MCP registration must not hard-code one repository. Resolve an exact GitHub `owner/name` and Pass that `repo` explicitly, or intentionally bind `GAME_EXP_REPO` in a repository-local configuration. Never reuse a repository remembered from another chat.
 

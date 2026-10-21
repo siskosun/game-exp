@@ -1,23 +1,23 @@
 {
   "schema_version": 1,
   "policy": "released-pins-only",
-  "game_exp_version": "1.5.4",
+  "game_exp_version": "1.5.5",
   "assurance": "SHIP_TIME_PINS_NOT_FOUR_SKILL_END_TO_END_CERTIFIED",
-  "source": "game-exp-v1.5.4-release-snapshot",
+  "source": "game-exp-v1.5.5-release-snapshot",
   "components": {
     "godot-prototype-studio": {
       "repository": "siskosun/godot-prototype-studio",
-      "tag": "v1.0.7",
-      "version": "1.0.7",
-      "commit_sha": "8c3356ee42c0d8a07fd550eb9caf95bf9a95f61c",
-      "skill_git_blob_sha1": "748f2a7a557a1c58eaa197828d185c13d359dffc"
+      "tag": "v1.0.8",
+      "version": "1.0.8",
+      "commit_sha": "92a262d6afedaedbaf993f63f5348807e674ed43",
+      "skill_git_blob_sha1": "cd73efdd7f44f52e82e1529729c8b08216bacbca"
     },
     "h5-game-prototype-agent": {
       "repository": "siskosun/h5-game-prototype-agent",
-      "tag": "v0.2.6",
-      "version": "0.2.6",
-      "commit_sha": "fffe6579867e0f4f71c221ed0da836dbe418b835",
-      "skill_git_blob_sha1": "eb6b4cd96d5e7f468426c629d6af4ddd8e3ade3f"
+      "tag": "v0.2.7",
+      "version": "0.2.7",
+      "commit_sha": "a66b6dce9bd933a8530a16b122f0905e0424aed0",
+      "skill_git_blob_sha1": "90127cb6787dcd3bd5de8b09e50c2d3b353d2bab"
     }
   }
 }

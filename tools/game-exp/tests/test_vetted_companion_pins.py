@@ -29,7 +29,7 @@ class VettedCompanionPinsTest(unittest.TestCase):
         self.entries = {}
         self.archives = {}
         for i, spec in enumerate(m.COMPANION_SKILLS):
-            version = "0.2.6" if spec.name.startswith("h5-") else "1.0.7"
+            version = "0.2.7" if spec.name.startswith("h5-") else "1.0.8"
             commit_sha = ("a" if i == 0 else "b") * 40
             archive, blob = source_bytes(spec.name, version)
             self.archives[commit_sha] = archive
@@ -43,7 +43,7 @@ class VettedCompanionPinsTest(unittest.TestCase):
 
     def snapshot(self):
         return {"schema_version":1, "policy":"released-pins-only",
-                "game_exp_version":"1.5.4", "components":self.entries}
+                "game_exp_version":"1.5.5", "components":self.entries}
 
     def transport(self, url, *, timeout=30):
         for spec in m.COMPANION_SKILLS:
@@ -67,10 +67,10 @@ class VettedCompanionPinsTest(unittest.TestCase):
 
     def test_shipped_snapshot_versions_and_digests(self):
         actual = m._load_vetted_snapshot()
-        self.assertEqual(actual["game_exp_version"], "1.5.4")
+        self.assertEqual(actual["game_exp_version"], "1.5.5")
         expected = {
-            "godot-prototype-studio": ("1.0.7", "8c3356ee42c0d8a07fd550eb9caf95bf9a95f61c"),
-            "h5-game-prototype-agent": ("0.2.6", "fffe6579867e0f4f71c221ed0da836dbe418b835"),
+            "godot-prototype-studio": ("1.0.8", "92a262d6afedaedbaf993f63f5348807e674ed43"),
+            "h5-game-prototype-agent": ("0.2.7", "a66b6dce9bd933a8530a16b122f0905e0424aed0"),
         }
         self.assertEqual(set(actual["components"]), set(expected))
         for name, (version, commit) in expected.items():
@@ -97,8 +97,8 @@ class VettedCompanionPinsTest(unittest.TestCase):
 
     def test_unreviewed_companion_tag_is_never_used(self):
         def malicious(url, *, timeout=30):
-            if url.endswith("/releases/tags/v0.2.6"):
-                return json.dumps({"tag_name":"v0.2.6","prerelease":True,"draft":False}).encode()
+            if url.endswith("/releases/tags/v0.2.7"):
+                return json.dumps({"tag_name":"v0.2.7","prerelease":True,"draft":False}).encode()
             return self.transport(url, timeout=timeout)
         with tempfile.TemporaryDirectory() as td, mock.patch.object(m, "_load_vetted_snapshot", side_effect=self.snapshot), mock.patch.object(m, "_request_bytes", side_effect=malicious):
             with self.assertRaisesRegex(m.CompanionSkillSyncError, "stable published Release"):
