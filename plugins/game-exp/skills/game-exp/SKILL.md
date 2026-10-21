@@ -9,6 +9,10 @@ game-exp is the experiment control plane. Prefer native `game_exp_*` MCP tools, 
 
 Detailed rules live in the references below. Read only the reference needed for the current task.
 
+## Four-Skill stable Release update on invocation
+
+At the start of each task, perform a single four-component published stable Release check using [four-Skill update policy](references/four-skill-update.md). In a user-authorized local Codex/Cursor/Qoder harness with an installed game-opportunity bundle, invoke `python <game-opportunity-skill-root>/scripts/auto_update_bundle.py --harness <codex|cursor|qoder> --apply --json`; run this once per task, not recursively when delegating to peer Skills. This user requested automatic stable updates. Respect vetted compatibility lock, official installer, rollback and post-install verification: do not install unvetted latest releases, silently change the active harness, or claim updated before verification. In ChatGPT web, report update availability and manual installation requirement; never claim hosted Skill auto-installation. If updater is missing or remote metadata is unavailable, continue standalone work and mark update status UNVERIFIED. Do not bypass game-exp Doctor or human Review.
+
 ## Non-negotiable rules
 
 1. Treat the protected Ledger as authoritative. Local files, Issue labels, branch names, rendered Board output, chat history, Agent memory, and `actor_claim` are not authority.
