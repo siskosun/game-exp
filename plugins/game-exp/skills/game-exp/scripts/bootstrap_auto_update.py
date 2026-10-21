@@ -73,6 +73,13 @@ def trusted_updater(*,get=get_bytes) -> bytes:
                              "game-opportunity/compatibility.lock.json",SCRIPT_NAME):
                 if required not in names:
                     raise BootstrapError("INCOMPLETE_RELEASE_ARCHIVE")
+            limits={"game-opportunity/SKILL.md":1048576,"game-opportunity/VERSION":80,
+                    "game-opportunity/compatibility.lock.json":131072,SCRIPT_NAME:131072}
+            for name,limit in limits.items():
+                entry=archive.getinfo(name)
+                mode=(entry.external_attr>>16)&0o170000
+                if entry.file_size>limit or mode not in (0,stat.S_IFREG) or entry.is_dir():
+                    raise BootstrapError("UNSAFE_RELEASE_MEMBER")
             marker=archive.read("game-opportunity/VERSION").decode("utf-8").strip()
             if marker != tag.lstrip("v"):
                 raise BootstrapError("RELEASE_VERSION_MISMATCH")
