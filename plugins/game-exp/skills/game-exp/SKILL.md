@@ -28,7 +28,15 @@ On the first invocation of this Skill in a task, check all four stable GitHub Re
 
 ## Repository identity and version handshake
 
-The startup four-Release update check is distinct from trusted game-exp runtime/repository status. For a dependent H5/Godot handoff, verify installed peer integrity using `scripts/standalone_version_check.py --harness <codex|cursor|qoder> --peer <name> --gate --json` when available. Runtime status, Doctor and protected Ledger remain authoritative; a static update check cannot grant lifecycle permission.
+For a version-dependent H5/Godot handoff, independently verify installed peer integrity with `scripts/standalone_version_check.py --harness <codex|cursor|qoder> --peer <name> --gate --json`. This complements the one-time four-Release startup check; it does not replace trusted runtime/repository status or Doctor.
+
+Global MCP registration must not hard-code one repository. Resolve an exact GitHub `owner/name` and Pass that `repo` explicitly, or intentionally bind `GAME_EXP_REPO` in a repository-local configuration. Never reuse a repository remembered from another chat.
+
+Start unfamiliar sessions with `game_exp_status`. It is the compact 1.0 handshake for Ledger head, access, runtime version, repository version, and protocol versions. If runtime/repository versions differ, align versions before mutation.
+
+Canonical source: https://github.com/siskosun/game-exp
+
+For installation or upgrade, read root `INSTALL.json`. The default installer channel is `stable`: resolve the latest published, non-prerelease semantic-version GitHub Release and install from that Release tag's source archive, not from `main` or an arbitrary current checkout. Use `--release vX.Y.Z` for an explicit published Release and `--channel development` only when the user explicitly wants to test the current checkout/main. Update only the current Harness by default. The canonical installer also synchronizes the latest semantic-version-tagged `godot-prototype-studio` and `h5-game-prototype-agent` Skills into that same Harness. Do not synchronize application repositories, sandboxes, or other Harnesses as a release side effect. Use `--harness all` only when explicitly requested. Preserve legacy shared copies during a single-Harness upgrade; remove them only through explicit `--cleanup-legacy-shared`.
 
 ## Task routing
 
