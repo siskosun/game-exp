@@ -54,6 +54,10 @@ Route from the user's intent first. Internal lifecycle terms belong in the workf
 | 诊断 / 修复仓库 | Doctor, `game_exp_project_init`; optional advanced preflight when explicitly enabled | `references/project-setup.md` |
 | GitHub Issue bridge / conformance | use only for the matching fallback or diagnostic task | `references/github-bridge.md`, `references/conformance.md` |
 
+## Optional multi-path completion evidence
+
+When a GPS/H5 handoff includes a Completion Evidence v2 report, read [completion evidence integration](references/completion-evidence-v2.md). Treat executor-authored path results as participant-reported context. Only the protected evaluator's independent replay against the frozen Candidate may produce TRUSTED_OBSERVED evidence. Keep path coverage descriptive and preserve the existing Evaluation Profile, Trusted Writer, Review, and lifecycle boundaries.
+
 ## Optional integration viability diagnostic
 
 When a proposed experiment is likely to merge into main, assess the known
